@@ -1,130 +1,243 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+/* Fonts are bundled, not fetched. The packaged app is served from a custom
+   scheme with no network guarantee, so Google Fonts is not an option.
+   DESIGN-NOTES §1: Instrument Sans for UI, IBM Plex Mono for literals. */
+@import "@fontsource-variable/instrument-sans";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
+/* ---------------------------------------------------------------------------
+   Otis theme. Every value below is copied from docs/design/DESIGN-NOTES.md;
+   none is invented. The design ships no light palette (§2), so there is one
+   set of values and no dark override -- <html class="dark"> stays only so
+   shadcn's dark: variants resolve.
+
+   DESIGN-NOTES token  ->  Tailwind utility
+
+   --canvas                (not an app colour; the page behind the artboards)
+   --bg                    bg-background
+   --bg-raised             bg-raised
+   --bg-inset              bg-inset
+   --bg-selected           bg-selected
+   --bg-control            bg-control          (also shadcn's --accent, the
+                                                hover surface its components
+                                                reach for)
+   --border-hairline       border-border-hairline
+   --border                border-border
+   --border-control        border-border-control
+   --border-strong         border-border-strong
+   --border-danger         border-border-danger
+   --border-secret         border-border-secret
+   --fg-emphasis           text-fg-emphasis
+   --fg                    text-foreground / text-fg
+   --fg-secondary          text-fg-secondary
+   --fg-muted              text-fg-muted / text-muted-foreground
+   --fg-dim                text-fg-dim
+   --fg-faint              text-fg-faint
+   --fg-ghost              text-fg-ghost
+   --accent                text-primary / bg-primary / border-primary
+   --accent-hover          bg-primary-hover
+   --accent-on             text-primary-foreground
+   --accent-wash           bg-primary-wash
+   method colours          text-method-get, -post, -put, -patch, -delete
+   modified / secret       text-modified, text-secret
+   danger                  text-destructive
+
+   The design's "accent" is shadcn's *primary* (the Send button, selection
+   edges, resolved variables). shadcn's own --accent is a component hover
+   surface, so it is mapped to --bg-control instead; conflating the two would
+   turn every menu hover emerald.
+--------------------------------------------------------------------------- */
 
 @theme inline {
+    --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* Background layers -- DESIGN-NOTES §2.1 */
+    --color-background: var(--bg);
+    --color-raised: var(--bg-raised);
+    --color-inset: var(--bg-inset);
+    --color-selected: var(--bg-selected);
+    --color-control: var(--bg-control);
+
+    /* Borders -- §2.2 */
+    --color-border-hairline: var(--border-hairline);
+    --color-border: var(--border-line);
+    --color-border-control: var(--border-control);
+    --color-border-strong: var(--border-strong);
+    --color-border-danger: var(--border-danger);
+    --color-border-secret: var(--border-secret);
+    --color-input: var(--border-control);
+    --color-ring: var(--border-strong);
+
+    /* Text levels -- §2.3 */
+    --color-foreground: var(--fg);
+    --color-fg: var(--fg);
+    --color-fg-emphasis: var(--fg-emphasis);
+    --color-fg-secondary: var(--fg-secondary);
+    --color-fg-muted: var(--fg-muted);
+    --color-fg-dim: var(--fg-dim);
+    --color-fg-faint: var(--fg-faint);
+    --color-fg-ghost: var(--fg-ghost);
+
+    /* Accent -- §2.4. Named "primary" here; see the mapping note above. */
+    --color-primary: var(--accent);
+    --color-primary-foreground: var(--accent-on);
+    --color-primary-hover: var(--accent-hover);
+    --color-primary-wash: var(--accent-wash);
+
+    /* shadcn's component tokens, pointed at the design's surfaces. */
+    --color-card: var(--bg);
+    --color-card-foreground: var(--fg);
+    --color-popover: var(--bg-raised);
+    --color-popover-foreground: var(--fg);
+    --color-secondary: var(--bg-control);
+    --color-secondary-foreground: var(--fg-emphasis);
+    --color-muted: var(--bg-inset);
+    --color-muted-foreground: var(--fg-muted);
+    --color-accent: var(--bg-control);
+    --color-accent-foreground: var(--fg-emphasis);
+    --color-destructive: var(--danger);
+    --color-sidebar: var(--bg);
+    --color-sidebar-foreground: var(--fg);
+    --color-sidebar-primary: var(--accent);
+    --color-sidebar-primary-foreground: var(--accent-on);
+    --color-sidebar-accent: var(--bg-control);
+    --color-sidebar-accent-foreground: var(--fg-emphasis);
+    --color-sidebar-border: var(--border-line);
+    --color-sidebar-ring: var(--border-strong);
+
+    /* HTTP method colours -- §2.5. HEAD, OPTIONS, TRACE, CONNECT and custom
+       methods have no colour in the design (§9.2); components fall back to
+       text-fg-muted rather than inventing one. */
+    --color-method-get: #38bdf8;
+    --color-method-post: #fbbf24;
+    --color-method-put: #a78bfa;
+    --color-method-patch: #f472b6;
+    --color-method-delete: #f87171;
+
+    /* Semantic colours -- §2.6 */
+    --color-modified: #fbbf24;
+    --color-untracked: var(--accent);
+    --color-secret: #fbbf24;
+    --color-warning: #fbbf24;
+
+    /* Radii -- §5. Four values, applied by size of thing. */
+    --radius-sm: 3px;
+    --radius-md: 4px;
+    --radius-lg: 6px;
+    --radius-xl: 6px;
+    --radius-2xl: 6px;
+    --radius-3xl: 6px;
+    --radius-4xl: 6px;
+
+    /* Type scale -- §3, with the line heights from the same section. */
+    --text-micro: 9px;
+    --text-micro--line-height: 14px;
+    --text-label: 10px;
+    --text-label--line-height: 14px;
+    --text-meta: 11px;
+    --text-meta--line-height: 16px;
+    --text-ui: 12px;
+    --text-ui--line-height: 18px;
+    --text-code: 12px;
+    --text-code--line-height: 20px;
+    --text-result: 13px;
+    --text-result--line-height: 20px;
+    --text-field: 14px;
+    --text-field--line-height: 20px;
+    --text-title: 15px;
+    --text-title--line-height: 20px;
+    --text-heading: 16px;
+    --text-heading--line-height: 22px;
+    --text-display: 20px;
+    --text-display--line-height: 26px;
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-}
+    color-scheme: dark;
 
-.dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    /* §2.1 Background layers */
+    --bg: #09090b;
+    --bg-raised: #0c0c0e;
+    --bg-inset: #0f0f11;
+    --bg-selected: #141417;
+    --bg-control: #18181b;
+
+    /* §2.2 Borders. --border-line rather than --border: Tailwind v4 owns the
+       bare --border name for its own border-width utility. */
+    --border-hairline: #141417;
+    --border-line: #1f1f23;
+    --border-control: #27272a;
+    --border-strong: #3f3f46;
+    --border-danger: #3f1d1d;
+    --border-secret: #3a2f0e;
+
+    /* §2.3 Text levels */
+    --fg-emphasis: #fafafa;
+    --fg: #e4e4e7;
+    --fg-secondary: #d4d4d8;
+    --fg-muted: #a1a1aa;
+    --fg-dim: #71717a;
+    --fg-faint: #52525b;
+    --fg-ghost: #3f3f46;
+
+    /* §2.4 Accent. Themeable in the design; see DESIGN-NOTES §9.1 for why the
+       other three options are not offered yet. */
+    --accent: #34d399;
+    --accent-hover: #6ee7b7;
+    --accent-on: #052e1f;
+    --accent-wash: rgba(52, 211, 153, 0.1);
+
+    /* §2.6 */
+    --danger: #f87171;
+
+    /* §4.1 Window and pane metrics, as CSS so the shell and its children
+       agree on one number. */
+    --title-strip-height: 38px;
+    --tab-bar-height: 34px;
+    --status-bar-height: 26px;
+    --row-height: 24px;
+    --method-gutter-width: 48px;
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+    * {
+        @apply border-border outline-ring/50;
     }
-  body {
-    @apply bg-background text-foreground;
+
+    html {
+        @apply font-sans;
     }
-  html {
-    @apply font-sans;
+
+    body {
+        @apply bg-background text-foreground text-ui;
+        /* The window is the app; nothing outside a pane ever scrolls. */
+        @apply h-screen overflow-hidden;
+    }
+
+    /* §5: 8px scrollbars, #27272a thumb, radius 2px, no track. Native
+       scrollbars are deliberate -- Radix ScrollArea would replace them
+       (§7.6). */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: var(--border-control);
+        border-radius: 2px;
+    }
+
+    ::-webkit-scrollbar-corner {
+        background: transparent;
     }
 }

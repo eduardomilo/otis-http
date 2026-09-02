@@ -1,45 +1,40 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
-import { AppService } from "../../bindings/github.com/otis-http/otis/internal/services";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { hint } from "@/lib/platform";
+import { nodeRoute } from "@/lib/paths";
+import { useSettings } from "@/state/settings-context";
+import { useTabs } from "@/state/tabs-context";
 
 export const Route = createFileRoute("/")({
-  // Calling a Go binding from a loader proves bindings work outside of
-  // event handlers, which the real app relies on for route data.
-  loader: async () => {
-    const pong = await AppService.Ping("hello from loader");
-    return { pong };
-  },
-  component: IndexPage,
+  component: Home,
 });
 
-function IndexPage() {
-  const { pong } = Route.useLoaderData();
+/**
+ * The route with no document.
+ *
+ * With no collection open the root layout renders the empty state instead of
+ * this, so reaching here means a collection is open but nothing is selected.
+ * If the last session left a document open, go straight back to it.
+ */
+function Home() {
+  const navigate = useNavigate();
+  const { settings } = useSettings();
+  const { tabs } = useTabs();
+
+  useEffect(() => {
+    const active = settings?.tabs.active;
+    if (!active) return;
+    const tab = tabs.find((t) => t.path === active);
+    if (!tab) return;
+    void navigate({ to: nodeRoute(tab.kind), params: { path: tab.path }, replace: true });
+  }, [settings?.tabs.active, tabs, navigate]);
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Otis</CardTitle>
-          <CardDescription>Plumbing check: Go binding called from a route loader.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="font-mono text-sm text-muted-foreground">{pong}</p>
-        </CardContent>
-        <CardFooter>
-          <Button asChild>
-            <Link to="/about">About</Link>
-          </Button>
-        </CardFooter>
-      </Card>
-    </main>
+    <div className="flex h-full items-center justify-center">
+      <p className="text-ui text-fg-faint">
+        Open a request from the sidebar, or press {hint("K")}.
+      </p>
+    </div>
   );
 }

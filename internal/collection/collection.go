@@ -128,6 +128,29 @@ func Load(dir string) (*Collection, error) {
 // default key under which a collection's secrets are stored.
 func BaseName(dir string) string { return filepath.Base(dir) }
 
+// DisplayName is the name the UI shows for a collection rooted at dir.
+//
+// It is the directory's base name, except for a dot-directory, where it is the
+// parent's name: a collection kept beside the code it exercises is
+// conventionally ".requests", and calling every such collection ".requests"
+// would be useless. The design's example is exactly this case — the collection
+// named "acme-api" is rooted at "~/code/acme-api/.requests".
+//
+// Display only. BaseName, not this, is the key secrets are stored under
+// (docs/FORMAT.md §5); changing what a collection is *called* must never move
+// anyone's secrets.
+func DisplayName(dir string) string {
+	base := filepath.Base(dir)
+	if !strings.HasPrefix(base, ".") {
+		return base
+	}
+	parent := filepath.Base(filepath.Dir(dir))
+	if parent == "" || parent == "." || parent == string(filepath.Separator) {
+		return base
+	}
+	return parent
+}
+
 // Find returns the node with the given ID, or nil.
 func (c *Collection) Find(id string) *Node {
 	var found *Node

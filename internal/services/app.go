@@ -7,20 +7,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
+	wailsevents "github.com/wailsapp/wails/v3/pkg/events"
+
+	"github.com/otis-http/otis/internal/events"
 )
 
 // Version is the build-time version string. It is overridden by the linker
 // via -X github.com/otis-http/otis/internal/services.Version=<value>
 // (see the BUILD_FLAGS in build/<platform>/Taskfile.yml).
 var Version = "dev"
-
-// EventAppReady is emitted once per window as soon as the Wails runtime in
-// that window is ready. Its payload is the version string.
-const EventAppReady = "app:ready"
 
 // AppService is the root service of Otis. It carries app-level metadata and
 // a health check used to prove the binding channel works.
@@ -49,9 +48,21 @@ func (s *AppService) ServiceStartup(ctx context.Context, options application.Ser
 }
 
 func (s *AppService) emitReadyWhenRuntimeLoads(w application.Window) {
-	w.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
-		s.app.Event.Emit(EventAppReady, Version)
+	w.OnWindowEvent(wailsevents.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+		s.app.Event.Emit(events.AppReady, Version)
 	})
+}
+
+// HomeDir returns the user's home directory, or "" if it cannot be
+// determined. The window uses it to abbreviate paths to the "~/code/..." form
+// the design shows; it is a display concern, so the substitution happens in
+// the frontend and only the prefix crosses the binding.
+func (s *AppService) HomeDir() string {
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return dir
 }
 
 // Version returns the build-time version string.

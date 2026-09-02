@@ -10,43 +10,73 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AboutRouteImport } from './routes/about'
+import { Route as DiffPathRouteImport } from './routes/diff.$path'
+import { Route as EnvNameRouteImport } from './routes/env.$name'
+import { Route as FPathRouteImport } from './routes/f.$path'
+import { Route as RPathRouteImport } from './routes/r.$path'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
+const DiffPathRoute = DiffPathRouteImport.update({
+  id: '/diff/$path',
+  path: '/diff/$path',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvNameRoute = EnvNameRouteImport.update({
+  id: '/env/$name',
+  path: '/env/$name',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FPathRoute = FPathRouteImport.update({
+  id: '/f/$path',
+  path: '/f/$path',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RPathRoute = RPathRouteImport.update({
+  id: '/r/$path',
+  path: '/r/$path',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
+  '/diff/$path': typeof DiffPathRoute
+  '/env/$name': typeof EnvNameRoute
+  '/f/$path': typeof FPathRoute
+  '/r/$path': typeof RPathRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
+  '/diff/$path': typeof DiffPathRoute
+  '/env/$name': typeof EnvNameRoute
+  '/f/$path': typeof FPathRoute
+  '/r/$path': typeof RPathRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/about': typeof AboutRoute
+  '/diff/$path': typeof DiffPathRoute
+  '/env/$name': typeof EnvNameRoute
+  '/f/$path': typeof FPathRoute
+  '/r/$path': typeof RPathRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about'
+  fullPaths: '/' | '/diff/$path' | '/env/$name' | '/f/$path' | '/r/$path'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about'
-  id: '__root__' | '/' | '/about'
+  to: '/' | '/diff/$path' | '/env/$name' | '/f/$path' | '/r/$path'
+  id: '__root__' | '/' | '/diff/$path' | '/env/$name' | '/f/$path' | '/r/$path'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
+  DiffPathRoute: typeof DiffPathRoute
+  EnvNameRoute: typeof EnvNameRoute
+  FPathRoute: typeof FPathRoute
+  RPathRoute: typeof RPathRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,11 +88,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
+    '/diff/$path': {
+      id: '/diff/$path'
+      path: '/diff/$path'
+      fullPath: '/diff/$path'
+      preLoaderRoute: typeof DiffPathRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/env/$name': {
+      id: '/env/$name'
+      path: '/env/$name'
+      fullPath: '/env/$name'
+      preLoaderRoute: typeof EnvNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/f/$path': {
+      id: '/f/$path'
+      path: '/f/$path'
+      fullPath: '/f/$path'
+      preLoaderRoute: typeof FPathRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/r/$path': {
+      id: '/r/$path'
+      path: '/r/$path'
+      fullPath: '/r/$path'
+      preLoaderRoute: typeof RPathRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -70,7 +121,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
+  DiffPathRoute: DiffPathRoute,
+  EnvNameRoute: EnvNameRoute,
+  FPathRoute: FPathRoute,
+  RPathRoute: RPathRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

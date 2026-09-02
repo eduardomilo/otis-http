@@ -303,3 +303,22 @@ func snapshot(t *testing.T, dir string) map[string]string {
 	}
 	return out
 }
+
+func TestDisplayName(t *testing.T) {
+	cases := []struct{ dir, want string }{
+		{"/code/acme-api", "acme-api"},
+		{"/code/acme-api/.requests", "acme-api"}, // the design's example
+		{"/code/acme-api/http", "http"},
+		{"/.requests", ".requests"},              // no useful parent: keep the base
+		{"/code/.a/.b", ".a"},
+	}
+	for _, c := range cases {
+		if got := DisplayName(filepath.FromSlash(c.dir)); got != c.want {
+			t.Errorf("DisplayName(%q) = %q, want %q", c.dir, got, c.want)
+		}
+	}
+	// The secrets key is unaffected by the display rule.
+	if got := BaseName(filepath.FromSlash("/code/acme-api/.requests")); got != ".requests" {
+		t.Errorf("BaseName = %q, want .requests", got)
+	}
+}

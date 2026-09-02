@@ -4,6 +4,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { createHashHistory } from "@tanstack/history";
 import { Events } from "@wailsio/runtime";
 
+import { OtisEvent } from "./lib/events.gen";
 import { routeTree } from "./routeTree.gen";
 import "./index.css";
 
@@ -11,7 +12,7 @@ import "./index.css";
 // renders. The Wails runtime signals "ready" to Go when it is imported above,
 // and Go answers with app:ready; registering here guarantees the listener
 // exists before that answer can arrive.
-Events.On("app:ready", (event) => {
+Events.On(OtisEvent.AppReady, (event) => {
   console.log("[otis] app:ready", { version: event.data });
 });
 

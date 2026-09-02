@@ -2,6 +2,8 @@
 .task
 bin
 frontend/dist
+# `go build .` in the repo root drops the binary here; the real one is bin/otis.
+/otis
 
 # Dependencies
 frontend/node_modules

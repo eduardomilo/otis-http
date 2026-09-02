@@ -17,6 +17,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      // Generated Wails bindings. Mirrored in tsconfig.json.
+      "@bindings": path.resolve(
+        import.meta.dirname,
+        "./bindings/github.com/otis-http/otis",
+      ),
     },
   },
   plugins: [

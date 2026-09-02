@@ -12,6 +12,16 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 /**
+ * HomeDir returns the user's home directory, or "" if it cannot be
+ * determined. The window uses it to abbreviate paths to the "~/code/..." form
+ * the design shows; it is a display concern, so the substitution happens in
+ * the frontend and only the prefix crosses the binding.
+ */
+export function HomeDir(): $CancellablePromise<string> {
+    return $Call.ByID(1015053141);
+}
+
+/**
  * Ping echoes msg back with a timestamp. It returns an error for an empty
  * message so the error path of the binding channel is exercised too.
  */
