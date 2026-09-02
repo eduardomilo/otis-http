@@ -96,15 +96,24 @@ type Response struct {
 func (r *Response) IsError() bool { return r.StatusCode >= 400 }
 
 // Session is the state shared by the requests of one collection: the cookie
-// jar. It lives in memory only.
+// jar and the AWS credential cache. It lives in memory only.
 type Session struct {
 	Jar http.CookieJar
+	AWS *AWSCredentials
 }
 
-// NewSession creates a session with an empty cookie jar.
+// NewSession creates a session with an empty cookie jar and AWS cache.
 func NewSession() *Session {
 	jar, _ := cookiejar.New(nil) // only errors on a bad options value
-	return &Session{Jar: jar}
+	return &Session{Jar: jar, AWS: NewAWSCredentials()}
+}
+
+// PrepareOptions returns the options that bind Prepare to this session.
+func (s *Session) PrepareOptions() PrepareOptions {
+	if s == nil {
+		return PrepareOptions{}
+	}
+	return PrepareOptions{AWS: s.AWS}
 }
 
 // Client sends requests. The zero value is usable with defaults.

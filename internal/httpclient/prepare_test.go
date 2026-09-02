@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,6 +17,17 @@ import (
 
 // prep writes a small collection, resolves the request at id and prepares it.
 func prep(t *testing.T, files map[string]string, id string, opts resolve.Options) (*Request, []Warning, error) {
+	t.Helper()
+	return prepFull(t, files, id, opts, PrepareOptions{})
+}
+
+// prepWith is prep with PrepareOptions and no resolve options.
+func prepWith(t *testing.T, files map[string]string, id string, popts PrepareOptions) (*Request, []Warning, error) {
+	t.Helper()
+	return prepFull(t, files, id, resolve.Options{}, popts)
+}
+
+func prepFull(t *testing.T, files map[string]string, id string, opts resolve.Options, popts PrepareOptions) (*Request, []Warning, error) {
 	t.Helper()
 	dir := t.TempDir()
 	for rel, content := range files {
@@ -39,7 +51,7 @@ func prep(t *testing.T, files map[string]string, id string, opts resolve.Options
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Prepare(res, node.Request, filepath.Dir(node.Path))
+	return Prepare(context.Background(), res, node.Request, filepath.Dir(node.Path), popts)
 }
 
 func TestPrepareAuth(t *testing.T) {
@@ -112,7 +124,7 @@ func TestPrepareBody(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req, _, err := Prepare(res, node.Request, filepath.Dir(node.Path))
+		req, _, err := Prepare(context.Background(), res, node.Request, filepath.Dir(node.Path), PrepareOptions{})
 		if err != nil || string(req.Body) != `{"v": 1, "s": "hidden"}` {
 			t.Errorf("body = %q, %v", req.Body, err)
 		}
@@ -156,7 +168,7 @@ func TestPrepareDirectives(t *testing.T) {
 		}
 	}
 	// nil source request: no directives, no crash.
-	if _, _, err := Prepare(&resolve.Resolved{Method: "GET", URL: "https://x"}, (*httpfile.Request)(nil), "."); err != nil {
+	if _, _, err := Prepare(context.Background(), &resolve.Resolved{Method: "GET", URL: "https://x"}, (*httpfile.Request)(nil), ".", PrepareOptions{}); err != nil {
 		t.Error(err)
 	}
 }

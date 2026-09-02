@@ -335,12 +335,46 @@ removed, so a review or the UI can show what was switched off and where.
 ```
 # @auth bearer <token>
 # @auth basic <username> [<password>]
+# @auth aws [profile=<name>] [key=<id> secret=<key> [token=<session>]] [region=<r>] [service=<s>]
 # @auth none
 ```
 
 - The scheme is case-insensitive. `bearer` takes exactly one token. `basic`
   takes a username and an optional password; the password is the rest of
   the line and may contain spaces. `none` takes nothing.
+- `aws` signs the request with AWS Signature Version 4. Its arguments are
+  `key=value` pairs, each at most once, none empty:
+  - **Credentials** come from one of two sources. `profile=<name>` uses that
+    profile from `~/.aws/config` and `~/.aws/credentials` through the AWS
+    SDK default chain, so SSO, assume-role, `credential_process` and MFA
+    sessions all work as they do for the `aws` CLI. With no `profile=` and
+    no keys, the default chain applies (`AWS_PROFILE`, environment
+    variables, the `default` profile). `key=` and `secret=` give explicit
+    static credentials, optionally with `token=` for a session; they cannot
+    be combined with `profile=`, and one of `key=`/`secret=` without the
+    other is an error. Explicit `secret=` and `token=` values are always
+    treated as secrets for masking, whatever variable they came from.
+    Committing real keys in a collection is discouraged; prefer
+    `profile=`, or a secret reference (section 5) if keys are unavoidable.
+  - **Region** is `region=`, else the profile's region, else derived from
+    the host. **Service** is `service=`, else derived from the host. Hosts of
+    the form `<...>.<service>.<region>.amazonaws.com` and the legacy
+    `<service>.amazonaws.com` (region `us-east-1`) are recognised. When
+    either cannot be determined the request fails with an error saying
+    which argument to add.
+  - The signature covers every header being sent plus `X-Amz-Date` and
+    `X-Amz-Content-Sha256` (the SHA-256 of the body, always signed; there
+    is no unsigned-payload mode). Temporary credentials add
+    `X-Amz-Security-Token`. Presigned query-string signing is not
+    supported.
+  - Credential lookups are cached per collection session in memory. A
+    failed lookup names the profile and the SDK's reason, never key
+    material.
+  - **Consent.** `profile=` and the default chain read the user's own AWS
+    credentials from the machine. That is appropriate when the user runs
+    Otis directly. Any surface that acts on behalf of something else, such
+    as the MCP server *(planned)*, must gate this scheme behind explicit
+    per-environment consent.
 - The **nearest** `@auth` wins; within one file the last directive wins.
 - `none` is an explicit opt-out: the request sends no auth even though a
   folder above declares one. It is distinct from *absent*, which means no

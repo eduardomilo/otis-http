@@ -183,6 +183,22 @@ func TestResolveRequest(t *testing.T) {
 			},
 		},
 		{
+			name: "aws auth fields are expanded and secret material is masked",
+			files: map[string]string{
+				"_folder.http": "@region = us-west-2\n# @auth aws key={{k}} secret={{s}} token={{t}} region={{region}}\n",
+				req:            "@k = AKIA123\n@s = plainsecret\n@t = sess\nGET https://x.test\n",
+			},
+			check: func(t *testing.T, r *Resolved) {
+				want := &Auth{Kind: AuthAWS, AccessKey: "AKIA123", SecretKey: "plainsecret", SessionToken: "sess", Region: "us-west-2", Source: Source{"_folder.http", 2}}
+				if !reflect.DeepEqual(r.Auth, want) {
+					t.Errorf("auth = %+v", r.Auth)
+				}
+				if got := r.Mask("plainsecret sess AKIA123"); got != "••••• ••••• AKIA123" {
+					t.Errorf("Mask = %q", got)
+				}
+			},
+		},
+		{
 			name: "missing: every unresolved name reported once, in first-use order",
 			files: map[string]string{
 				"_folder.http": "@a = {{deep}}\n",

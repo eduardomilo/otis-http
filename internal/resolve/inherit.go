@@ -59,21 +59,37 @@ type AuthKind string
 const (
 	AuthBearer AuthKind = "bearer"
 	AuthBasic  AuthKind = "basic"
+	// AuthAWS signs the request with AWS Signature Version 4.
+	AuthAWS AuthKind = "aws"
 	// AuthNone is an explicit opt-out: no auth is sent even if a folder
 	// above defines one. It is distinct from Effective.Auth == nil, which
 	// means nothing was declared anywhere.
 	AuthNone AuthKind = "none"
 )
 
-// Auth is an effective @auth value with provenance. Token, Username and
-// Password may still contain {{variables}}.
+// Auth is an effective @auth value with provenance. String fields may still
+// contain {{variables}}.
 type Auth struct {
 	Kind     AuthKind `json:"kind"`
 	Token    string   `json:"token,omitempty"`
 	Username string   `json:"username,omitempty"`
 	Password string   `json:"password,omitempty"`
-	Source   Source   `json:"source"`
+
+	// AWS fields (Kind == AuthAWS). Either Profile or AccessKey/SecretKey
+	// is set, never both. Region and Service are optional here; the sender
+	// derives them from the profile and the host when empty.
+	Profile      string `json:"profile,omitempty"`
+	AccessKey    string `json:"accessKey,omitempty"`
+	SecretKey    string `json:"-"`
+	SessionToken string `json:"-"`
+	Region       string `json:"region,omitempty"`
+	Service      string `json:"service,omitempty"`
+
+	Source Source `json:"source"`
 }
+
+// awsKeys are the accepted "key=value" names of "@auth aws".
+var awsKeys = map[string]bool{"profile": true, "key": true, "secret": true, "token": true, "region": true, "service": true}
 
 // Effective is the result of walking _folder.http files from the root down
 // to a request.
@@ -234,15 +250,18 @@ func (eff *Effective) removeHeader(name string) []Header {
 //
 //	bearer <token>
 //	basic <username> [<password>]
+//	aws [profile=<name>] [key=<id> secret=<key> [token=<session>]] [region=<r>] [service=<s>]
 //	none
 func parseAuth(value string, src Source) (*Auth, error) {
 	fields := strings.Fields(value)
 	if len(fields) == 0 {
-		return nil, &Error{src, "@auth needs a scheme: bearer <token>, basic <user> <password>, or none"}
+		return nil, &Error{src, "@auth needs a scheme: bearer <token>, basic <user> <password>, aws [key=value ...], or none"}
 	}
 	scheme := strings.ToLower(fields[0])
 	args := fields[1:]
 	switch AuthKind(scheme) {
+	case AuthAWS:
+		return parseAWSAuth(args, src)
 	case AuthNone:
 		if len(args) != 0 {
 			return nil, &Error{src, fmt.Sprintf("@auth none takes no arguments, got %q", strings.Join(args, " "))}
@@ -267,5 +286,48 @@ func parseAuth(value string, src Source) (*Auth, error) {
 		}
 		return a, nil
 	}
-	return nil, &Error{src, fmt.Sprintf("unknown @auth scheme %q: expected bearer, basic or none", fields[0])}
+	return nil, &Error{src, fmt.Sprintf("unknown @auth scheme %q: expected bearer, basic, aws or none", fields[0])}
+}
+
+// parseAWSAuth parses the key=value arguments of "@auth aws".
+func parseAWSAuth(args []string, src Source) (*Auth, error) {
+	a := &Auth{Kind: AuthAWS, Source: src}
+	seen := map[string]bool{}
+	for _, arg := range args {
+		k, v, ok := strings.Cut(arg, "=")
+		k = strings.ToLower(k)
+		if !ok || !awsKeys[k] {
+			return nil, &Error{src, fmt.Sprintf("@auth aws: unexpected %q; expected key=value with one of profile, key, secret, token, region, service", arg)}
+		}
+		if v == "" {
+			return nil, &Error{src, fmt.Sprintf("@auth aws: %s= must not be empty", k)}
+		}
+		if seen[k] {
+			return nil, &Error{src, fmt.Sprintf("@auth aws: %s= given more than once", k)}
+		}
+		seen[k] = true
+		switch k {
+		case "profile":
+			a.Profile = v
+		case "key":
+			a.AccessKey = v
+		case "secret":
+			a.SecretKey = v
+		case "token":
+			a.SessionToken = v
+		case "region":
+			a.Region = v
+		case "service":
+			a.Service = v
+		}
+	}
+	switch {
+	case a.Profile != "" && (a.AccessKey != "" || a.SecretKey != "" || a.SessionToken != ""):
+		return nil, &Error{src, "@auth aws: profile= cannot be combined with key=, secret= or token="}
+	case (a.AccessKey == "") != (a.SecretKey == ""):
+		return nil, &Error{src, "@auth aws: key= and secret= must be given together"}
+	case a.SessionToken != "" && a.AccessKey == "":
+		return nil, &Error{src, "@auth aws: token= requires key= and secret="}
+	}
+	return a, nil
 }

@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -23,16 +24,26 @@ const (
 // Warning is a non-fatal note from Prepare.
 type Warning string
 
+// PrepareOptions configure Prepare.
+type PrepareOptions struct {
+	// AWS resolves credentials for "@auth aws" profiles. nil makes any
+	// profile-based (non-static) AWS auth an error. Normally Session.AWS.
+	AWS *AWSCredentials
+	// Now supplies the signing time; nil means time.Now.
+	Now func() time.Time
+}
+
 // Prepare turns a resolved request into a sendable one.
 //
 //   - @auth becomes an Authorization header unless the effective headers
 //     already carry one, in which case the header wins and @auth is dropped.
+//     AWS auth signs the request (Signature V4) after the body is known.
 //   - A "< ./file" body is read relative to baseDir (the request file's
 //     directory). The "<@" form additionally resolves {{variables}} in the
 //     file content through res.Expand. A charset argument is not converted;
 //     it produces a warning and the bytes are sent as-is.
 //   - Directives: # @no-redirect, # @no-cookie-jar, # @timeout <seconds>.
-func Prepare(res *resolve.Resolved, src *httpfile.Request, baseDir string) (*Request, []Warning, error) {
+func Prepare(ctx context.Context, res *resolve.Resolved, src *httpfile.Request, baseDir string, opts PrepareOptions) (*Request, []Warning, error) {
 	req := &Request{Method: res.Method, URL: res.URL}
 	var warnings []Warning
 
@@ -43,8 +54,12 @@ func Prepare(res *resolve.Resolved, src *httpfile.Request, baseDir string) (*Req
 		}
 		req.Headers = append(req.Headers, Header{Name: h.Name, Value: h.Value})
 	}
-	if res.Auth != nil && !hasAuthHeader {
-		if v, ok := authorizationValue(res.Auth); ok {
+	auth := res.Auth
+	if hasAuthHeader {
+		auth = nil
+	}
+	if auth != nil && auth.Kind != resolve.AuthAWS {
+		if v, ok := authorizationValue(auth); ok {
 			req.Headers = append(req.Headers, Header{Name: "Authorization", Value: v})
 		}
 	}
@@ -72,6 +87,16 @@ func Prepare(res *resolve.Resolved, src *httpfile.Request, baseDir string) (*Req
 		req.Body = data
 	case res.Body.Raw != "":
 		req.Body = []byte(res.Body.Raw)
+	}
+
+	if auth != nil && auth.Kind == resolve.AuthAWS {
+		now := time.Now()
+		if opts.Now != nil {
+			now = opts.Now()
+		}
+		if err := signAWS(ctx, req, auth, opts.AWS, now); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	if src != nil {

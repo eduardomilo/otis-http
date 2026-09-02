@@ -134,14 +134,17 @@ func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Opt
 	}
 	if eff.Auth != nil {
 		a := *eff.Auth
-		if a.Token, err = x.Expand(a.Token); err != nil {
-			return nil, err
+		for _, f := range []*string{&a.Token, &a.Username, &a.Password, &a.Profile, &a.AccessKey, &a.SecretKey, &a.SessionToken, &a.Region, &a.Service} {
+			if *f, err = x.Expand(*f); err != nil {
+				return nil, err
+			}
 		}
-		if a.Username, err = x.Expand(a.Username); err != nil {
-			return nil, err
-		}
-		if a.Password, err = x.Expand(a.Password); err != nil {
-			return nil, err
+		// Explicit AWS secret material is always treated as secret for
+		// masking, even when it came from a plain variable.
+		for _, v := range []string{a.SecretKey, a.SessionToken} {
+			if v != "" {
+				x.Secrets = append(x.Secrets, v)
+			}
 		}
 		res.Auth = &a
 	}

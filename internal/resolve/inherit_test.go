@@ -169,6 +169,31 @@ func TestInheritance(t *testing.T) {
 			wantAuth:    &Auth{Kind: AuthBearer, Token: "two", Source: Source{req, 2}},
 		},
 		{
+			name: "auth: aws with profile, region and service",
+			files: map[string]string{
+				"_folder.http": "# @auth aws profile={{awsProfile}} Region=eu-west-1 service=execute-api\n",
+				req:            "GET https://x.test\n",
+			},
+			wantHeaders: []Header{},
+			wantAuth:    &Auth{Kind: AuthAWS, Profile: "{{awsProfile}}", Region: "eu-west-1", Service: "execute-api", Source: Source{"_folder.http", 1}},
+		},
+		{
+			name: "auth: aws bare uses the default chain",
+			files: map[string]string{
+				req: "# @auth AWS\nGET https://x.test\n",
+			},
+			wantHeaders: []Header{},
+			wantAuth:    &Auth{Kind: AuthAWS, Source: Source{req, 1}},
+		},
+		{
+			name: "auth: aws explicit keys with session token",
+			files: map[string]string{
+				req: "# @auth aws key={{k}} secret={{s}} token={{t}}\nGET https://x.test\n",
+			},
+			wantHeaders: []Header{},
+			wantAuth:    &Auth{Kind: AuthAWS, AccessKey: "{{k}}", SecretKey: "{{s}}", SessionToken: "{{t}}", Source: Source{req, 1}},
+		},
+		{
 			name: "auth: unparseable _folder.http contributes nothing",
 			files: map[string]string{
 				"_folder.http":   "# @auth bearer root\n",
@@ -231,6 +256,14 @@ func TestAuthErrors(t *testing.T) {
 		{"bearer with two tokens", "# @auth bearer a b\n", "exactly one token, got 2"},
 		{"basic without user", "# @auth basic\n", "needs a username"},
 		{"none with args", "# @auth none please\n", "takes no arguments"},
+		{"aws positional arg", "# @auth aws mykey\n", `unexpected "mykey"`},
+		{"aws unknown key", "# @auth aws bucket=x\n", `unexpected "bucket=x"`},
+		{"aws empty value", "# @auth aws profile=\n", "profile= must not be empty"},
+		{"aws duplicate", "# @auth aws region=a region=b\n", "region= given more than once"},
+		{"aws profile with key", "# @auth aws profile=p key=k secret=s\n", "profile= cannot be combined"},
+		{"aws key without secret", "# @auth aws key=k\n", "key= and secret= must be given together"},
+		{"aws secret without key", "# @auth aws secret=s\n", "key= and secret= must be given together"},
+		{"aws token alone", "# @auth aws token=t\n", "token= requires key= and secret="},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
