@@ -1,0 +1,58 @@
+{
+	"info": {
+		"name": "Legacy v2.0 shapes",
+		"description": "Exercises the v2.0 auth object shape, string headers, and odd names.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": { "token": "{{token}}" }
+	},
+	"item": [
+		{
+			"name": "  Weird / Name: with (chars) & Ünïcode!  ",
+			"request": {
+				"method": "get",
+				"header": "Accept: text/plain\nX-Trace: {{$randomUUID}}",
+				"url": {
+					"raw": "https://api.example.com:8443/a/b?x=1#frag",
+					"protocol": "https",
+					"host": ["api", "example", "com"],
+					"port": "8443",
+					"path": [{ "value": "a" }, "b"],
+					"query": [{ "key": "x", "value": "1" }, { "key": "flag", "value": null }],
+					"hash": "frag"
+				}
+			}
+		},
+		{
+			"name": "",
+			"request": {
+				"method": "POST",
+				"auth": { "type": "basic", "basic": { "username": "u", "password": "{{pw}}" } },
+				"body": { "mode": "raw", "raw": "plain text {{$randomFirstName}}" },
+				"url": "https://api.example.com/b"
+			}
+		},
+		{
+			"name": "Empty folder",
+			"item": []
+		},
+		{
+			"name": "Disabled body and file",
+			"request": {
+				"method": "POST",
+				"body": { "mode": "file", "file": { "src": "/tmp/payload.bin" } },
+				"url": "https://api.example.com/upload"
+			}
+		},
+		{
+			"name": "AWS without keys",
+			"request": {
+				"method": "GET",
+				"auth": { "type": "awsv4", "awsv4": { "region": "eu-west-1" } },
+				"url": "https://sqs.eu-west-1.amazonaws.com/"
+			}
+		}
+	]
+}

@@ -515,3 +515,56 @@ What happens when a resolved request is sent:
   total. Values describe the last hop; DNS and connect are zero on a reused
   connection.
 
+## 7. Postman import
+
+`otis import postman` converts a Postman Collection v2.1 export (the v2.0
+auth shape is also accepted) into a collection laid out as above. The
+output is meant to be committed as-is and read in review, so the importer
+prefers explicit, boring files over clever ones.
+
+| Postman | Otis |
+| --- | --- |
+| collection | the output directory; collection auth, variables and description go to `_folder.http` |
+| folder | a directory; folder auth, variables and description go to its `_folder.http`. An otherwise empty folder gets a `_folder.http` with a comment so the directory exists. |
+| request | `<slug>.http`, one per file, with `# @name <original name>` first, then the description as `#` comments |
+| item order | `.order` in every directory, listing every child by exact name |
+| pre-request / test script | `_pre.js` / `_post.js` beside `_folder.http`, or `<slug>.pre.js` / `<slug>.post.js` beside a request. Raw, untranslated, not executed. |
+| environment export | `env/<slug>.json`; variables of type `secret` become `{"$secret": "keychain"}` and their values are **not** imported |
+
+**Slugs.** Names are lower-cased; runs of anything other than ASCII letters
+and digits become one hyphen; non-ASCII letters are dropped. Collisions get
+`-2`, `-3`, ... in Postman order. An empty slug becomes `request` or
+`folder`.
+
+**URLs.** Structured URLs are rebuilt from their parts (protocol, host,
+port, path, enabled query parameters, hash); a string URL is used as-is.
+Postman path variables (`:id`) become `{{id}}` with an `@id = <value>`
+declaration when Postman carried a value. Disabled query parameters,
+headers, form fields and bodies are dropped and listed in the report.
+
+**Bodies.** `raw` is verbatim; `urlencoded` becomes `key=value&...` with
+values percent-encoded except for `{{references}}`; `formdata` becomes a
+multipart body with the boundary `----OtisFormBoundary`, file fields as
+`< <path>` lines; `file` becomes `< <path>`; `graphql` becomes the JSON
+envelope Postman sends. When Postman implied a `Content-Type` (raw language,
+form modes, GraphQL) and none was set, it is added. File paths are the
+exporting machine's paths and are flagged for fixing.
+
+**Auth.** `bearer`, `basic` and `noauth` map to `@auth`. `apikey` in a
+header becomes a header; in the query string it is appended to the request
+URL (and skipped with a note at folder level, where there is no URL).
+`awsv4` becomes `@auth aws key=... secret=... [token=...] [region=...]
+[service=...]`; a literal secret key or session token is replaced by
+`{{awsSecretKey}}` / `{{awsSessionToken}}` so no AWS key material is written
+to disk, and the report suggests `profile=` instead. Other types (OAuth2,
+digest, NTLM, ...) are skipped with a `# TODO` comment in the file. Literal
+credentials of any kind are flagged in the report.
+
+**Dynamic variables.** `{{$guid}}` and `{{$randomUUID}}` become
+`{{$uuid}}`; `{{$timestamp}}`, `{{$isoTimestamp}}` and `{{$randomInt}}` are
+kept. Other `{{$...}}` forms are left as written and flagged.
+
+**Safety.** The importer refuses a non-empty output directory unless forced,
+never writes a value marked secret, and never writes `.order` for a
+directory it did not create.
+

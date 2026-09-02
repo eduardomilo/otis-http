@@ -1,0 +1,289 @@
+package postman
+
+import (
+	"flag"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/otis-http/otis/internal/collection"
+	"github.com/otis-http/otis/internal/httpfile"
+)
+
+var update = flag.Bool("update", false, "rewrite golden files")
+
+func read(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "postman", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// render flattens a planned output into one reviewable text: every file
+// in path order, then the report.
+func render(out *Output) string {
+	var b strings.Builder
+	for _, rel := range sortedKeys(out.Files) {
+		b.WriteString("=== " + rel + " ===\n")
+		b.WriteString(out.Files[rel])
+		if !strings.HasSuffix(out.Files[rel], "\n") {
+			b.WriteString("\n")
+		}
+	}
+	b.WriteString("=== REPORT ===\n")
+	b.WriteString(out.Report.String())
+	return b.String()
+}
+
+func checkGolden(t *testing.T, name, got string) {
+	t.Helper()
+	golden := filepath.Join("testdata", "postman", name+".golden.txt")
+	if *update {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("read golden (run with -update to create): %v", err)
+	}
+	if got != string(want) {
+		t.Errorf("golden mismatch for %s\n--- got ---\n%s\n--- want ---\n%s", name, got, want)
+	}
+}
+
+func TestPlanPetstore(t *testing.T) {
+	out, err := Plan(read(t, "petstore.postman_collection.json"), read(t, "dev.postman_environment.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, "petstore", render(out))
+
+	r := out.Report
+	if r.Requests != 13 || r.Folders != 3 || r.Environments != 1 {
+		t.Errorf("counts = %d requests, %d folders, %d envs", r.Requests, r.Folders, r.Environments)
+	}
+	// Secret values from the environment must not appear anywhere.
+	for rel, content := range out.Files {
+		for _, leak := range []string{"dev-token-should-not-appear", "dev-api-key-should-not-appear", "wJalrXUtnFEMI", "FQoGZXIvYXdz"} {
+			if strings.Contains(content, leak) {
+				t.Errorf("%s leaks %q", rel, leak)
+			}
+		}
+	}
+	if strings.Contains(r.String(), "wJalrXUtnFEMI") {
+		t.Error("report leaks the AWS secret key")
+	}
+}
+
+func TestPlanLegacyShapes(t *testing.T) {
+	out, err := Plan(read(t, "legacy-v2.postman_collection.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, "legacy-v2", render(out))
+}
+
+// TestOutputLoadsAsCollection writes the plan to disk and loads it back with
+// the real walker and parser: every .http must parse, the tree must follow
+// the .order files, and there must be no collection warnings.
+func TestOutputLoadsAsCollection(t *testing.T) {
+	dir := t.TempDir()
+	report, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{
+		OutDir:   dir,
+		EnvFiles: []string{filepath.Join("testdata", "postman", "dev.postman_environment.json")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := collection.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Warnings) != 0 {
+		t.Errorf("collection warnings: %v", c.Warnings)
+	}
+	var ids []string
+	c.Walk(func(n *collection.Node) bool {
+		if n.Kind == collection.KindRequest {
+			ids = append(ids, n.ID)
+		}
+		return true
+	})
+	want := []string{
+		"pets/list-pets.http", "pets/get-pet.http", "pets/create-pet.http", "pets/update-pet-form.http",
+		"pets/upload-photo.http", "pets/delete-pet.http",
+		"search/graphql-search.http", "search/search.http", "search/search-2.http",
+		"infra-aws/invoke-internal-api.http", "infra-aws/s3-object-literal-keys.http",
+		"health-check.http", "pets-2.http",
+	}
+	if !reflect.DeepEqual(ids, want) {
+		t.Errorf("request order =\n%v\nwant\n%v", ids, want)
+	}
+	// A request slugged "pets" collides with the "pets" folder only in
+	// .order namespace terms; the file is pets-2.http and .order lists both.
+	order, err := os.ReadFile(filepath.Join(dir, ".order"))
+	if err != nil || string(order) != "pets/\nsearch/\ninfra-aws/\nhealth-check.http\npets-2.http\n" {
+		t.Errorf(".order = %q, %v", order, err)
+	}
+	if report.Requests != 13 {
+		t.Errorf("requests = %d", report.Requests)
+	}
+	for _, f := range report.Files {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+			t.Errorf("reported file missing: %s", f)
+		}
+	}
+	// Inheritance and variables resolve on the generated tree.
+	n := c.Find("pets/get-pet.http")
+	if n == nil || n.Name != "Get pet" || n.Method != "GET" {
+		t.Fatalf("node = %+v", n)
+	}
+	if v, ok := n.Request.Header("Accept"); ok {
+		t.Errorf("unexpected header Accept=%q", v)
+	}
+	if got := c.Find("pets").Settings.Requests[0].Directives; len(got) != 1 || got[0].Value != "bearer {{token}}" {
+		t.Errorf("folder auth = %+v", got)
+	}
+}
+
+func TestLegacyOutputLoadsCleanly(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Import(filepath.Join("testdata", "postman", "legacy-v2.postman_collection.json"), Options{OutDir: dir}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := collection.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Warnings) != 0 {
+		t.Errorf("collection warnings: %v", c.Warnings)
+	}
+	if n := c.Find("request.http"); n == nil || n.Name != "request" {
+		t.Errorf("unnamed request node = %+v", n)
+	}
+	if n := c.Find("empty-folder"); n == nil || n.Kind != collection.KindFolder || n.Settings == nil {
+		t.Errorf("empty folder node = %+v", n)
+	}
+}
+
+func TestWriteRefusesNonEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "existing.http"), []byte("GET https://x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := &Output{Files: map[string]string{"a.http": "GET https://a\n"}, Report: &Report{}}
+	err := Write(out, dir, false)
+	if err == nil || !strings.Contains(err.Error(), "not empty (existing.http)") {
+		t.Errorf("err = %v", err)
+	}
+	if err := Write(out, dir, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "existing.http")); err != nil {
+		t.Error("force removed an unrelated file")
+	}
+	// Hidden files (.git, .DS_Store) do not count as content.
+	dir2 := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir2, ".git"), 0o755)
+	if err := Write(out, dir2, false); err != nil {
+		t.Errorf("hidden entries should not block: %v", err)
+	}
+	if err := Write(out, "", false); err == nil {
+		t.Error("empty dir accepted")
+	}
+}
+
+func TestPlanErrors(t *testing.T) {
+	tests := []struct{ name, src, want string }{
+		{"not json", `{`, "invalid JSON"},
+		{"not a collection", `{"foo": 1}`, "not a Postman collection export"},
+		{"v1 schema", `{"info":{"name":"x","schema":"https://schema.getpostman.com/json/collection/v1.0.0/collection.json"},"item":[]}`, "unsupported schema"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Plan([]byte(tt.src))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+	_, err := Plan([]byte(`{"info":{"name":"x"},"item":[]}`), []byte(`{"nope":1}`))
+	if err == nil || !strings.Contains(err.Error(), "not a Postman environment export") {
+		t.Errorf("env err = %v", err)
+	}
+}
+
+func TestSlugify(t *testing.T) {
+	tests := map[string]string{
+		"Get pet":                      "get-pet",
+		"  Weird / Name: (chars) & Ü ": "weird-name-chars",
+		"UPPER_case_123":               "upper-case-123",
+		"---":                          "",
+		"":                             "",
+		"日本語":                          "",
+		"a--b":                         "a-b",
+	}
+	for in, want := range tests {
+		if got := slugify(in); got != want {
+			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
+		}
+	}
+	used := map[string]bool{}
+	got := []string{uniqueSlug(used, "", "request"), uniqueSlug(used, "", "request"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "env", "x")}
+	want := []string{"request", "request-2", "a", "a-2", "a-3", "x"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("uniqueSlug = %v, want %v", got, want)
+	}
+}
+
+func TestFormEscapeKeepsReferences(t *testing.T) {
+	tests := map[string]string{
+		"Rex & Co":            "Rex+%26+Co",
+		"{{ownerId}}":         "{{ownerId}}",
+		"a b {{x}} c&d {{y}}": "a+b+{{x}}+c%26d+{{y}}",
+		"broken {{ref":        "broken+%7B%7Bref",
+	}
+	for in, want := range tests {
+		if got := formEscape(in); got != want {
+			t.Errorf("formEscape(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestCommentLinesWrap(t *testing.T) {
+	long := strings.Repeat("word ", 30)
+	cs := commentLines("Para one.\n\n\n" + long + "\nlast")
+	var texts []string
+	for _, c := range cs {
+		texts = append(texts, c.Text)
+	}
+	if texts[0] != " Para one." || texts[1] != "" || len(texts) < 4 {
+		t.Errorf("comments = %q", texts)
+	}
+	for _, tx := range texts {
+		if len(tx) > 79 {
+			t.Errorf("line too long: %q", tx)
+		}
+	}
+	// Round-trips through the parser as comments.
+	f, err := httpfile.ParseString((&httpfile.File{Requests: []*httpfile.Request{{Comments: cs, Method: "GET", URL: "https://x"}}}).String())
+	if err != nil || len(f.Requests[0].Comments) != len(cs) {
+		t.Errorf("round trip: %v", err)
+	}
+}
+
+func TestSortedKeysDeterministic(t *testing.T) {
+	m := map[string]int{"b": 1, "a": 2, "c": 3}
+	got := sortedKeys(m)
+	want := []string{"a", "b", "c"}
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("sortedKeys = %v", got)
+	}
+}

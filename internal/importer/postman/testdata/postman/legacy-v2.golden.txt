@@ -1,0 +1,40 @@
+=== .order ===
+weird-name-with-chars-n-code.http
+request.http
+empty-folder/
+disabled-body-and-file.http
+aws-without-keys.http
+=== _folder.http ===
+# Exercises the v2.0 auth object shape, string headers, and odd names.
+# @auth bearer {{token}}
+=== aws-without-keys.http ===
+# @name AWS without keys
+# @auth aws region=eu-west-1
+GET https://sqs.eu-west-1.amazonaws.com/
+=== disabled-body-and-file.http ===
+# @name Disabled body and file
+POST https://api.example.com/upload
+
+< /tmp/payload.bin
+=== empty-folder/_folder.http ===
+# Imported from Postman; this folder was empty.
+=== request.http ===
+# @auth basic u {{pw}}
+POST https://api.example.com/b
+
+plain text {{$randomFirstName}}
+=== weird-name-with-chars-n-code.http ===
+# @name Weird / Name: with (chars) & Ünïcode!
+GET https://api.example.com:8443/a/b?x=1&flag#frag
+Accept: text/plain
+X-Trace: {{$uuid}}
+=== REPORT ===
+Imported "Legacy v2.0 shapes": 4 requests, 1 folders, 0 environments, 7 files
+
+Needs attention (2)
+  - disabled-body-and-file.http: body file /tmp/payload.bin is a path on the exporting machine; copy the file into the collection and fix the path
+  - request.http: Postman dynamic variable {{$randomFirstName}} has no Otis equivalent and will be reported as unresolved
+
+Notes (2)
+  - request.http: request had no name in Postman; named after its file
+  - aws-without-keys.http: AWS auth had no keys in Postman; using the local AWS credential chain (@auth aws)

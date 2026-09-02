@@ -1,0 +1,169 @@
+=== .order ===
+pets/
+search/
+infra-aws/
+health-check.http
+pets-2.http
+=== _folder.http ===
+# Internal Petstore service.
+#
+# All endpoints require a bearer token except the health check. Rate limits
+# apply to the search endpoints, so keep an eye on the X-RateLimit headers when
+# running the whole folder.
+# @auth basic {{user}} hunter2
+@baseUrl = https://petstore.example.com
+@user = alice
+=== _post.js ===
+// Untranslated Postman test script for "Petstore API".
+// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
+// Port what you need into a {% %} block in the request file.
+
+pm.test("fast", () => pm.expect(pm.response.responseTime).to.be.below(500));
+=== env/petstore-dev.json ===
+{
+  "baseUrl": "https://dev.petstore.example.com",
+  "token": {"$secret": "keychain"},
+  "apiKey": {"$secret": "keychain"},
+  "ownerId": "7"
+}
+=== health-check.http ===
+# @name Health check
+# TODO: Postman auth type "oauth2" is not supported by Otis; configure auth manually.
+GET {{baseUrl}}/health
+Authorization: Basic {{healthBasic}}
+=== infra-aws/.order ===
+invoke-internal-api.http
+s3-object-literal-keys.http
+=== infra-aws/_folder.http ===
+# @auth aws key={{awsAccessKey}} secret={{awsSecretKey}} region=us-east-1 service=execute-api
+=== infra-aws/invoke-internal-api.http ===
+# @name Invoke internal API
+GET https://abc123.execute-api.us-east-1.amazonaws.com/prod/status
+=== infra-aws/s3-object-literal-keys.http ===
+# @name S3 object (literal keys)
+# @auth aws key=AKIAIOSFODNN7EXAMPLE secret={{awsSecretKey}} token={{awsSessionToken}}
+GET https://my-bucket.s3.us-west-2.amazonaws.com/reports/latest.json
+=== pets-2.http ===
+# @name Pets
+GET {{baseUrl}}/v2/pets/count
+=== pets/.order ===
+list-pets.http
+get-pet.http
+create-pet.http
+update-pet-form.http
+upload-photo.http
+delete-pet.http
+=== pets/_folder.http ===
+# CRUD on pets.
+# @auth bearer {{token}}
+@petsPath = /v2/pets
+=== pets/_pre.js ===
+// Untranslated Postman pre-request script for "Pets".
+// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
+// Port what you need into a {% %} block in the request file.
+
+pm.environment.set("requestId", pm.variables.replaceIn("{{$guid}}"));
+=== pets/create-pet.http ===
+# @name Create pet
+POST {{baseUrl}}/v2/pets
+X-Request-Id: {{$uuid}}
+Content-Type: application/json
+
+{
+  "name": "Rex",
+  "tag": "dog",
+  "createdAt": "{{$isoTimestamp}}"
+}
+=== pets/delete-pet.http ===
+# @name Delete pet
+# @auth none
+DELETE {{baseUrl}}/v2/pets/42
+=== pets/get-pet.http ===
+# @name Get pet
+@petId = 42
+GET {{baseUrl}}/v2/pets/{{petId}}
+=== pets/get-pet.post.js ===
+// Untranslated Postman test script for "Get pet".
+// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
+// Port what you need into a {% %} block in the request file.
+
+pm.test("status is 200", function () {
+    pm.response.to.have.status(200);
+});
+=== pets/list-pets.http ===
+# @name List pets
+# Returns pets, newest first.
+GET {{baseUrl}}{{petsPath}}?limit=20&status=available
+Accept: application/json
+=== pets/update-pet-form.http ===
+# @name Update pet (form)
+PUT {{baseUrl}}/v2/pets/42
+Content-Type: application/x-www-form-urlencoded
+
+name=Rex+%26+Co&owner={{ownerId}}
+=== pets/upload-photo.http ===
+# @name Upload photo
+POST {{baseUrl}}/v2/pets/42/photos
+Content-Type: multipart/form-data; boundary=----OtisFormBoundary
+
+------OtisFormBoundary
+Content-Disposition: form-data; name="caption"
+
+Rex at the beach
+------OtisFormBoundary
+Content-Disposition: form-data; name="photo"; filename="rex.jpg"
+
+< /Users/alice/Pictures/rex.jpg
+------OtisFormBoundary--
+=== search/.order ===
+graphql-search.http
+search.http
+search-2.http
+=== search/graphql-search.http ===
+# @name GraphQL search
+POST {{baseUrl}}/graphql
+Content-Type: application/json
+
+{
+  "query": "query Search($q: String!) {\n  pets(query: $q) {\n    id\n    name\n  }\n}",
+  "variables": {
+    "q": "rex"
+  }
+}
+=== search/search-2.http ===
+# @name Search
+GET {{baseUrl}}/v2/search/legacy
+=== search/search.http ===
+# @name Search
+GET {{baseUrl}}/v2/search?q=rex&api_key={{apiKey}}
+=== REPORT ===
+Imported "Petstore API": 13 requests, 3 folders, 1 environments, 24 files
+
+Skipped (7)
+  - _folder.http: secret variable "legacyToken": move it to an environment as {"$secret": "keychain"}
+  - _folder.http: disabled variable "unused"
+  - pets/list-pets.http: disabled query parameter "debug"
+  - pets/list-pets.http: disabled header "X-Debug"
+  - pets/update-pet-form.http: disabled form field "legacy"
+  - health-check.http: auth type "oauth2" is not supported; configure it manually
+  - env/petstore-dev.json: disabled variable "debug"
+
+Needs attention (9)
+  - _folder.http: basic password is a literal value in the collection; move it to an environment variable
+  - _post.js: test script for "Petstore API" imported as raw text; it will not run until ported
+  - pets/_pre.js: pre-request script for "Pets" imported as raw text; it will not run until ported
+  - pets/get-pet.post.js: test script for "Get pet" imported as raw text; it will not run until ported
+  - pets/upload-photo.http: form file "photo" points at /Users/alice/Pictures/rex.jpg, a path on the exporting machine; copy the file into the collection and fix the path
+  - infra-aws/s3-object-literal-keys.http: AWS secret key was a literal in the export; replaced with {{awsSecretKey}}. Set it as a keychain secret, or switch to '@auth aws profile=<name>' to use your local AWS credentials
+  - infra-aws/s3-object-literal-keys.http: AWS session token was a literal in the export; replaced with {{awsSessionToken}}
+  - env/petstore-dev.json: secret variables written as keychain references; their values were NOT imported and must be stored in the keychain: token, apiKey
+  - pets/_pre.js: Postman dynamic variable {{$guid}} has no Otis equivalent and will be reported as unresolved
+
+Notes (7)
+  - pets/create-pet.http: added Content-Type: application/json (Postman sets it implicitly)
+  - pets/update-pet-form.http: added Content-Type: application/x-www-form-urlencoded (Postman sets it implicitly)
+  - pets/upload-photo.http: added Content-Type: multipart/form-data (Postman sets it implicitly)
+  - search/graphql-search.http: added Content-Type: application/json (Postman sets it implicitly)
+  - search/search.http: API key appended to the URL as api_key=...
+  - infra-aws/_folder.http: AWS auth uses explicit keys; consider '@auth aws profile=<name>' so no key material lives in the collection
+  - infra-aws/s3-object-literal-keys.http: AWS auth uses explicit keys; consider '@auth aws profile=<name>' so no key material lives in the collection

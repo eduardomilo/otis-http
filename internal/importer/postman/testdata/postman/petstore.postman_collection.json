@@ -1,0 +1,274 @@
+{
+	"info": {
+		"_postman_id": "5c1a2b3e-9d4f-4a1b-8c2d-0e1f2a3b4c5d",
+		"name": "Petstore API",
+		"description": {
+			"content": "Internal Petstore service.\n\nAll endpoints require a bearer token except the health check. Rate limits apply to the search endpoints, so keep an eye on the X-RateLimit headers when running the whole folder.",
+			"type": "text/markdown"
+		},
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Pets",
+			"description": "CRUD on pets.",
+			"auth": {
+				"type": "bearer",
+				"bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+			},
+			"variable": [{ "key": "petsPath", "value": "/v2/pets" }],
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": ["pm.environment.set(\"requestId\", pm.variables.replaceIn(\"{{$guid}}\"));"]
+					}
+				}
+			],
+			"item": [
+				{
+					"name": "List pets",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Accept", "value": "application/json" },
+							{ "key": "X-Debug", "value": "1", "disabled": true }
+						],
+						"url": {
+							"raw": "{{baseUrl}}{{petsPath}}?limit=20&status=available&debug=true",
+							"host": ["{{baseUrl}}{{petsPath}}"],
+							"query": [
+								{ "key": "limit", "value": "20" },
+								{ "key": "status", "value": "available", "description": "Filter by status" },
+								{ "key": "debug", "value": "true", "disabled": true }
+							]
+						},
+						"description": "Returns pets, newest first."
+					},
+					"response": []
+				},
+				{
+					"name": "Get pet",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v2/pets/:petId",
+							"host": ["{{baseUrl}}"],
+							"path": ["v2", "pets", ":petId"],
+							"variable": [{ "key": "petId", "value": "42" }]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create pet",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "X-Request-Id", "value": "{{$guid}}" }],
+						"body": {
+							"mode": "raw",
+							"raw": "{\r\n  \"name\": \"Rex\",\r\n  \"tag\": \"dog\",\r\n  \"createdAt\": \"{{$isoTimestamp}}\"\r\n}",
+							"options": { "raw": { "language": "json" } }
+						},
+						"url": "{{baseUrl}}/v2/pets"
+					},
+					"response": []
+				},
+				{
+					"name": "Update pet (form)",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{ "key": "name", "value": "Rex & Co", "type": "text" },
+								{ "key": "owner", "value": "{{ownerId}}", "type": "text" },
+								{ "key": "legacy", "value": "1", "type": "text", "disabled": true }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v2/pets/42",
+							"host": ["{{baseUrl}}"],
+							"path": ["v2", "pets", "42"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Upload photo",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{ "key": "caption", "value": "Rex at the beach", "type": "text" },
+								{ "key": "photo", "type": "file", "src": "/Users/alice/Pictures/rex.jpg" }
+							]
+						},
+						"url": "{{baseUrl}}/v2/pets/42/photos"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete pet",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": "{{baseUrl}}/v2/pets/42"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Search",
+			"item": [
+				{
+					"name": "GraphQL search",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "graphql",
+							"graphql": {
+								"query": "query Search($q: String!) {\n  pets(query: $q) {\n    id\n    name\n  }\n}",
+								"variables": "{\n  \"q\": \"rex\"\n}"
+							}
+						},
+						"url": "{{baseUrl}}/graphql"
+					},
+					"response": []
+				},
+				{
+					"name": "Search",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{ "key": "key", "value": "api_key" },
+								{ "key": "value", "value": "{{apiKey}}" },
+								{ "key": "in", "value": "query" }
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v2/search?q=rex",
+							"host": ["{{baseUrl}}"],
+							"path": ["v2", "search"],
+							"query": [{ "key": "q", "value": "rex" }]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Search",
+					"request": "{{baseUrl}}/v2/search/legacy",
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Infra (AWS)",
+			"auth": {
+				"type": "awsv4",
+				"awsv4": [
+					{ "key": "accessKey", "value": "{{awsAccessKey}}" },
+					{ "key": "secretKey", "value": "{{awsSecretKey}}" },
+					{ "key": "region", "value": "us-east-1" },
+					{ "key": "service", "value": "execute-api" }
+				]
+			},
+			"item": [
+				{
+					"name": "Invoke internal API",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "https://abc123.execute-api.us-east-1.amazonaws.com/prod/status"
+					},
+					"response": []
+				},
+				{
+					"name": "S3 object (literal keys)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": {
+							"type": "awsv4",
+							"awsv4": [
+								{ "key": "accessKey", "value": "AKIAIOSFODNN7EXAMPLE" },
+								{ "key": "secretKey", "value": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" },
+								{ "key": "sessionToken", "value": "FQoGZXIvYXdzEBYaDExample" }
+							]
+						},
+						"url": "https://my-bucket.s3.us-west-2.amazonaws.com/reports/latest.json"
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health check",
+			"request": {
+				"method": "GET",
+				"header": [{ "key": "Authorization", "value": "Basic {{healthBasic}}" }],
+				"auth": {
+					"type": "oauth2",
+					"oauth2": [{ "key": "addTokenTo", "value": "header" }]
+				},
+				"url": "{{baseUrl}}/health"
+			},
+			"response": []
+		},
+		{
+			"name": "Pets",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "{{baseUrl}}/v2/pets/count"
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "basic",
+		"basic": [
+			{ "key": "password", "value": "hunter2", "type": "string" },
+			{ "key": "username", "value": "{{user}}", "type": "string" }
+		]
+	},
+	"event": [
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": ["pm.test(\"fast\", () => pm.expect(pm.response.responseTime).to.be.below(500));"]
+			}
+		}
+	],
+	"variable": [
+		{ "key": "baseUrl", "value": "https://petstore.example.com" },
+		{ "key": "user", "value": "alice" },
+		{ "key": "legacyToken", "value": "abc", "type": "secret" },
+		{ "key": "unused", "value": "x", "disabled": true }
+	]
+}
