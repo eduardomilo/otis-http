@@ -4,14 +4,24 @@
 import * as AppService from "./appservice.js";
 import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
+import * as GitService from "./gitservice.js";
 import * as SettingsService from "./settingsservice.js";
 export {
     AppService,
     CollectionService,
     DialogService,
+    GitService,
     SettingsService
 };
 
+export {
+    NodeKind
+} from "./models.js";
+
 export type {
-    CollectionInfo
+    CollectionInfo,
+    Node,
+    Opened,
+    Tree,
+    Warning
 } from "./models.js";

@@ -23,8 +23,14 @@ export function methodColor(method: string | undefined): string {
 
 /**
  * The classes for the method gutter: a fixed 48px right-aligned column so
- * every name in a list starts at the same x (DESIGN-NOTES §4.2). The width
- * fits six characters at 10px mono; OPTIONS is seven and would clip (§9.2).
+ * every name in a list starts at the same x (DESIGN-NOTES §4.2).
+ *
+ * The width fits six characters at 10px mono. OPTIONS is seven and needs 52px,
+ * which the design knows about and has not decided (§9.2). Until it does, the
+ * column is clipped rather than allowed to grow: an overflowing label collides
+ * with the name beside it, and keeping every name on the same x is the whole
+ * reason the gutter exists. Callers put the full method in a title so the
+ * clipped characters are still available.
  */
 export const methodGutter =
-  "w-[var(--method-gutter-width)] shrink-0 pr-2 text-right font-mono text-label font-medium tracking-[.02em]";
+  "w-[var(--method-gutter-width)] shrink-0 overflow-hidden pr-2 text-right font-mono text-label font-medium tracking-[.02em]";

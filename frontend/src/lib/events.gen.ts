@@ -9,6 +9,10 @@ export const OtisEvent = {
   AppReady: "app:ready",
   /** Emitted whenever the current collection changes, including on close. Payload: CollectionInfo, with an empty path when nothing is open. */
   CollectionOpened: "collection:opened",
+  /** Emitted when the collection directory changed on disk. Payload: the whole Tree. */
+  CollectionChanged: "collection:changed",
+  /** Emitted when the repository's HEAD or index changed. Payload: the git State. */
+  GitChanged: "git:changed",
   /** Emitted when Go changed the persisted settings itself. No payload; re-read the settings. */
   SettingsChanged: "settings:changed",
 } as const;

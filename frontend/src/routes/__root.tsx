@@ -3,6 +3,7 @@ import { Outlet, createRootRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/shell/app-shell";
 import { EmptyState } from "@/components/shell/empty-state";
 import { TitleStrip } from "@/components/shell/title-strip";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { isMac } from "@/lib/platform";
 import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { SettingsProvider } from "@/state/settings-context";
@@ -29,7 +30,11 @@ function RootLayout() {
     <SettingsProvider>
       <CollectionProvider>
         <TabsProvider>
-          <Window />
+          {/* One provider for every tooltip in the window: the tree's git
+              dots, parse errors and folder-settings markers all use it. */}
+          <TooltipProvider delayDuration={400}>
+            <Window />
+          </TooltipProvider>
         </TabsProvider>
       </CollectionProvider>
     </SettingsProvider>

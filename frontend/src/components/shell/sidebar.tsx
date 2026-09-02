@@ -1,17 +1,25 @@
-import { forwardRef } from "react";
+import { forwardRef, useMemo, useState } from "react";
 
+import { Tree } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
 import { hint } from "@/lib/platform";
+import { filterTree } from "@/lib/tree";
+import { useCollection } from "@/state/collection-context";
 
 /**
  * The sidebar: a filter input and the request tree (DESIGN-NOTES §4.1, 10px
  * of horizontal padding).
- *
- * Increment 8 builds the frame only. The tree itself — rows with a method
- * gutter, git dots, virtualization — is increment 9.
  */
-export const Sidebar = forwardRef<HTMLInputElement, { collectionName: string }>(
-  function Sidebar({ collectionName }, filterRef) {
+export const Sidebar = forwardRef<HTMLInputElement, { activePath: string }>(
+  function Sidebar({ activePath }, filterRef) {
+    const { tree } = useCollection();
+    const [query, setQuery] = useState("");
+
+    const filter = useMemo(
+      () => (tree ? filterTree(tree.root, query) : undefined),
+      [tree, query],
+    );
+
     return (
       <div className="flex h-full flex-col bg-background px-2.5">
         <div className="flex h-12 shrink-0 items-center">
@@ -19,6 +27,18 @@ export const Sidebar = forwardRef<HTMLInputElement, { collectionName: string }>(
             <Input
               ref={filterRef}
               type="text"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              // Escape clears the filter. This is the one key handled outside
+              // useKeymap, because it is a text field's own behaviour rather
+              // than a shortcut — and useKeymap deliberately never fires while
+              // focus is in a field.
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                if (query === "") event.currentTarget.blur();
+                else setQuery("");
+              }}
               placeholder="Filter requests"
               aria-label="Filter requests"
               // The webview offers its own autofill list over the tree
@@ -36,11 +56,11 @@ export const Sidebar = forwardRef<HTMLInputElement, { collectionName: string }>(
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          <p className="px-1 py-2 text-meta text-fg-faint">
-            {collectionName} has no tree yet.
-          </p>
-        </div>
+        {tree ? (
+          <Tree tree={tree} filter={filter} activePath={activePath} />
+        ) : (
+          <p className="px-1 py-2 text-meta text-fg-faint">Reading the collection…</p>
+        )}
       </div>
     );
   },

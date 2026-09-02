@@ -8,6 +8,12 @@ import { System } from "@wailsio/runtime";
 /** True when running on macOS. */
 export const isMac = System.IsMac();
 
+/** True when running on Windows. */
+export const isWindows = System.IsWindows();
+
+/** What the platform calls its file manager, for the "Reveal in …" menu item. */
+export const fileManagerName = isMac ? "Finder" : isWindows ? "Explorer" : "file manager";
+
 /**
  * The label for the primary modifier in hint text: the Command glyph on
  * macOS, "Ctrl" everywhere else (DESIGN-NOTES §3 renders hints in mono 10px).

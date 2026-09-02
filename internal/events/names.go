@@ -26,6 +26,20 @@ const (
 	// Path is empty when no collection is open.
 	CollectionOpened = "collection:opened"
 
+	// CollectionChanged is emitted when the collection directory changed on
+	// disk. Payload: services.Tree, the whole tree.
+	//
+	// The whole tree, not a diff: a tree is a few hundred small nodes, and a
+	// diff protocol would have to be right about renames, reorders and the
+	// git status of every ancestor before it saved anything. If a collection
+	// large enough to feel it turns up, the diff goes here, keyed by node
+	// path, with the walker reporting which subtrees it re-read.
+	CollectionChanged = "collection:changed"
+
+	// GitChanged is emitted when the repository's HEAD or index changed — a
+	// commit, a stage, or a branch switch. Payload: git.State.
+	GitChanged = "git:changed"
+
 	// SettingsChanged is emitted when Go changes the persisted settings on
 	// its own initiative — opening a collection updates the recents list, for
 	// example. The frontend re-reads settings; there is no payload.
@@ -48,5 +62,7 @@ type Entry struct {
 var Registry = []Entry{
 	{"AppReady", AppReady, "Emitted once per window when its Wails runtime is ready. Payload: the version string."},
 	{"CollectionOpened", CollectionOpened, "Emitted whenever the current collection changes, including on close. Payload: CollectionInfo, with an empty path when nothing is open."},
+	{"CollectionChanged", CollectionChanged, "Emitted when the collection directory changed on disk. Payload: the whole Tree."},
+	{"GitChanged", GitChanged, "Emitted when the repository's HEAD or index changed. Payload: the git State."},
 	{"SettingsChanged", SettingsChanged, "Emitted when Go changed the persisted settings itself. No payload; re-read the settings."},
 }

@@ -28,6 +28,9 @@ lists the design decisions that are still open — do not resolve them silently.
   (CLI) follow in Phase A.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
+- `internal/watch/` — the recursive filesystem watcher behind the live tree,
+  and the write guard that keeps Otis' own writes from bouncing back.
+- `internal/git/` — read-only git: branch, ahead/behind, per-path status.
 - `internal/settings/` — the JSON settings file in the OS config dir. The only
   place frontend state persists.
 - `cmd/otis/` — the CLI (package `cli`, cobra). Not a `main` package: `main.go` dispatches
@@ -82,6 +85,14 @@ lists the design decisions that are still open — do not resolve them silently.
   emitting `nil` panics inside Wails.
 - **The frontend never touches disk, network, git or secrets.** If the window
   needs something from the machine, it goes through a Go service.
+- **`internal/git` is read-only, and "not a repository" is a normal state**,
+  never an error: a collection is a directory of files and works perfectly
+  well outside version control. Otis shows what git thinks; committing is
+  git's job.
+- **Every write to a collection goes inside `CollectionService.Guard()`**
+  (`release := guard.Writing(path); defer release()`), or the watcher reports
+  Otis' own save as an external change and the window re-walks on every
+  keystroke it just persisted.
 - **One keyboard handler.** `useKeymap` in `AppShell` owns every shortcut;
   components do not bind their own. Shortcuts do not fire while focus is in a
   text field or the command palette.
@@ -105,6 +116,15 @@ lists the design decisions that are still open — do not resolve them silently.
 - A node's collection-relative path travels in routes as a single dynamic
   segment; build links with `nodeLink`/`nodeRoute` from `@/lib/paths` and let the
   router do the percent-encoding.
+- **The sidebar tree is virtualized, so a row must stay cheap.** No Radix
+  component per row: the context menu is one instance for the whole tree, and
+  the git dots use a plain `title` (which is what DESIGN-NOTES §6 specifies for
+  them). Moving those off the row took a scroll step from 18ms to 1ms at 2,000
+  requests. Tree flattening, the expand rule and the filter live in
+  `@/lib/tree` as pure functions.
+- `_folder.http` is settings, not a request (docs/FORMAT.md §2.1), so it is not
+  a tree row: it hangs off its folder as `Node.Settings`. The tree the sidebar
+  draws and the tree `otis ls` prints are the same tree, and a test asserts it.
 - Version string is injected at build time via `-ldflags -X` into
   `internal/services.Version` (see `VERSION` in `Taskfile.yml`); `main.go` copies it
   into `cli.Version`.

@@ -3,12 +3,12 @@
 
 /**
  * CollectionService owns the one piece of app-level state everything else
- * hangs off: which collection is open. Changing it emits
- * events.CollectionOpened, so no part of the frontend has to poll or keep its
- * own copy.
+ * hangs off: which collection is open, its tree, and the watcher keeping that
+ * tree true.
  * 
- * Increment 9 grows this service into the tree loader and file watcher; for
- * now Open only validates the directory and records it.
+ * Changing the collection emits events.CollectionOpened; a change on disk
+ * emits events.CollectionChanged with the new tree; a commit, stage or branch
+ * switch emits events.GitChanged. No part of the frontend polls.
  * @module
  */
 
@@ -18,7 +18,18 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as watch$0 from "../watch/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+/**
+ * AbsolutePath resolves a collection-relative node path to an absolute one.
+ */
+export function AbsolutePath(nodePath: string): $CancellablePromise<string> {
+    return $Call.ByID(4097260546, nodePath);
+}
 
 /**
  * Close forgets the current collection and emits events.CollectionOpened with
@@ -29,6 +40,21 @@ export function Close(): $CancellablePromise<void> {
 }
 
 /**
+ * CopyPath puts a node's absolute path on the clipboard and returns what it
+ * copied.
+ * 
+ * The absolute path, not the collection-relative one: the relative path is
+ * already on screen next to the row, and what you want on the clipboard is
+ * the thing you can paste into a terminal or another editor. Copying goes
+ * through Go rather than navigator.clipboard because the window is served
+ * from a custom scheme, where the browser clipboard API is not reliably
+ * available.
+ */
+export function CopyPath(nodePath: string): $CancellablePromise<string> {
+    return $Call.ByID(3234360442, nodePath);
+}
+
+/**
  * Current returns the open collection, or the zero value if there is none.
  */
 export function Current(): $CancellablePromise<$models.CollectionInfo> {
@@ -36,10 +62,35 @@ export function Current(): $CancellablePromise<$models.CollectionInfo> {
 }
 
 /**
- * Open makes dir the current collection. It records dir in the recents list
- * and as the collection to reopen on the next launch, then emits
- * events.CollectionOpened.
+ * Guard is the write guard every writer to a collection must hold, so Otis'
+ * own writes are not mistaken for someone else's. Nothing writes yet; the
+ * first writer arrives in Phase C.
  */
-export function Open(dir: string): $CancellablePromise<$models.CollectionInfo> {
+export function Guard(): $CancellablePromise<watch$0.Guard | null> {
+    return $Call.ByID(2575404401);
+}
+
+/**
+ * Open makes dir the current collection: it walks the tree, reads the
+ * repository, starts watching for changes, records dir in the recents list and
+ * as the collection to reopen next launch, then emits events.CollectionOpened.
+ */
+export function Open(dir: string): $CancellablePromise<$models.Opened> {
     return $Call.ByID(591253948, dir);
+}
+
+/**
+ * Reveal shows a node in the OS file manager. nodePath is collection-relative.
+ */
+export function Reveal(nodePath: string): $CancellablePromise<void> {
+    return $Call.ByID(217242705, nodePath);
+}
+
+/**
+ * Tree re-walks the open collection and returns it. The window does not need
+ * to call this in the normal course of things — changes arrive as
+ * events.CollectionChanged — but it is how a view recovers after an error.
+ */
+export function Tree(): $CancellablePromise<$models.Tree> {
+    return $Call.ByID(4254259948);
 }

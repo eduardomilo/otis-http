@@ -10,6 +10,7 @@ import (
 
 	cli "github.com/otis-http/otis/cmd/otis"
 	"github.com/otis-http/otis/internal/events"
+	"github.com/otis-http/otis/internal/git"
 	"github.com/otis-http/otis/internal/services"
 	"github.com/otis-http/otis/internal/settings"
 )
@@ -34,6 +35,8 @@ func init() {
 	// type. The names come from internal/events; never write one inline.
 	application.RegisterEvent[string](events.AppReady)
 	application.RegisterEvent[services.CollectionInfo](events.CollectionOpened)
+	application.RegisterEvent[services.Tree](events.CollectionChanged)
+	application.RegisterEvent[git.State](events.GitChanged)
 	// Void, not any: Wails validates an event's payload against its
 	// registered type, and validating nil against an interface type
 	// dereferences a nil reflect.Type. Void is the type for "no payload".
@@ -69,6 +72,7 @@ func runGUI() {
 			application.NewService(services.NewSettingsService(store)),
 			application.NewService(dialogs),
 			application.NewService(collections),
+			application.NewService(services.NewGitService(collections)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

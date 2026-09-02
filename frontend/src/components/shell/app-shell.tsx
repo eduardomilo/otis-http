@@ -13,6 +13,7 @@ import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
+import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
@@ -42,8 +43,9 @@ const RESPONSE_DEFAULT_FRACTION = 0.4;
 export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
   const { closeActive, reopenLastClosed } = useTabs();
-  const { collection } = useCollection();
+  const { tree } = useCollection();
   const routeDocument = useRouteDocument();
+  const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
 
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const responsePanel = useRef<PanelImperativeHandle>(null);
@@ -167,7 +169,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             collapsedSize={0}
           >
             <div ref={sidebarPane} tabIndex={-1} className="h-full outline-none">
-              <Sidebar ref={filterInput} collectionName={collection?.name ?? ""} />
+              <Sidebar ref={filterInput} activePath={routeDocument?.path ?? ""} />
             </div>
           </ResizablePanel>
 
@@ -197,7 +199,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </ResizablePanelGroup>
       </div>
 
-      <StatusBar file={routeDocument?.path ?? null} />
+      <StatusBar
+        git={tree?.git ?? null}
+        file={routeDocument?.path ?? null}
+        gitStatus={document?.gitStatus ?? null}
+      />
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </>

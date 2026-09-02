@@ -7,13 +7,18 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import type * as git$0 from "../../../../otis-http/otis/internal/git/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import type * as services$0 from "../../../../otis-http/otis/internal/services/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "app:ready": string;
+            "collection:changed": services$0.Tree;
             "collection:opened": services$0.CollectionInfo;
+            "git:changed": git$0.State;
             "settings:changed": void;
         }
     }
