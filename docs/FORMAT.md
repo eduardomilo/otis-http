@@ -274,7 +274,76 @@ always produced.
 
 Warning paths are relative to the collection root.
 
-## 3. Inheritance *(planned, Increment 3)*
+## 3. Inheritance
+
+A request's effective headers and auth are computed by walking the
+`_folder.http` files from the collection root down to the request's folder,
+then applying the request itself. Every effective value records its
+**provenance**: the file (relative to the root) and line it came from.
+
+Inheritance is purely structural. `{{variables}}` in header values and auth
+arguments are resolved afterwards (section 4).
+
+### 3.1 Headers
+
+Levels are applied outermost first. At each level, in two passes:
+
+1. Every header name the level mentions removes the inherited headers of
+   that name. Names compare case-insensitively.
+2. The level's own headers are appended in file order.
+
+Consequences:
+
+- **Nearest definition wins.** A header defined in `users/_folder.http`
+  replaces the same header from `_folder.http`; a header in the request
+  replaces both.
+- **Override is total.** There is no way to send two values of one header
+  from different levels. Duplicates *within* one level are all kept and
+  sent in file order.
+- **Order.** Effective headers are ordered root-most first, request last; an
+  overriding header takes the position of its own level, not the position
+  of the header it replaced.
+
+### 3.2 Disabling an inherited header (`!inherit`)
+
+A header whose value is exactly `!inherit` removes the inherited header of
+that name and is itself **not sent**:
+
+```
+# users/_folder.http
+X-Tenant: !inherit
+```
+
+A nearer level may define the header again. `!inherit` where nothing above
+defines the header is a no-op. Every marker is recorded, with the headers it
+removed, so a review or the UI can show what was switched off and where.
+
+### 3.3 Auth (`# @auth`)
+
+```
+# @auth bearer <token>
+# @auth basic <username> [<password>]
+# @auth none
+```
+
+- The scheme is case-insensitive. `bearer` takes exactly one token. `basic`
+  takes a username and an optional password; the password is the rest of
+  the line and may contain spaces. `none` takes nothing.
+- The **nearest** `@auth` wins; within one file the last directive wins.
+- `none` is an explicit opt-out: the request sends no auth even though a
+  folder above declares one. It is distinct from *absent*, which means no
+  level declared anything.
+- `@auth` is not a header. It is turned into an `Authorization` header when
+  the request is sent *(Increment 5)*. An explicit `Authorization` header on
+  the request wins over any `@auth` *(Increment 5)*.
+- A malformed `@auth` (missing token, unknown scheme, `none` with
+  arguments) is an **error** naming the file and line, not a warning.
+
+### 3.4 Broken folder files
+
+A `_folder.http` that fails to parse contributes nothing to inheritance
+(and raises a collection warning, section 2.4). Levels below it still
+apply.
 
 ## 4. Variables and environments *(planned, Increment 4)*
 
