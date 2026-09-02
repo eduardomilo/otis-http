@@ -111,6 +111,13 @@ width beside the sidebar.
 confirmation behind `Discard changes…`; what committing does; how you get
 into and out of this view; whether the diff is scrollable per hunk.
 
+All resolved in Increment 13. The per-hunk controls and the two hunk-header
+forms are DESIGN-NOTES §9.14. You get into the view with ⌘G or by pressing the
+branch in the status bar, and out of it the same way. The diff scrolls as one
+pane with the hunk headers sticky, so the header of the hunk you are reading
+stays on screen. "Not a repository" and "no changes" are both normal empty
+states, never errors.
+
 Note the diff is of a `.http` file and reads as ordinary text — the point the
 whole product is arguing.
 

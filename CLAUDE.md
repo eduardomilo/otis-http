@@ -50,6 +50,10 @@ lists the design decisions that are still open — do not resolve them silently.
 - `internal/watch/` — the recursive filesystem watcher behind the live tree,
   and the write guard that keeps Otis' own writes from bouncing back.
 - `internal/git/` — read-only git: branch, ahead/behind, per-path status.
+- `internal/diff/` — the diff view: working tree against HEAD with per-file
+  hunks (`hunks.go`, whose `Apply`/`Reverse` are the one splice behind both
+  staging and discarding), the semantic hunk headers a `.http` file allows
+  (`label.go`), and the four operations a review performs (`apply.go`).
 - `internal/settings/` — the JSON settings file in the OS config dir. The only
   place frontend state persists.
 - `cmd/otis/` — the CLI (package `cli`, cobra). Not a `main` package: `main.go` dispatches
@@ -76,13 +80,17 @@ lists the design decisions that are still open — do not resolve them silently.
   - `components/response/` — the right pane: `response-pane` (status line and
     sub-tabs), `body-view` (the windowed body, whose lines come from Go) and
     `failure-view` (a send that produced no response, by failure kind).
+  - `components/diff/` — the centre pane and sidebar for `/diff` and
+    `/diff/$path`: `changes-list` (the changes and the commit box, replacing
+    the tree), `diff-view` (the header, the hunk headers and their controls)
+    and `hunk-view` (one hunk, unified or split).
   - `components/environment/` — the centre pane for `/env/$name`:
     `environment-editor` (the variable table), `secret-detail` (the split panel
     of screen 1c), `secret-value-dialog` (the one place a value travels *in*)
     and `environment-list` (the sidebar, which replaces the tree on this route).
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
-    `send-context`, `environment-context`), each exporting a `useXxx` hook
+    `send-context`, `environment-context`, `diff-context`), each exporting a `useXxx` hook
     that throws outside its provider. Providers are composed in
     `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
     because which environment is active decides how every document resolves;
@@ -157,8 +165,17 @@ lists the design decisions that are still open — do not resolve them silently.
   same reason pretty-printing is Go's job, not the window's.
 - **`internal/git` is read-only, and "not a repository" is a normal state**,
   never an error: a collection is a directory of files and works perfectly
-  well outside version control. Otis shows what git thinks; committing is
-  git's job.
+  well outside version control. It answers "what does git think" for the tree
+  dots and the status bar and never writes.
+- **`internal/diff` is the only place Otis writes to a repository**, and only
+  the writes a review needs: the index, and a commit on the current branch. It
+  does not push, pull, fetch, merge, rebase, cherry-pick or move HEAD — those
+  are git's job and the terminal's. Discarding is the one operation in Otis
+  that destroys work git cannot get back, so the confirmation is a *parameter*
+  (`confirm bool`, refused with `diff.ErrNoConfirm`) and the method has a
+  distinct name: a second caller must not reach it by picking the wrong method
+  off the service, and the dialog in front of it is a courtesy on top, not the
+  safety.
 - **Every write to a collection goes inside `CollectionService.Guard()`**
   (`release := guard.Writing(path); defer release()`), or the watcher reports
   Otis' own save as an external change and the window re-walks on every

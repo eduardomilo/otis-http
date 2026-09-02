@@ -3,6 +3,9 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as diff$0 from "../diff/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as git$0 from "../git/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -119,6 +122,14 @@ export interface CollectionInfo {
      * Name is the collection's display name (collection.DisplayName).
      */
     "name": string;
+}
+
+/**
+ * CommitResult is the new commit and the view after it.
+ */
+export interface CommitResult {
+    "commit": diff$0.Commit;
+    "overview": diff$0.Overview;
 }
 
 /**

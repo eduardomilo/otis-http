@@ -98,6 +98,10 @@ func runGUI() {
 			application.NewService(services.NewRequestService(collections)),
 			application.NewService(sends),
 			application.NewService(services.NewEnvironmentService(collections, store, secretStore)),
+			// The one service that writes to a repository, and only what a
+			// review needs: the index, and a commit. internal/git stays
+			// read-only.
+			application.NewService(services.NewDiffService(collections)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

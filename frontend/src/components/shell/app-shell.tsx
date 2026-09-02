@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Layout, PanelImperativeHandle } from "react-resizable-panels";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
   ResizableHandle,
@@ -13,9 +14,11 @@ import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
+import { relativeTime } from "@/lib/time";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
+import { useDiff } from "@/state/diff-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
@@ -50,16 +53,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { send } = useSends();
   const { tree } = useCollection();
   const { environments } = useEnvironments();
+  const { overview } = useDiff();
   const routeDocument = useRouteDocument();
+  // Read inside rememberLayout, which is registered once and must not be
+  // re-created every time the route changes.
+  const onDiffRef = useRef(false);
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
 
   // On an environment route the sidebar shows the environment list instead of
   // the tree (screen 1c), and the status bar names the file rather than a node.
   const environment = routeDocument?.kind === "environment" ? routeDocument.name : null;
+  const onDiff = useRouterState({ select: (state) => state.location.pathname.startsWith("/diff") });
+  onDiffRef.current = onDiff;
   const environmentRow = environment
     ? (environments.find((e) => e.name === environment) ?? null)
     : null;
 
+  const navigate = useNavigate();
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const responsePanel = useRef<PanelImperativeHandle>(null);
   const sidebarPane = useRef<HTMLDivElement>(null);
@@ -88,6 +98,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     else panel.collapse();
   }, []);
 
+  const toggleDiff = useCallback(() => {
+    if (onDiffRef.current) {
+      void navigate({ to: "/", replace: false });
+      return;
+    }
+    void navigate({ to: "/diff" });
+  }, [navigate]);
+
   const focusFilter = useCallback(() => {
     sidebarPanel.current?.expand();
     filterInput.current?.focus();
@@ -112,6 +130,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       },
     },
     { key: "t", mod: true, shift: true, run: reopenLastClosed },
+    // ⌘G shows what changed. SCREENS.md notes the design never says how you
+    // get into or out of this view; the status bar's branch is the other way
+    // in, and pressing it again goes back to the document that was open.
+    { key: "g", mod: true, run: toggleDiff },
     { key: "1", mod: true, run: () => focusPane(sidebarPanel.current, sidebarPane.current) },
     { key: "2", mod: true, run: () => centerPane.current?.focus() },
     { key: "3", mod: true, run: () => focusPane(responsePanel.current, responsePane.current) },
@@ -138,6 +160,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     (layout: Layout) => {
       const element = group.current;
       if (!element) return;
+      // On the diff route the response pane is not mounted at all, so the
+      // layout has nothing to say about it. Persisting it here would record a
+      // width of zero and the pane would come back collapsed.
+      if (onDiffRef.current) return;
       // A layout percentage is a share of what the panels have between them,
       // which is the group minus its separators. Measuring the separators
       // rather than assuming 1px keeps the round trip exact: without it the
@@ -197,6 +223,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 ref={filterInput}
                 activePath={routeDocument?.path ?? ""}
                 environment={environment}
+                diff={onDiff}
               />
             </div>
           </ResizablePanel>
@@ -210,20 +237,26 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </ResizablePanel>
 
-          <PaneHandle />
-
-          <ResizablePanel
-            id="response"
-            panelRef={responsePanel}
-            defaultSize={responseWidth}
-            minSize={RESPONSE_MIN}
-            collapsible
-            collapsedSize={0}
-          >
-            <div ref={responsePane} tabIndex={-1} className="h-full outline-none">
-              <ResponsePane />
-            </div>
-          </ResizablePanel>
+          {/* Screen 1b has no response pane: the diff takes the full width
+              beside the sidebar. The panel is unmounted rather than collapsed,
+              so its saved width survives — a collapse would persist as one. */}
+          {onDiff ? null : (
+            <>
+              <PaneHandle />
+              <ResizablePanel
+                id="response"
+                panelRef={responsePanel}
+                defaultSize={responseWidth}
+                minSize={RESPONSE_MIN}
+                collapsible
+                collapsedSize={0}
+              >
+                <div ref={responsePane} tabIndex={-1} className="h-full outline-none">
+                  <ResponsePane />
+                </div>
+              </ResizablePanel>
+            </>
+          )}
         </ResizablePanelGroup>
       </div>
 
@@ -231,12 +264,20 @@ export function AppShell({ children }: { children: ReactNode }) {
         git={tree?.git ?? null}
         file={routeDocument?.path ?? null}
         gitStatus={document?.gitStatus ?? null}
+        totals={
+          onDiff && overview?.repository
+            ? { adds: overview.adds, dels: overview.dels, hunks: overview.hunks }
+            : null
+        }
+        onShowChanges={toggleDiff}
         // §8.4: the right slot is a one-line summary of the current view.
         // Screen 1c's is "Referenced by 23 requests", which Go counts.
         context={
-          environmentRow
-            ? referencedBy(environmentRow.referencedBy)
-            : null
+          onDiff
+            ? lastCommit(overview)
+            : environmentRow
+              ? referencedBy(environmentRow.referencedBy)
+              : null
         }
       />
 
@@ -254,6 +295,17 @@ function PaneHandle() {
   return (
     <ResizableHandle className="w-px bg-border transition-colors after:w-[7px] hover:bg-border-strong data-[resizing]:bg-border-strong" />
   );
+}
+
+/**
+ * Screen 1b's status-bar summary: `Last commit: "add expand param" · 2h ago ·
+ * you`. The author is named as written rather than as "you", because the bar
+ * cannot know whose name is in git's config.
+ */
+function lastCommit(overview: { lastCommit?: { subject: string; author: string; when: string } | null } | null) {
+  const commit = overview?.lastCommit;
+  if (!commit) return null;
+  return `Last commit: “${commit.subject}” · ${relativeTime(commit.when)} · ${commit.author}`;
 }
 
 /** Screen 1c's status-bar summary. The count is exact (DESIGN-NOTES §8.5). */

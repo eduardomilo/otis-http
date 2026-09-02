@@ -113,10 +113,27 @@ func (g *Guard) Suppressed(path string) bool {
 
 // key normalises a path so a write and the event it produces agree, whatever
 // mixture of relative and absolute paths the callers use.
+//
+// Symlinks are resolved, because two callers can spell the same file
+// differently and one of them will be the one that matters: on macOS /var is
+// /private/var, go-git reports worktree paths resolved, and the watcher
+// compares directories resolved. A guard keyed on the unresolved spelling
+// would silently fail to suppress the event for the write it was holding, and
+// the window would re-walk on a change it made itself.
+//
+// A path that does not resolve is a path that does not exist yet, or has just
+// stopped existing — a file being created, a file being deleted. Its parent
+// still resolves, so the base name is rejoined to that.
 func (g *Guard) key(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return filepath.Clean(path)
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real
+	}
+	if parent, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(parent, filepath.Base(abs))
 	}
 	return abs
 }

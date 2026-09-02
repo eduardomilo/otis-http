@@ -18,20 +18,48 @@ export function StatusBar({
   file,
   gitStatus,
   context,
+  totals,
+  onShowChanges,
 }: {
   git: GitState | null;
   file?: string | null;
   gitStatus?: string | null;
   context?: string | null;
+  /** The diff view's "+4 −2 · 2 hunks" (screen 1b), when it is on screen. */
+  totals?: { adds: number; dels: number; hunks: number } | null;
+  /** Pressing the branch shows what changed. SCREENS.md notes the design
+   *  never says how you get into the diff view; this is one of the two ways. */
+  onShowChanges?: () => void;
 }) {
   return (
     <footer className="flex h-[var(--status-bar-height)] shrink-0 items-center gap-4 border-t border-border bg-background px-3 font-mono text-meta text-fg-dim">
       <div className="flex w-[260px] shrink-0 items-center gap-2 truncate">
-        <Branch git={git} />
+        {onShowChanges && git?.repository ? (
+          <button
+            type="button"
+            onClick={onShowChanges}
+            title="Show what changed (⌘G)"
+            className="flex min-w-0 items-center gap-2 truncate rounded-sm hover:text-fg"
+          >
+            <Branch git={git} />
+          </button>
+        ) : (
+          <Branch git={git} />
+        )}
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-        {file ? (
+        {totals ? (
+          <>
+            <span className="text-primary">+{totals.adds}</span>
+            <span className="text-destructive">−{totals.dels}</span>
+            <span className="text-fg-faint">·</span>
+            <span>
+              {totals.hunks} {totals.hunks === 1 ? "hunk" : "hunks"}
+            </span>
+            {file ? <span className="truncate text-fg-faint">{file}</span> : null}
+          </>
+        ) : file ? (
           <>
             <span className="truncate">{file}</span>
             <StatusLetter status={gitStatus} />
@@ -41,8 +69,12 @@ export function StatusBar({
         )}
       </div>
 
-      <div className="flex w-[260px] shrink-0 items-center justify-end gap-2 truncate">
-        {context ?? <Empty />}
+      {/* The context slot has a floor rather than a fixed width: screen 1b's
+          summary ("Last commit: … · 2h ago · you") is much longer than screen
+          1c's, and truncating it to 260px loses the part that identifies the
+          commit. */}
+      <div className="flex min-w-[260px] max-w-[46%] shrink items-center justify-end gap-2 truncate">
+        <span className="truncate">{context ?? <Empty />}</span>
       </div>
     </footer>
   );

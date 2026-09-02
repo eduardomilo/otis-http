@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Placeholder } from "@/components/shell/placeholder";
+import { DiffView } from "@/components/diff/diff-view";
 
 export const Route = createFileRoute("/diff/$path")({
-  component: DiffView,
+  component: DiffFileView,
 });
 
-/** The git diff view (screen 1b). */
-function DiffView() {
+/** One file's diff (screen 1b). */
+function DiffFileView() {
   const { path } = Route.useParams();
-  return <Placeholder kind="Diff" path={path} phase="Phase D" />;
+  return <DiffView path={path} />;
 }

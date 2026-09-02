@@ -4,6 +4,7 @@
 import * as AppService from "./appservice.js";
 import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
+import * as DiffService from "./diffservice.js";
 import * as EnvironmentService from "./environmentservice.js";
 import * as GitService from "./gitservice.js";
 import * as RequestService from "./requestservice.js";
@@ -13,6 +14,7 @@ export {
     AppService,
     CollectionService,
     DialogService,
+    DiffService,
     EnvironmentService,
     GitService,
     RequestService,
@@ -33,6 +35,7 @@ export type {
     BodyLine,
     BodyView,
     CollectionInfo,
+    CommitResult,
     Cookie,
     Counts,
     Document,

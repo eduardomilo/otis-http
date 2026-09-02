@@ -1,5 +1,6 @@
 import { forwardRef, useMemo, useState } from "react";
 
+import { ChangesList } from "@/components/diff/changes-list";
 import { EnvironmentList } from "@/components/environment/environment-list";
 import { Tree } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
@@ -11,20 +12,24 @@ import { useCollection } from "@/state/collection-context";
  * The sidebar: a filter input and the request tree (DESIGN-NOTES §4.1, 10px
  * of horizontal padding).
  *
- * On an environment route it is the environment list instead, which is what
- * screen 1c shows: the sidebar is the navigator for whatever kind of document
- * the centre pane is showing, and there is no request tree to filter while you
- * are editing `env/staging.json`.
+ * On an environment route it is the environment list (screen 1c) and on a
+ * diff route the changes list (screen 1b): the sidebar is the navigator for
+ * whatever kind of document the centre pane is showing, and there is no
+ * request tree to filter while you are reading a diff or editing
+ * `env/staging.json`.
  */
 export const Sidebar = forwardRef<
   HTMLInputElement,
-  { activePath: string; environment?: string | null }
->(function Sidebar({ activePath, environment }, filterRef) {
+  { activePath: string; environment?: string | null; diff?: boolean }
+>(function Sidebar({ activePath, environment, diff }, filterRef) {
   const { tree } = useCollection();
   const [query, setQuery] = useState("");
 
   const filter = useMemo(() => (tree ? filterTree(tree.root, query) : undefined), [tree, query]);
 
+  if (diff) {
+    return <ChangesList activePath={activePath} />;
+  }
   if (environment !== null && environment !== undefined) {
     return <EnvironmentList activeName={environment} />;
   }

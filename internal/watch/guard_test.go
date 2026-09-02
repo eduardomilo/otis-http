@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -135,4 +136,36 @@ func TestGuardForgetsExpiredPaths(t *testing.T) {
 	if len(g.until) != 0 || len(g.held) != 0 {
 		t.Errorf("guard kept %d expired and %d held entries", len(g.until), len(g.held))
 	}
+}
+
+// Two callers can spell the same file differently — on macOS /var is a symlink
+// to /private/var, and go-git reports worktree paths already resolved. The
+// guard has to see through that, or a write held under one spelling would not
+// suppress the event reported under the other, and the window would re-walk on
+// a change it made itself.
+func TestGuardSeesThroughSymlinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	viaLink := filepath.Join(link, "create-order.http")
+	viaReal := filepath.Join(real, "create-order.http")
+
+	g, _ := newTestGuard(time.Second)
+	release := g.Writing(viaLink)
+	if !g.Suppressed(viaReal) {
+		t.Error("a write held through the symlink does not suppress the resolved path")
+	}
+	release()
+
+	// And the other way round, for a file that does not exist yet: its parent
+	// is what resolves.
+	g2, _ := newTestGuard(time.Second)
+	release2 := g2.Writing(viaReal)
+	if !g2.Suppressed(viaLink) {
+		t.Error("a write held on the resolved path does not suppress the symlinked one")
+	}
+	release2()
 }

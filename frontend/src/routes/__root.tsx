@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { isMac } from "@/lib/platform";
 import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
+import { DiffProvider } from "@/state/diff-context";
 import { EnvironmentProvider } from "@/state/environment-context";
 import { SendProvider } from "@/state/send-context";
 import { SettingsProvider } from "@/state/settings-context";
@@ -36,22 +37,27 @@ function RootLayout() {
             document resolves, so both the editor and the sender read it from
             here. */}
         <EnvironmentProvider>
-          <TabsProvider>
-            {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
-                and the veto on closing a dirty tab is installed from here. */}
-            <DocumentsProvider>
-              {/* Sends sit inside Tabs too: the response pane shows whatever
-                  the active tab is showing. */}
-              <SendProvider>
-                {/* One provider for every tooltip in the window: the tree's
-                    git dots, parse errors and folder-settings markers all use
-                    it. */}
-                <TooltipProvider delayDuration={400}>
-                  <Window />
-                </TooltipProvider>
-              </SendProvider>
-            </DocumentsProvider>
-          </TabsProvider>
+          {/* The diff view sits beside the documents rather than inside them:
+              it is a view of the whole collection, and a stage or a commit
+              changes what every other view says about a file. */}
+          <DiffProvider>
+            <TabsProvider>
+              {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
+                  and the veto on closing a dirty tab is installed from here. */}
+              <DocumentsProvider>
+                {/* Sends sit inside Tabs too: the response pane shows whatever
+                    the active tab is showing. */}
+                <SendProvider>
+                  {/* One provider for every tooltip in the window: the tree's
+                      git dots, parse errors and folder-settings markers all use
+                      it. */}
+                  <TooltipProvider delayDuration={400}>
+                    <Window />
+                  </TooltipProvider>
+                </SendProvider>
+              </DocumentsProvider>
+            </TabsProvider>
+          </DiffProvider>
         </EnvironmentProvider>
       </CollectionProvider>
     </SettingsProvider>

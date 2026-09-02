@@ -564,6 +564,28 @@ never becomes pixels. The "Remove from keychain" confirmation says so, because
 the value being unrecoverable-by-reading is the thing that makes removal
 different from every other destructive action in the app.
 
+**9.14 Screen 1b draws no per-hunk controls, and heads its two hunks two
+different ways.** The diff view's file-level controls are drawn exactly —
+`Stage`, a vertical rule, `Discard changes…` in red — but the per-hunk Stage
+and Discard the view needs appear nowhere, so their placement was ours:
+`Stage` is an inline chip at the right of the hunk header and Discard is in
+the `···` overflow menu after it, marked destructive. Deliberately not
+adjacent, and deliberately not hover-only — a control that appears only under
+the pointer is one a keyboard user never finds.
+
+The screen also heads its first hunk `@@ -1,9 +1,11 @@  POST {{baseUrl}}/v2/orders`
+and its second `@@ tests @@` — offsets plus a label in one, label alone in the
+other. Otis renders the label alone wherever it can derive one, since that is
+the point of deriving it, and keeps the offsets in the row's `title` so nothing
+is lost. A file the format has nothing to say about — an `.order` list, an
+environment JSON, a README — keeps the offsets, as does a `.http` file that
+does not parse: its line map cannot be trusted, and a confidently wrong header
+is worse than an honest offset.
+
+Split view is named in the segmented control and never drawn. It pairs a
+removed line with the added line that replaced it, padding the shorter run,
+which is what every split diff does.
+
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and
 Otis' key index deliberately holds nothing but keys — adding a date would be
