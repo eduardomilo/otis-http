@@ -1,0 +1,3 @@
+# Collection-wide defaults.
+@baseUrl = https://api.example.com
+Accept: application/json

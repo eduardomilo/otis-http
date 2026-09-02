@@ -193,26 +193,86 @@ Canonical layout of an entry:
 6. A blank line, then post-response scripts and the redirect, each on its
    own line(s). Scripts are written as `> {%` + text + `%}`.
 
-## 2. Collections *(planned, Increment 2)*
+## 2. Collections
+
+A collection is a directory. Loading a collection never modifies it.
 
 ### 2.1 Layout
 
-A collection is a directory. Sub-directories are folders. Every `*.http`
-file except `_folder.http` is a request.
+| Entry | Meaning |
+| --- | --- |
+| directory | a folder |
+| `*.http` | a request (section 1) |
+| `_folder.http` | the folder's settings (section 2.3); not a request |
+| `.order` | the folder's display order (section 2.2) |
+| `env/` at the root | environments (section 4); not part of the tree |
+| anything else | ignored: other file types, and any name starting with `.` |
+
+Every node has a stable **ID**: its path relative to the collection root
+with `/` separators and no trailing slash, for example `users/create.http`
+or `users`. The root's ID is the empty string.
+
+A request node's **display name** is the `@name` directive, then the `###`
+title, then the file name without `.http`. A folder's display name is the
+directory name. A request node's **method label** is the method of the
+first entry with a request line.
 
 ### 2.2 Ordering (`.order`)
 
-One optional `.order` file per directory: a plain list of entry names, one
-per line, directories with a trailing `/`. Listed entries come first, in
-the listed order; unlisted entries follow, sorted alphabetically. A missing
-`.order` means alphabetical. `.order` is never rewritten on add, only on
-an explicit reorder.
+Each directory may hold one `.order` file: a plain list of names, one per
+line, directories with a trailing slash. Blank lines are ignored and lines
+starting with `#` are comments.
+
+```
+# Auth first, then the CRUD folder, then the smoke test.
+auth/
+users/
+smoke.http
+```
+
+Rules:
+
+- Listed entries come first, in the listed order. Folders and requests are
+  ordered together; a folder may sit between two requests.
+- Unlisted entries follow, sorted alphabetically: case-insensitive, with
+  byte order as the tie-break. Folders and requests are mixed in that sort.
+- A missing `.order` means everything is alphabetical.
+- A line matches an entry when it equals the entry's exact name
+  (`create.http`, `users/`). As a convenience a bare line with no slash and
+  no `.http` suffix (`create`) matches the file `create.http`, or failing
+  that the directory `create`. Otis always writes exact names.
+- A line that matches nothing produces a warning and is otherwise ignored.
+  A line that repeats an earlier match produces a warning; the first
+  occurrence wins.
+- `.order` is **never rewritten** when a request or folder is added. Only an
+  explicit reorder writes it, and it then lists every entry exactly once
+  *(planned)*.
 
 ### 2.3 Folder settings (`_folder.http`)
 
-Same syntax as a request file, normally a single entry without a request
-line (section 1.9). Its headers, variables and directives cascade to every
-request below it.
+`_folder.http` uses the request-file syntax (section 1) and normally holds
+a single entry without a request line (section 1.9): comments, variables,
+directives and headers. Those cascade to every request in the folder and
+its sub-folders; section 3 defines how. A request line in `_folder.http` is
+ignored with a warning. A `_folder.http` that fails to parse produces a
+warning and contributes no settings; the folder still appears.
+
+### 2.4 Warnings
+
+Loading is lenient. The following are warnings, not errors; the tree is
+always produced.
+
+| Code | Condition | Effect on the tree |
+| --- | --- | --- |
+| `parse-error` | a request file or `_folder.http` fails to parse | request node marked broken with the error; folder loses its settings |
+| `multiple-requests` | a request file has more than one entry with a request line | first request is used |
+| `no-request-line` | a request file (not `_folder.http`) has no request line | node appears with no method |
+| `folder-has-request` | `_folder.http` contains a request line | the request line is ignored |
+| `order-missing` | `.order` names an entry that does not exist | line ignored |
+| `order-duplicate` | `.order` lists an entry twice | first occurrence wins |
+| `unreadable` | a directory or `.order` could not be read | subtree or order skipped |
+
+Warning paths are relative to the collection root.
 
 ## 3. Inheritance *(planned, Increment 3)*
 

@@ -1,0 +1,44 @@
+{
+  "root": {
+    "id": "",
+    "kind": "folder",
+    "name": "folder-issues",
+    "children": [
+      {
+        "id": "settings-only.http",
+        "kind": "request",
+        "name": "settings-only"
+      },
+      {
+        "id": "sub",
+        "kind": "folder",
+        "name": "sub",
+        "children": [
+          {
+            "id": "sub/ok.http",
+            "kind": "request",
+            "name": "ok",
+            "method": "GET"
+          }
+        ]
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "path": "_folder.http",
+      "code": "folder-has-request",
+      "msg": "line 1: GET https://should-not-be-here.test ignored; folder files hold settings only"
+    },
+    {
+      "path": "settings-only.http",
+      "code": "no-request-line",
+      "msg": "file contains no request"
+    },
+    {
+      "path": "sub/_folder.http",
+      "code": "parse-error",
+      "msg": "line 2: expected header (\"Name: value\") or blank line before body, got \"not a header\""
+    }
+  ]
+}

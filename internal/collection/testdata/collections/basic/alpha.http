@@ -1,0 +1,4 @@
+POST {{baseUrl}}/alpha
+Content-Type: application/json
+
+{"unlisted": true}

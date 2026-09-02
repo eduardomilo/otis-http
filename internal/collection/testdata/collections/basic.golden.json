@@ -1,0 +1,119 @@
+{
+  "root": {
+    "id": "",
+    "kind": "folder",
+    "name": "basic",
+    "children": [
+      {
+        "id": "users",
+        "kind": "folder",
+        "name": "users",
+        "children": [
+          {
+            "id": "users/broken.http",
+            "kind": "request",
+            "name": "broken",
+            "broken": true,
+            "error": "line 2: expected header (\"Name: value\") or blank line before body, got \"this is not a header\""
+          },
+          {
+            "id": "users/Create.http",
+            "kind": "request",
+            "name": "Create",
+            "method": "POST"
+          },
+          {
+            "id": "users/delete.http",
+            "kind": "request",
+            "name": "delete",
+            "method": "DELETE"
+          },
+          {
+            "id": "users/list.http",
+            "kind": "request",
+            "name": "list",
+            "method": "GET"
+          },
+          {
+            "id": "users/multi.http",
+            "kind": "request",
+            "name": "First of two",
+            "method": "GET"
+          }
+        ]
+      },
+      {
+        "id": "auth",
+        "kind": "folder",
+        "name": "auth",
+        "children": [
+          {
+            "id": "auth/login.http",
+            "kind": "request",
+            "name": "Login",
+            "method": "POST"
+          },
+          {
+            "id": "auth/Refresh.http",
+            "kind": "request",
+            "name": "Refresh",
+            "method": "POST"
+          }
+        ]
+      },
+      {
+        "id": "zeta.http",
+        "kind": "request",
+        "name": "Zeta first by .order",
+        "method": "GET"
+      },
+      {
+        "id": "bare.http",
+        "kind": "request",
+        "name": "Matched by a bare .order entry",
+        "method": "GET"
+      },
+      {
+        "id": "alpha.http",
+        "kind": "request",
+        "name": "alpha",
+        "method": "POST"
+      },
+      {
+        "id": "beta",
+        "kind": "folder",
+        "name": "beta",
+        "children": [
+          {
+            "id": "beta/ping.http",
+            "kind": "request",
+            "name": "ping",
+            "method": "GET"
+          }
+        ]
+      }
+    ]
+  },
+  "warnings": [
+    {
+      "path": ".order",
+      "code": "order-missing",
+      "msg": "line 7: \"missing.http\" does not exist"
+    },
+    {
+      "path": ".order",
+      "code": "order-duplicate",
+      "msg": "line 8: \"users/\" is listed more than once"
+    },
+    {
+      "path": "users/broken.http",
+      "code": "parse-error",
+      "msg": "line 2: expected header (\"Name: value\") or blank line before body, got \"this is not a header\""
+    },
+    {
+      "path": "users/multi.http",
+      "code": "multiple-requests",
+      "msg": "file contains 2 requests; only the first is used"
+    }
+  ]
+}

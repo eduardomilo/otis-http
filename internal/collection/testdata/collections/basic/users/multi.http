@@ -1,0 +1,5 @@
+# @name First of two
+GET {{baseUrl}}/users/1
+
+###
+GET {{baseUrl}}/users/2

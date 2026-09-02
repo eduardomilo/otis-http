@@ -1,0 +1,53 @@
+{
+  "root": {
+    "id": "",
+    "kind": "folder",
+    "name": "no-order",
+    "children": [
+      {
+        "id": "alpha.http",
+        "kind": "request",
+        "name": "alpha",
+        "method": "GET"
+      },
+      {
+        "id": "b-folder",
+        "kind": "folder",
+        "name": "b-folder",
+        "children": [
+          {
+            "id": "b-folder/req.http",
+            "kind": "request",
+            "name": "req",
+            "method": "GET"
+          }
+        ]
+      },
+      {
+        "id": "Beta.http",
+        "kind": "request",
+        "name": "Beta",
+        "method": "GET"
+      },
+      {
+        "id": "delta.http",
+        "kind": "request",
+        "name": "delta",
+        "method": "GET"
+      },
+      {
+        "id": "Gamma",
+        "kind": "folder",
+        "name": "Gamma",
+        "children": [
+          {
+            "id": "Gamma/req.http",
+            "kind": "request",
+            "name": "req",
+            "method": "GET"
+          }
+        ]
+      }
+    ]
+  }
+}

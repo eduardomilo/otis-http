@@ -1,0 +1,2 @@
+GET https://should-not-be-here.test
+Accept: */*
