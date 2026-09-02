@@ -493,7 +493,12 @@ Rules:
   *(planned)*.
 
 Only an in-memory store exists today; the OS keychain backend is a later
-increment.
+increment. Until it lands, the CLI stocks the in-memory store from
+environment variables named `OTIS_SECRET_<NAME>`, which is also how CI is
+expected to supply secrets. The suffix is matched leniently: both it and the
+variable name are upper-cased and every character that is not a letter or a
+digit becomes `_`, so `OTIS_SECRET_API_KEY` supplies `apiKey`, `api-key` or
+`api.key`.
 
 ## 6. Sending
 
@@ -567,4 +572,36 @@ kept. Other `{{$...}}` forms are left as written and flagged.
 **Safety.** The importer refuses a non-empty output directory unless forced,
 never writes a value marked secret, and never writes `.order` for a
 directory it did not create.
+
+## 8. Command line
+
+The same binary is the desktop app and the CLI: with no arguments it opens
+the window, with arguments it runs a command.
+
+```
+otis ls [dir]                                       list a collection as a tree
+otis run <file.http> [-e env] [--json]              resolve and send one request
+otis import postman <file.json> -o <dir> [--env f]  import a Postman export
+otis version
+```
+
+Exit codes:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | success; for `run`, a response with status < 400 |
+| 1 | `run` only: the server answered 4xx or 5xx |
+| 2 | anything else: usage, parse, resolve, network or timeout errors |
+
+`otis run` takes a file path and finds the collection root above it, so
+inheritance and `env/` work from anywhere. A directory holding `env/` is the
+root; otherwise the root is the highest ancestor still reachable through
+directories carrying a `_folder.http` or `.order`, never crossing a
+directory that holds `.git`. `-C` overrides the discovered root.
+
+Resolved request headers are printed **masked** (section 5). Masking is
+presentation only: the real value is what goes on the wire. Response bodies
+are printed exactly as received, never reformatted; a body that is not valid
+UTF-8 is summarised in text output and base64-encoded under `bodyBase64` in
+`--json`.
 
