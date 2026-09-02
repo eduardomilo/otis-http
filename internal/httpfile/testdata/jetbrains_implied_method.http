@@ -1,0 +1,5 @@
+### Request with method omitted
+https://examples.http-client.intellij.net/get
+
+### Bare URL with a version
+https://examples.http-client.intellij.net/get HTTP/1.1

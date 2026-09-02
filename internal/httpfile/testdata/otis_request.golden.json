@@ -1,0 +1,39 @@
+{
+  "requests": [
+    {
+      "directives": [
+        {
+          "style": "#",
+          "name": "name",
+          "value": "Create user",
+          "line": 1
+        },
+        {
+          "style": "#",
+          "name": "auth",
+          "value": "bearer {{token}}",
+          "line": 2
+        }
+      ],
+      "method": "POST",
+      "url": "{{baseUrl}}/users",
+      "line": 3,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 4
+        },
+        {
+          "name": "Accept",
+          "value": "application/json",
+          "line": 5
+        }
+      ],
+      "body": {
+        "raw": "{\n  \"email\": \"{{email}}\",\n  \"role\": \"admin\"\n}",
+        "line": 7
+      }
+    }
+  ]
+}

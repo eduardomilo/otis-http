@@ -1,0 +1,5 @@
+# @name Upload fixture
+POST {{baseUrl}}/upload
+Content-Type: application/json
+
+<@ ./payloads/upload.json

@@ -1,0 +1,18 @@
+# Creates an order and remembers its id for the next request.
+# @name Create order
+< {%
+  vars.set("idempotencyKey", uuid())
+%}
+POST {{baseUrl}}/orders
+Content-Type: application/json
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "sku": "{{sku}}",
+  "quantity": 2
+}
+
+> {%
+  assert(response.status === 201)
+  vars.set("orderId", response.body.id)
+%}

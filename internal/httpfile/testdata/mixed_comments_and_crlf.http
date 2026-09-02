@@ -1,0 +1,6 @@
+@host = example.com
+# leading comment
+// @name mixed
+GET https://{{host}}/x
+# comment between headers
+Accept: */*

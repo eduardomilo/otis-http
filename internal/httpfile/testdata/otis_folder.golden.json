@@ -1,0 +1,41 @@
+{
+  "requests": [
+    {
+      "comments": [
+        {
+          "style": "#",
+          "text": " Settings shared by every request in this folder.",
+          "line": 1
+        }
+      ],
+      "variables": [
+        {
+          "name": "baseUrl",
+          "value": "https://api.example.com/v1",
+          "line": 2
+        }
+      ],
+      "directives": [
+        {
+          "style": "#",
+          "name": "auth",
+          "value": "bearer {{token}}",
+          "line": 3
+        }
+      ],
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "application/json",
+          "line": 4
+        },
+        {
+          "name": "X-Client",
+          "value": "otis",
+          "line": 5
+        }
+      ],
+      "body": {}
+    }
+  ]
+}

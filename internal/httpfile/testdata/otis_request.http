@@ -1,0 +1,10 @@
+# @name Create user
+# @auth bearer {{token}}
+POST {{baseUrl}}/users
+Content-Type: application/json
+Accept: application/json
+
+{
+  "email": "{{email}}",
+  "role": "admin"
+}

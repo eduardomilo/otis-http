@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "comments": [
+        {
+          "style": "#",
+          "text": " Only comments and blank lines: a legal, request-less file.",
+          "line": 1
+        },
+        {
+          "style": "#",
+          "text": " nothing to see here",
+          "line": 3
+        }
+      ],
+      "body": {}
+    }
+  ]
+}

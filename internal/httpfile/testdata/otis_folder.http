@@ -1,0 +1,5 @@
+# Settings shared by every request in this folder.
+@baseUrl = https://api.example.com/v1
+# @auth bearer {{token}}
+Accept: application/json
+X-Client: otis

@@ -1,0 +1,20 @@
+### Pre-request script sets a variable used in the URL
+< {%
+    request.variables.set("firstname", "John")
+%}
+GET https://examples.http-client.intellij.net/anything?firstname={{firstname}}
+
+### Check response status
+GET https://examples.http-client.intellij.net/get
+
+> {%
+    client.test("Request executed successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+    });
+%}
+
+### Inline single-line handler and an external handler file
+GET https://examples.http-client.intellij.net/get
+
+> {% client.global.set("id", response.body.id); %}
+> ./handlers/check.js

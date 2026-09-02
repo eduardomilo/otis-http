@@ -1,0 +1,50 @@
+{
+  "requests": [
+    {
+      "title": "Pre-request script sets a variable used in the URL",
+      "separatorLine": 1,
+      "preScripts": [
+        {
+          "text": "\n    request.variables.set(\"firstname\", \"John\")\n",
+          "line": 2
+        }
+      ],
+      "method": "GET",
+      "url": "https://examples.http-client.intellij.net/anything?firstname={{firstname}}",
+      "line": 5,
+      "body": {}
+    },
+    {
+      "title": "Check response status",
+      "separatorLine": 7,
+      "method": "GET",
+      "url": "https://examples.http-client.intellij.net/get",
+      "line": 8,
+      "body": {},
+      "postScripts": [
+        {
+          "text": "\n    client.test(\"Request executed successfully\", function() {\n        client.assert(response.status === 200, \"Response status is not 200\");\n    });\n",
+          "line": 10
+        }
+      ]
+    },
+    {
+      "title": "Inline single-line handler and an external handler file",
+      "separatorLine": 16,
+      "method": "GET",
+      "url": "https://examples.http-client.intellij.net/get",
+      "line": 17,
+      "body": {},
+      "postScripts": [
+        {
+          "text": " client.global.set(\"id\", response.body.id); ",
+          "line": 19
+        },
+        {
+          "filePath": "./handlers/check.js",
+          "line": 20
+        }
+      ]
+    }
+  ]
+}

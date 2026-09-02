@@ -1,0 +1,29 @@
+{
+  "requests": [
+    {
+      "directives": [
+        {
+          "style": "#",
+          "name": "name",
+          "value": "Upload fixture",
+          "line": 1
+        }
+      ],
+      "method": "POST",
+      "url": "{{baseUrl}}/upload",
+      "line": 2,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 3
+        }
+      ],
+      "body": {
+        "filePath": "./payloads/upload.json",
+        "substituteVariables": true,
+        "line": 5
+      }
+    }
+  ]
+}

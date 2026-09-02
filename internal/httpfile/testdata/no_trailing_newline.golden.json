@@ -1,0 +1,13 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "url": "https://example.com/no-trailing-newline",
+      "line": 1,
+      "body": {
+        "raw": "{\"a\": 1}",
+        "line": 3
+      }
+    }
+  ]
+}

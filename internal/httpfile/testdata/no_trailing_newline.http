@@ -1,0 +1,3 @@
+GET https://example.com/no-trailing-newline
+
+{"a": 1}

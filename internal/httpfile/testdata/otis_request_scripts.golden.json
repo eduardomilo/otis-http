@@ -1,0 +1,52 @@
+{
+  "requests": [
+    {
+      "comments": [
+        {
+          "style": "#",
+          "text": " Creates an order and remembers its id for the next request.",
+          "line": 1
+        }
+      ],
+      "directives": [
+        {
+          "style": "#",
+          "name": "name",
+          "value": "Create order",
+          "line": 2
+        }
+      ],
+      "preScripts": [
+        {
+          "text": "\n  vars.set(\"idempotencyKey\", uuid())\n",
+          "line": 3
+        }
+      ],
+      "method": "POST",
+      "url": "{{baseUrl}}/orders",
+      "line": 6,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 7
+        },
+        {
+          "name": "Idempotency-Key",
+          "value": "{{idempotencyKey}}",
+          "line": 8
+        }
+      ],
+      "body": {
+        "raw": "{\n  \"sku\": \"{{sku}}\",\n  \"quantity\": 2\n}",
+        "line": 10
+      },
+      "postScripts": [
+        {
+          "text": "\n  assert(response.status === 201)\n  vars.set(\"orderId\", response.body.id)\n",
+          "line": 15
+        }
+      ]
+    }
+  ]
+}

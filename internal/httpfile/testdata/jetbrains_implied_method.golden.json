@@ -1,0 +1,21 @@
+{
+  "requests": [
+    {
+      "title": "Request with method omitted",
+      "separatorLine": 1,
+      "method": "GET",
+      "url": "https://examples.http-client.intellij.net/get",
+      "line": 2,
+      "body": {}
+    },
+    {
+      "title": "Bare URL with a version",
+      "separatorLine": 4,
+      "method": "GET",
+      "url": "https://examples.http-client.intellij.net/get",
+      "version": "HTTP/1.1",
+      "line": 5,
+      "body": {}
+    }
+  ]
+}

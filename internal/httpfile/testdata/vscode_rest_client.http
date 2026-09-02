@@ -1,0 +1,30 @@
+@baseUrl = https://example.com/api
+@contentType = application/json
+
+# @name login
+POST {{baseUrl}}/login HTTP/1.1
+Content-Type: {{contentType}}
+
+{
+    "name": "sample",
+    "time": "Wed, 21 Oct 2015 18:27:50 GMT"
+}
+
+###
+
+# @name getUser
+GET {{baseUrl}}/users/1
+Authorization: Bearer {{login.response.body.$.token}}
+
+###
+
+// A comment in the double-slash style
+GET https://example.com/comments/1 HTTP/1.1
+
+###
+
+GET https://example.com/comments
+    ?page=2
+    &pageSize=10
+
+###

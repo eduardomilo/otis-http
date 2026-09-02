@@ -1,0 +1,44 @@
+{
+  "requests": [
+    {
+      "comments": [
+        {
+          "style": "#",
+          "text": " leading comment",
+          "line": 2
+        },
+        {
+          "style": "#",
+          "text": " comment between headers",
+          "line": 5
+        }
+      ],
+      "variables": [
+        {
+          "name": "host",
+          "value": "example.com",
+          "line": 1
+        }
+      ],
+      "directives": [
+        {
+          "style": "//",
+          "name": "name",
+          "value": "mixed",
+          "line": 3
+        }
+      ],
+      "method": "GET",
+      "url": "https://{{host}}/x",
+      "line": 4,
+      "headers": [
+        {
+          "name": "Accept",
+          "value": "*/*",
+          "line": 6
+        }
+      ],
+      "body": {}
+    }
+  ]
+}

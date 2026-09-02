@@ -1,0 +1,111 @@
+{
+  "requests": [
+    {
+      "title": "Send POST request with json body",
+      "separatorLine": 1,
+      "method": "POST",
+      "url": "https://examples.http-client.intellij.net/anything",
+      "line": 2,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 3
+        }
+      ],
+      "body": {
+        "raw": "{\n  \"id\": 999,\n  \"value\": \"content\"\n}",
+        "line": 5
+      }
+    },
+    {
+      "title": "Send POST request with body as parameters",
+      "separatorLine": 10,
+      "method": "POST",
+      "url": "https://examples.http-client.intellij.net/anything",
+      "line": 11,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/x-www-form-urlencoded",
+          "line": 12
+        }
+      ],
+      "body": {
+        "raw": "id=999\u0026value=content",
+        "line": 14
+      }
+    },
+    {
+      "title": "Send a form with the text and file fields",
+      "separatorLine": 16,
+      "method": "POST",
+      "url": "https://examples.http-client.intellij.net/anything",
+      "line": 17,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "multipart/form-data; boundary=WebAppBoundary",
+          "line": 18
+        }
+      ],
+      "body": {
+        "raw": "--WebAppBoundary\nContent-Disposition: form-data; name=\"element-name\"\nContent-Type: text/plain\n\nName\n--WebAppBoundary\nContent-Disposition: form-data; name=\"data\"; filename=\"data.json\"\nContent-Type: application/json\n\n\u003c ./request-form-data.json\n--WebAppBoundary--",
+        "line": 20
+      }
+    },
+    {
+      "title": "Send request with dynamic variables in request's body",
+      "separatorLine": 32,
+      "method": "POST",
+      "url": "https://examples.http-client.intellij.net/anything",
+      "line": 33,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 34
+        }
+      ],
+      "body": {
+        "raw": "{\n  \"id\": {{$uuid}},\n  \"price\": {{$random.integer(0, 100)}},\n  \"ts\": {{$timestamp}},\n  \"value\": \"content\"\n}",
+        "line": 36
+      }
+    },
+    {
+      "title": "Body from file, response redirected to a file",
+      "separatorLine": 43,
+      "directives": [
+        {
+          "style": "#",
+          "name": "no-redirect",
+          "line": 44
+        },
+        {
+          "style": "#",
+          "name": "no-log",
+          "line": 45
+        }
+      ],
+      "method": "POST",
+      "url": "https://examples.http-client.intellij.net/anything",
+      "line": 46,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json",
+          "line": 47
+        }
+      ],
+      "body": {
+        "filePath": "./input.json",
+        "line": 49
+      },
+      "redirect": {
+        "path": "./response.json",
+        "force": true,
+        "line": 51
+      }
+    }
+  ]
+}

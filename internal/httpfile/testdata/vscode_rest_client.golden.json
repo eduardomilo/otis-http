@@ -1,0 +1,85 @@
+{
+  "requests": [
+    {
+      "variables": [
+        {
+          "name": "baseUrl",
+          "value": "https://example.com/api",
+          "line": 1
+        },
+        {
+          "name": "contentType",
+          "value": "application/json",
+          "line": 2
+        }
+      ],
+      "directives": [
+        {
+          "style": "#",
+          "name": "name",
+          "value": "login",
+          "line": 4
+        }
+      ],
+      "method": "POST",
+      "url": "{{baseUrl}}/login",
+      "version": "HTTP/1.1",
+      "line": 5,
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "{{contentType}}",
+          "line": 6
+        }
+      ],
+      "body": {
+        "raw": "{\n    \"name\": \"sample\",\n    \"time\": \"Wed, 21 Oct 2015 18:27:50 GMT\"\n}",
+        "line": 8
+      }
+    },
+    {
+      "separatorLine": 13,
+      "directives": [
+        {
+          "style": "#",
+          "name": "name",
+          "value": "getUser",
+          "line": 15
+        }
+      ],
+      "method": "GET",
+      "url": "{{baseUrl}}/users/1",
+      "line": 16,
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{login.response.body.$.token}}",
+          "line": 17
+        }
+      ],
+      "body": {}
+    },
+    {
+      "separatorLine": 19,
+      "comments": [
+        {
+          "style": "//",
+          "text": " A comment in the double-slash style",
+          "line": 21
+        }
+      ],
+      "method": "GET",
+      "url": "https://example.com/comments/1",
+      "version": "HTTP/1.1",
+      "line": 22,
+      "body": {}
+    },
+    {
+      "separatorLine": 24,
+      "method": "GET",
+      "url": "https://example.com/comments?page=2\u0026pageSize=10",
+      "line": 26,
+      "body": {}
+    }
+  ]
+}
