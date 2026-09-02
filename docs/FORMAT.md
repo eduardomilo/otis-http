@@ -345,6 +345,104 @@ A `_folder.http` that fails to parse contributes nothing to inheritance
 (and raises a collection warning, section 2.4). Levels below it still
 apply.
 
-## 4. Variables and environments *(planned, Increment 4)*
+## 4. Variables and environments
 
-## 5. Secrets *(planned, Increment 4)*
+### 4.1 References
+
+A reference is `{{name}}`; whitespace inside the braces is allowed
+(`{{ name }}`). `name` matches `[A-Za-z_$][A-Za-z0-9_.-]*`. Anything else
+between double braces is literal text, not an error.
+
+References are resolved in the URL, header values (after inheritance,
+section 3), `@auth` arguments, and the raw body. They are **not** resolved
+in `< ./path` body file paths, in script blocks, or inside a body loaded
+from a file unless the `<@` form was used *(Increment 5)*.
+
+### 4.2 Scopes
+
+A name is looked up in this order; the first scope that defines it wins:
+
+1. `@var` declarations in the request file. Within a file the last
+   declaration wins.
+2. `@var` declarations in `_folder.http` files, nearest folder first, up to
+   the root.
+3. The active environment (section 4.3).
+4. Builtins (section 4.4).
+
+A file-scoped value may itself contain references; they are resolved
+recursively against the full scope. A value that refers back to itself,
+directly or through other variables, is an error naming the chain
+(`variable cycle: a -> b -> a`). Environment values and secrets are
+literal and are not expanded.
+
+Every name that cannot be resolved is collected, and one error lists all
+of them in first-use order (`unresolved variables: host, token`). Unknown
+`$builtins` are reported the same way.
+
+Every resolved value records its provenance: the scope it came from and, for
+file scopes, the file and line.
+
+### 4.3 Environments (`env/<name>.json`)
+
+Environments live in `env/` at the collection root and are not part of the
+request tree. Each is a flat JSON object:
+
+```json
+{
+  "baseUrl": "https://dev.example.com",
+  "port": 8443,
+  "debug": true,
+  "token": {"$secret": "keychain"}
+}
+```
+
+- Values must be strings, numbers, booleans, or a secret reference. Numbers
+  and booleans are used as written (`8443`, `true`). `null`, arrays and any
+  other object are errors naming the key.
+- `{"$secret": "keychain"}` is a **secret reference** (section 5). No other
+  backend name is accepted.
+- The environment name is the file name without `.json`. It must not
+  contain path separators.
+
+### 4.4 Builtins
+
+| Reference | Value |
+| --- | --- |
+| `{{$uuid}}` | a random version-4 UUID |
+| `{{$timestamp}}` | current Unix time in seconds |
+| `{{$isoTimestamp}}` | current time as RFC 3339 in UTC, e.g. `2026-09-02T15:04:05Z` |
+| `{{$randomInt}}` | a random integer from 0 to 1000 inclusive |
+
+Builtins are evaluated separately for each occurrence: two `{{$uuid}}` in
+one request yield two different values. JetBrains' parameterised forms such
+as `{{$random.integer(0, 100)}}` are not supported and are reported as
+unresolved.
+
+## 5. Secrets
+
+Secret values never live in the collection. A committed environment file
+holds only the reference `{"$secret": "keychain"}`; the value is stored on
+the user's machine and looked up by the key
+
+```
+<collection>/<env>/<name>
+```
+
+where `<collection>` is the base name of the collection's root directory,
+`<env>` the environment name and `<name>` the variable name.
+
+Rules:
+
+- A secret reference whose value is not in the store is an error naming the
+  key, never the value.
+- Resolution never places a secret value in an error message, a warning,
+  or the list of variables used; the list marks the variable as secret
+  instead.
+- Anything derived from a resolved request that leaves the Go process must
+  be passed through masking, which replaces every secret value used by the
+  request with `•••••`.
+- Scripts receive an opaque handle to a secret, never the string
+  *(planned)*.
+
+Only an in-memory store exists today; the OS keychain backend is a later
+increment.

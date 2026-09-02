@@ -124,6 +124,10 @@ func Load(dir string) (*Collection, error) {
 	return c, nil
 }
 
+// BaseName returns the last element of an absolute directory path. It is the
+// default key under which a collection's secrets are stored.
+func BaseName(dir string) string { return filepath.Base(dir) }
+
 // Find returns the node with the given ID, or nil.
 func (c *Collection) Find(id string) *Node {
 	var found *Node
