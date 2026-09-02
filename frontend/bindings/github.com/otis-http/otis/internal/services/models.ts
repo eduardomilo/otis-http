@@ -4,6 +4,29 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as git$0 from "../git/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as httpfile$0 from "../httpfile/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as resolve$0 from "../resolve/models.js";
+
+/**
+ * AuthHeader describes the Authorization header @auth becomes at send time.
+ * Value carries the directive's own text, so it may hold {{variables}} — it
+ * is never a resolved secret.
+ */
+export interface AuthHeader {
+    "name": string;
+    "value": string;
+    "kind": resolve$0.AuthKind;
+
+    /**
+     * Local is true when the @auth is in this file rather than above it.
+     */
+    "local": boolean;
+    "source": resolve$0.Source;
+}
 
 /**
  * CollectionInfo describes the collection the window is showing. The zero
@@ -20,6 +43,128 @@ export interface CollectionInfo {
      * Name is the collection's display name (collection.DisplayName).
      */
     "name": string;
+}
+
+/**
+ * Counts is the header tally screen 4a shows on the sub-tab strip. Sent is
+ * what goes on the wire, so it includes the auth header and excludes anything
+ * an "!inherit" switched off.
+ */
+export interface Counts {
+    "sent": number;
+    "local": number;
+    "inherited": number;
+}
+
+/**
+ * Document is one request file as the editor needs it: the parsed model it
+ * edits, the raw text it was parsed from, and everything the file inherits
+ * with the provenance of each piece.
+ * 
+ * The raw text travels with the model deliberately. The editor edits fields,
+ * but the diff view compares text, and a file Otis cannot parse still has to
+ * be openable — the raw is the escape hatch in both cases.
+ */
+export interface Document {
+    /**
+     * Path is the node's collection-relative ID (docs/FORMAT.md §2.1).
+     */
+    "path": string;
+
+    /**
+     * Name is the display name: @name, then the "###" title, then the file
+     * name without .http.
+     */
+    "name": string;
+
+    /**
+     * Raw is the file's bytes as text, exactly as read.
+     */
+    "raw": string;
+
+    /**
+     * File is the parsed file, nil when ParseError is set.
+     */
+    "file": httpfile$0.File | null;
+
+    /**
+     * Index is the entry in File.Requests the editor shows: the first with a
+     * request line, or 0 when the file has none.
+     */
+    "index": number;
+
+    /**
+     * Effective is what the request will send: headers in wire order, each
+     * naming the file it came from, plus the nearest @auth (§3).
+     */
+    "effective": resolve$0.Effective | null;
+
+    /**
+     * Inherited is every header a folder above offered, including the ones a
+     * nearer level overrode or switched off. Effective lists only what is
+     * sent; this is what the Headers tab's INHERITED group draws, and it is
+     * how an "!inherit" can be switched back on.
+     */
+    "inherited": resolve$0.Inherited[] | null;
+
+    /**
+     * InheritedAuth is the @auth the folders above declare, ignoring this
+     * file's own. It is what the Auth tab shows under "Inherit from folder"
+     * and what "Override for this request" is prefilled from (screen 4b).
+     */
+    "inheritedAuth": resolve$0.Auth | null;
+
+    /**
+     * AuthHeader is the header @auth adds at send time, or nil when no auth
+     * applies. It is a row in the Headers tab, tagged AUTH (screen 4a), and
+     * it counts towards Counts.Sent.
+     */
+    "authHeader": AuthHeader | null;
+
+    /**
+     * Counts is the "N sent · N local · N inherited" of screen 4a.
+     */
+    "counts": Counts;
+
+    /**
+     * Chain names every file that contributes, root-most first, this file
+     * last. Its length minus one is the "1 level" of screen 4a's status bar.
+     */
+    "chain": string[] | null;
+
+    /**
+     * Variables is every {{name}} the request references, resolved against
+     * Env, in first-use order. A secret's value is never included.
+     */
+    "variables": VariableRef[] | null;
+
+    /**
+     * Env is the environment the variables were resolved against, "" for none.
+     */
+    "env": string;
+
+    /**
+     * EnvError is set when Env could not be read, so the editor can say the
+     * variables are unresolved for a reason rather than looking broken.
+     */
+    "envError"?: string;
+
+    /**
+     * ParseError is the parse error of an unparseable file, "" otherwise.
+     * File is nil when it is set; Raw is still the file's text.
+     */
+    "parseError"?: string;
+
+    /**
+     * InheritError is a malformed @auth above or in this file (§3.3 makes
+     * that an error, not a warning). The document still opens.
+     */
+    "inheritError"?: string;
+
+    /**
+     * Warnings are this file's collection warnings, already rendered.
+     */
+    "warnings"?: string[] | null;
 }
 
 /**
@@ -143,6 +288,38 @@ export interface Tree {
      * its dots for a frame.
      */
     "git": git$0.State;
+}
+
+/**
+ * VariableRef is one {{name}} the request references.
+ */
+export interface VariableRef {
+    "name": string;
+
+    /**
+     * Origin is where the value came from: "request", "folder", "env" or
+     * "builtin". Empty when the name did not resolve.
+     */
+    "origin"?: resolve$0.Origin;
+    "source": resolve$0.Source;
+
+    /**
+     * Value is the resolved value. It is empty for a secret and for an
+     * unresolved name, and a secret's value is never put here.
+     */
+    "value"?: string;
+
+    /**
+     * Secret marks a value that lives in the OS keychain, or a file variable
+     * that resolves to one. Its value is not in this struct.
+     */
+    "secret"?: boolean;
+
+    /**
+     * Resolved is false for a name nothing defines. The editor styles those
+     * as warnings (increment 10).
+     */
+    "resolved": boolean;
 }
 
 /**

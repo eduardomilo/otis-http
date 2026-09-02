@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Placeholder } from "@/components/shell/placeholder";
+import { RequestEditor } from "@/components/request/request-editor";
 
 export const Route = createFileRoute("/r/$path")({
   component: RequestView,
@@ -12,5 +12,7 @@ export const Route = createFileRoute("/r/$path")({
  */
 function RequestView() {
   const { path } = Route.useParams();
-  return <Placeholder kind="Request" path={path} phase="Phase C" />;
+  // Keyed on the path so switching documents remounts the editor rather than
+  // re-using its panel selection and editor state for a different file.
+  return <RequestEditor key={path} path={path} />;
 }

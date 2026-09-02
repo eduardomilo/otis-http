@@ -52,6 +52,11 @@ type CollectionService struct {
 	mu      sync.RWMutex
 	current CollectionInfo
 	watcher *watch.Watcher
+	// loaded is the most recent walk of the current collection, kept so the
+	// services that need a node and its ancestors — the request editor, the
+	// sender, the variable index — do not each re-walk the directory. It is
+	// replaced on every walk and cleared when the collection changes.
+	loaded *collection.Collection
 	// generation increments on every open and close, so a watcher callback
 	// that was already in flight when the collection changed can tell that
 	// its work is stale and drop it.
@@ -127,7 +132,7 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 		return Opened{}, fmt.Errorf("opening %s: not a directory", abs)
 	}
 
-	tree, err := readTree(abs)
+	loaded, tree, err := readTree(abs)
 	if err != nil {
 		return Opened{}, err
 	}
@@ -137,6 +142,7 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 
 	s.mu.Lock()
 	s.current = opened
+	s.loaded = loaded
 	s.generation++
 	generation := s.generation
 	s.mu.Unlock()
@@ -173,6 +179,7 @@ func (s *CollectionService) Close() error {
 	s.stopWatching()
 	s.mu.Lock()
 	s.current = CollectionInfo{}
+	s.loaded = nil
 	s.generation++
 	s.mu.Unlock()
 
@@ -197,14 +204,70 @@ func (s *CollectionService) Tree() (Tree, error) {
 	if root == "" {
 		return Tree{}, fmt.Errorf("no collection is open")
 	}
-	return readTree(root)
+	loaded, tree, err := readTree(root)
+	if err != nil {
+		return Tree{}, err
+	}
+	s.cache(root, loaded)
+	return tree, nil
 }
 
-// readTree walks the collection and reads the repository around it.
-func readTree(root string) (Tree, error) {
+// Refresh re-walks the collection, caches the walk and tells the window.
+//
+// It is how a write Otis makes itself becomes visible. The watcher cannot do
+// it: every writer holds the write guard so that its own save is *not*
+// reported as an external change, which means the save has to announce itself.
+func (s *CollectionService) Refresh() error {
+	root := s.Current().Path
+	if root == "" {
+		return fmt.Errorf("no collection is open")
+	}
+	loaded, tree, err := readTree(root)
+	if err != nil {
+		return err
+	}
+	s.cache(root, loaded)
+	s.emit(events.CollectionChanged, tree)
+	return nil
+}
+
+// Loaded returns the current collection as last walked, walking it now if
+// nothing is cached. Callers get the tree the window is showing, so a request
+// resolves against the same files the sidebar drew.
+func (s *CollectionService) Loaded() (*collection.Collection, error) {
+	s.mu.RLock()
+	root, loaded := s.current.Path, s.loaded
+	s.mu.RUnlock()
+	if root == "" {
+		return nil, fmt.Errorf("no collection is open")
+	}
+	if loaded != nil {
+		return loaded, nil
+	}
+	loaded, _, err := readTree(root)
+	if err != nil {
+		return nil, err
+	}
+	s.cache(root, loaded)
+	return loaded, nil
+}
+
+// cache stores a walk, unless the collection changed while it was running.
+func (s *CollectionService) cache(root string, loaded *collection.Collection) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current.Path == root {
+		s.loaded = loaded
+	}
+}
+
+// readTree walks the collection and reads the repository around it. It returns
+// the walk itself as well as the display tree: the walk carries the parsed
+// files and the parent links that inheritance needs.
+func readTree(root string) (*collection.Collection, Tree, error) {
 	loaded, err := collection.Load(root)
 	if err != nil {
-		return Tree{}, fmt.Errorf("reading the collection at %s: %w", root, err)
+		return nil, Tree{}, fmt.Errorf("reading the collection at %s: %w", root, err)
 	}
 	// A git failure must not stop the tree from loading: a collection outside
 	// a repository, or in a repository git itself cannot read, is still a
@@ -213,7 +276,7 @@ func readTree(root string) (Tree, error) {
 	if err != nil {
 		state = git.State{}
 	}
-	return buildTree(loaded, state), nil
+	return loaded, buildTree(loaded, state), nil
 }
 
 // startWatching begins reporting changes under root. The caller holds no lock.
@@ -257,10 +320,11 @@ func (s *CollectionService) onChange(root string, generation uint64, change watc
 		return
 	}
 	if change.Collection {
-		tree, err := readTree(root)
+		loaded, tree, err := readTree(root)
 		if err != nil {
 			s.logError("re-reading the collection", err)
 		} else if s.isCurrent(root, generation) {
+			s.cache(root, loaded)
 			s.emit(events.CollectionChanged, tree)
 		}
 	}

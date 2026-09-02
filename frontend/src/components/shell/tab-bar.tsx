@@ -2,8 +2,11 @@ import { Folder, X } from "lucide-react";
 
 import { methodColor } from "@/lib/method";
 import { nodeDisplayName } from "@/lib/paths";
+import { findNode } from "@/lib/tree";
 import { cn } from "@/lib/utils";
+import { useCollection } from "@/state/collection-context";
 import type { Tab } from "@/state/tabs-context";
+import type { Node } from "@bindings/internal/services";
 import { useTabs } from "@/state/tabs-context";
 
 /**
@@ -19,6 +22,7 @@ import { useTabs } from "@/state/tabs-context";
  */
 export function TabBar() {
   const { tabs, activePath, closeTab, openTab } = useTabs();
+  const { tree } = useCollection();
 
   return (
     <div className="flex h-[var(--tab-bar-height)] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background">
@@ -26,9 +30,13 @@ export function TabBar() {
         <TabButton
           key={tab.path}
           tab={tab}
+          // The method and the display name come from the tree rather than
+          // from the path: docs/FORMAT.md §2.1 prefers the @name directive
+          // over the file name, and only the parsed file knows it.
+          node={tree ? findNode(tree.root, tab.path) : undefined}
           active={tab.path === activePath}
           onActivate={() => openTab(tab.path, tab.kind)}
-          onClose={() => closeTab(tab.path)}
+          onClose={() => void closeTab(tab.path)}
         />
       ))}
     </div>
@@ -37,15 +45,18 @@ export function TabBar() {
 
 function TabButton({
   tab,
+  node,
   active,
   onActivate,
   onClose,
 }: {
   tab: Tab;
+  node: Node | undefined;
   active: boolean;
   onActivate: () => void;
   onClose: () => void;
 }) {
+  const label = node?.name ?? nodeDisplayName(tab.path);
   return (
     <div
       role="tab"
@@ -71,25 +82,29 @@ function TabButton({
       {tab.kind === "folder" ? (
         <Folder className="size-3 shrink-0 text-fg-muted" />
       ) : (
-        <span className={cn("shrink-0 font-mono text-label font-medium tracking-[.02em]", methodColor(undefined))}>
-          {/* The method comes from the collection tree, which arrives in
-              increment 9; until then the slot is empty but sized. */}
+        <span
+          className={cn(
+            "shrink-0 font-mono text-label font-medium tracking-[.02em]",
+            methodColor(node?.method),
+          )}
+        >
+          {node?.method}
         </span>
       )}
 
-      <span className={cn("truncate text-ui", active && "font-medium")}>
-        {nodeDisplayName(tab.path)}
-      </span>
+      <span className={cn("truncate text-ui", active && "font-medium")}>{label}</span>
 
       {tab.dirty ? (
+        // Screen 1a: an amber dot *in place of* the close ×.
         <span
           aria-label="Unsaved changes"
+          title="Unsaved changes"
           className="size-1.5 shrink-0 rounded-full bg-modified"
         />
       ) : (
         <button
           type="button"
-          aria-label={`Close ${nodeDisplayName(tab.path)}`}
+          aria-label={`Close ${label}`}
           onClick={(event) => {
             event.stopPropagation();
             onClose();

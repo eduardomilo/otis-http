@@ -5,12 +5,14 @@ import * as AppService from "./appservice.js";
 import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
 import * as GitService from "./gitservice.js";
+import * as RequestService from "./requestservice.js";
 import * as SettingsService from "./settingsservice.js";
 export {
     AppService,
     CollectionService,
     DialogService,
     GitService,
+    RequestService,
     SettingsService
 };
 
@@ -19,9 +21,13 @@ export {
 } from "./models.js";
 
 export type {
+    AuthHeader,
     CollectionInfo,
+    Counts,
+    Document,
     Node,
     Opened,
     Tree,
+    VariableRef,
     Warning
 } from "./models.js";

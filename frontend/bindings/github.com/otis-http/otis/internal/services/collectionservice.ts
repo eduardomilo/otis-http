@@ -18,6 +18,9 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as collection$0 from "../collection/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as watch$0 from "../watch/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -71,12 +74,32 @@ export function Guard(): $CancellablePromise<watch$0.Guard | null> {
 }
 
 /**
+ * Loaded returns the current collection as last walked, walking it now if
+ * nothing is cached. Callers get the tree the window is showing, so a request
+ * resolves against the same files the sidebar drew.
+ */
+export function Loaded(): $CancellablePromise<collection$0.Collection | null> {
+    return $Call.ByID(1400029889);
+}
+
+/**
  * Open makes dir the current collection: it walks the tree, reads the
  * repository, starts watching for changes, records dir in the recents list and
  * as the collection to reopen next launch, then emits events.CollectionOpened.
  */
 export function Open(dir: string): $CancellablePromise<$models.Opened> {
     return $Call.ByID(591253948, dir);
+}
+
+/**
+ * Refresh re-walks the collection, caches the walk and tells the window.
+ * 
+ * It is how a write Otis makes itself becomes visible. The watcher cannot do
+ * it: every writer holds the write guard so that its own save is *not*
+ * reported as an external change, which means the save has to announce itself.
+ */
+export function Refresh(): $CancellablePromise<void> {
+    return $Call.ByID(651601255);
 }
 
 /**

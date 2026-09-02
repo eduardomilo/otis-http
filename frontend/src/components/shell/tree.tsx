@@ -320,7 +320,7 @@ function RowMenu({ node }: { node: Node | null }) {
         disabled={!node}
         onSelect={() => node && report(CollectionService.Reveal(node.path), "reveal")}
       >
-        Reveal in {fileManagerName}
+        Reveal in {fileManagerName()}
       </ContextMenuItem>
       <ContextMenuItem
         disabled={!node}

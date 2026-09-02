@@ -34,12 +34,19 @@ export interface Tab {
   /** The node's collection-relative ID (docs/FORMAT.md §2.1). */
   path: string;
   kind: TabKind;
-  /**
-   * Unsaved changes. Nothing sets this yet: the editor arrives in Phase C.
-   * The slot exists so the tab bar's layout is final.
-   */
+  /** Unsaved changes, set by the documents provider (increment 10). */
   dirty: boolean;
 }
+
+/**
+ * A veto on closing one tab, installed by whoever knows whether closing it
+ * would lose work. Returning false leaves the tab open.
+ *
+ * The guard lives here rather than in the tab bar because ⌘W, the close ×, a
+ * middle click and closing a collection all have to consult it, and there is
+ * exactly one of them.
+ */
+export type CloseGuard = (path: string) => boolean | Promise<boolean>;
 
 interface TabsContextValue {
   tabs: Tab[];
@@ -51,8 +58,10 @@ interface TabsContextValue {
   closeActive: () => void;
   /** Reopens the most recently closed tab. */
   reopenLastClosed: () => void;
-  /** Marks a tab as having unsaved changes. Unused until Phase C. */
+  /** Marks a tab as having unsaved changes. */
   setDirty: (path: string, dirty: boolean) => void;
+  /** Installs (or, with null, removes) the veto consulted before a close. */
+  setCloseGuard: (guard: CloseGuard | null) => void;
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null);
@@ -71,6 +80,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   const [activePath, setActivePath] = useState("");
   const closed = useRef<Tab[]>([]);
   const restoredFor = useRef<string | null>(null);
+  const closeGuard = useRef<CloseGuard | null>(null);
 
   // The document the current route addresses, if any.
   const current = useRouterState({
@@ -148,7 +158,10 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   );
 
   const closeTab = useCallback(
-    (path: string) => {
+    async (path: string) => {
+      // The guard first, and before any state moves: a tab that is not going
+      // to close must not lose its place in the list or its selection.
+      if (closeGuard.current && !(await closeGuard.current(path))) return;
       setTabs((existing) => {
         const index = existing.findIndex((t) => t.path === path);
         if (index === -1) return existing;
@@ -171,7 +184,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   );
 
   const closeActive = useCallback(() => {
-    if (activePath) closeTab(activePath);
+    if (activePath) void closeTab(activePath);
   }, [activePath, closeTab]);
 
   const reopenLastClosed = useCallback(() => {
@@ -183,13 +196,28 @@ export function TabsProvider({ children }: { children: ReactNode }) {
 
   const setDirty = useCallback((path: string, dirty: boolean) => {
     setTabs((existing) =>
-      existing.map((t) => (t.path === path ? { ...t, dirty } : t)),
+      existing.some((t) => t.path === path && t.dirty !== dirty)
+        ? existing.map((t) => (t.path === path ? { ...t, dirty } : t))
+        : existing,
     );
   }, []);
 
+  const setCloseGuard = useCallback((guard: CloseGuard | null) => {
+    closeGuard.current = guard;
+  }, []);
+
   const value = useMemo<TabsContextValue>(
-    () => ({ tabs, activePath, openTab, closeTab, closeActive, reopenLastClosed, setDirty }),
-    [tabs, activePath, openTab, closeTab, closeActive, reopenLastClosed, setDirty],
+    () => ({
+      tabs,
+      activePath,
+      openTab,
+      closeTab,
+      closeActive,
+      reopenLastClosed,
+      setDirty,
+      setCloseGuard,
+    }),
+    [tabs, activePath, openTab, closeTab, closeActive, reopenLastClosed, setDirty, setCloseGuard],
   );
 
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;

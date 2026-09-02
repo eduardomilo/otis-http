@@ -84,3 +84,23 @@ func (s *Memory) List(prefix string) ([]string, error) {
 	sort.Strings(keys)
 	return keys, nil
 }
+
+// Placeholder is a Store that reports every key as present and answers with
+// the same fixed string. It exists so a surface that only needs to *describe*
+// a request — the editor showing which variables resolve, and which of them
+// are secret — can resolve one without a real secret ever being fetched.
+//
+// It must never back a send: the placeholder would go on the wire. Get is
+// the only useful method; Set and Delete refuse.
+type Placeholder struct {
+	// Value is what Get returns. The zero value returns "".
+	Value string
+}
+
+// ErrReadOnly is returned by Placeholder's mutating methods.
+var ErrReadOnly = errors.New("this secret store is read-only")
+
+func (s Placeholder) Get(string) (string, error)    { return s.Value, nil }
+func (s Placeholder) Set(string, string) error      { return ErrReadOnly }
+func (s Placeholder) Delete(string) error           { return ErrReadOnly }
+func (s Placeholder) List(string) ([]string, error) { return nil, nil }

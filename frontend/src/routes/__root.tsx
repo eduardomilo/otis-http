@@ -6,6 +6,7 @@ import { TitleStrip } from "@/components/shell/title-strip";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { isMac } from "@/lib/platform";
 import { CollectionProvider, useCollection } from "@/state/collection-context";
+import { DocumentsProvider } from "@/state/documents-context";
 import { SettingsProvider } from "@/state/settings-context";
 import { TabsProvider } from "@/state/tabs-context";
 import { abbreviatePath, useHomeDir } from "@/state/use-recents";
@@ -30,11 +31,15 @@ function RootLayout() {
     <SettingsProvider>
       <CollectionProvider>
         <TabsProvider>
-          {/* One provider for every tooltip in the window: the tree's git
-              dots, parse errors and folder-settings markers all use it. */}
-          <TooltipProvider delayDuration={400}>
-            <Window />
-          </TooltipProvider>
+          {/* Documents sit inside Tabs: a draft is what makes a tab dirty, and
+              the veto on closing a dirty tab is installed from here. */}
+          <DocumentsProvider>
+            {/* One provider for every tooltip in the window: the tree's git
+                dots, parse errors and folder-settings markers all use it. */}
+            <TooltipProvider delayDuration={400}>
+              <Window />
+            </TooltipProvider>
+          </DocumentsProvider>
         </TabsProvider>
       </CollectionProvider>
     </SettingsProvider>
@@ -53,7 +58,7 @@ function Window() {
       <TitleStrip
         name={isOpen ? collection!.name : null}
         path={isOpen ? abbreviatePath(collection!.path, home) : null}
-        reserveTrafficLights={isMac}
+        reserveTrafficLights={isMac()}
       />
 
       {isOpen ? (

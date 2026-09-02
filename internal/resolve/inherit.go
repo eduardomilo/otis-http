@@ -331,3 +331,97 @@ func parseAWSAuth(args []string, src Source) (*Auth, error) {
 	}
 	return a, nil
 }
+
+// HeaderState is the fate of a header an ancestor folder contributed.
+type HeaderState string
+
+const (
+	// HeaderSent means the header is in the effective set and goes on the wire.
+	HeaderSent HeaderState = "sent"
+	// HeaderOverridden means a nearer level defined the same name, so this
+	// value is replaced (docs/FORMAT.md §3.1: override is total).
+	HeaderOverridden HeaderState = "overridden"
+	// HeaderOff means a nearer level wrote "!inherit" for the name, so
+	// nothing of it is sent (§3.2).
+	HeaderOff HeaderState = "off"
+)
+
+// Inherited is one header an ancestor folder contributed, with what became
+// of it. Effective.Headers lists only what is sent; this lists everything a
+// folder above offered, so the UI can show an inherited header that was
+// overridden or switched off — and switch it back on.
+type Inherited struct {
+	Name   string      `json:"name"`
+	Value  string      `json:"value"`
+	Source Source      `json:"source"`
+	State  HeaderState `json:"state"`
+	// By is the level that overrode or disabled the header. It is nil when
+	// State is HeaderSent.
+	By *Source `json:"by,omitempty"`
+}
+
+// InheritedHeaders reports every header contributed by a level other than the
+// last one, with its fate. The chain is ordered outermost first, request last,
+// exactly as Levels takes it.
+//
+// The last level is the request itself, so its headers are "local" rather than
+// inherited; they appear here only as the cause of an override or an "!inherit".
+func InheritedHeaders(levels []Level) []Inherited {
+	if len(levels) == 0 {
+		return nil
+	}
+	var out []Inherited
+	for i, lvl := range levels {
+		// Every name this level mentions settles the fate of the same name
+		// above it, marker or not (§3.1, pass 1).
+		for _, entry := range lvl.Entries {
+			for _, h := range entry.Headers {
+				src := Source{Path: lvl.Path, Line: h.Line}
+				state := HeaderOverridden
+				if strings.TrimSpace(h.Value) == InheritMarker {
+					state = HeaderOff
+				}
+				for j := range out {
+					if out[j].State == HeaderSent && strings.EqualFold(out[j].Name, h.Name) {
+						out[j].State = state
+						by := src
+						out[j].By = &by
+					}
+				}
+			}
+		}
+		if i == len(levels)-1 {
+			break // the request's own headers are local, not inherited
+		}
+		for _, entry := range lvl.Entries {
+			for _, h := range entry.Headers {
+				if strings.TrimSpace(h.Value) == InheritMarker {
+					continue // a marker sends nothing of its own (§3.2)
+				}
+				out = append(out, Inherited{
+					Name:   h.Name,
+					Value:  h.Value,
+					Source: Source{Path: lvl.Path, Line: h.Line},
+					State:  HeaderSent,
+				})
+			}
+		}
+	}
+	return out
+}
+
+// AncestorAuth is the auth the folders above a request declare, ignoring the
+// request's own @auth. It is what "Inherit from folder" shows and what
+// "Override for this request" is prefilled from (screen 4b).
+func AncestorAuth(levels []Level) *Auth {
+	if len(levels) < 2 {
+		return nil
+	}
+	eff, err := Levels(levels[:len(levels)-1])
+	if err != nil || eff == nil {
+		// A malformed @auth above is reported when the request is resolved
+		// or sent; it must not stop the editor from opening.
+		return nil
+	}
+	return eff.Auth
+}

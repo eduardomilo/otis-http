@@ -244,12 +244,23 @@ func (x *Expander) value(name string, chain []string) (string, bool, error) {
 		// Reserve the slot before recursing so uses read in first-use order
 		// (outer variable before the ones its value refers to).
 		slot := x.reserveUse(Use{Name: name, Origin: d.origin, Source: d.source})
+		// A file variable whose value refers to a secret resolves *to* that
+		// secret: "@token = {{apiKey}}" is the secret with another name. So
+		// the recursion is bracketed to see whether it consumed one, and the
+		// use is marked secret and left without a value if it did. Without
+		// this, Use.Value — which is serialized to the frontend and to
+		// `otis run --json` — would carry the secret in the clear.
+		before := len(x.Secrets)
 		v, err := x.expand(d.value, append(chain, name))
 		if err != nil {
 			return "", false, err
 		}
 		if slot >= 0 {
-			x.uses[slot].Value = v
+			if len(x.Secrets) > before {
+				x.uses[slot].Secret = true
+			} else {
+				x.uses[slot].Value = v
+			}
 		}
 		return v, true, nil
 	}

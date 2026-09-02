@@ -241,3 +241,24 @@
         background: transparent;
     }
 }
+
+/* A single-line CodeMirror (the URL field; see components/request/url-bar.tsx
+   for why it is an editor at all) has to behave like an input: one line, no
+   wrap, no vertical scroll, centred in the 30px control of DESIGN-NOTES §4.4. */
+.cm-single-line .cm-editor,
+.cm-single-line .cm-scroller {
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.cm-single-line .cm-content {
+    padding: 0;
+    white-space: pre;
+    align-items: center;
+    min-height: 100%;
+}
+
+.cm-single-line .cm-line {
+    padding: 0;
+}

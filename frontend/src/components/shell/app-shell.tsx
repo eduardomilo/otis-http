@@ -15,6 +15,7 @@ import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
+import { useDocuments } from "@/state/documents-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
 
@@ -43,6 +44,7 @@ const RESPONSE_DEFAULT_FRACTION = 0.4;
 export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
   const { closeActive, reopenLastClosed } = useTabs();
+  const { saveActive } = useDocuments();
   const { tree } = useCollection();
   const routeDocument = useRouteDocument();
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
@@ -87,6 +89,9 @@ export function AppShell({ children }: { children: ReactNode }) {
     { key: "b", mod: true, run: () => togglePanel(sidebarPanel.current) },
     { key: "j", mod: true, run: () => togglePanel(responsePanel.current) },
     { key: "w", mod: true, run: closeActive },
+    // CodeMirror consumes ⌘S before the window sees it, so the request editor
+    // binds this same call as an editor keymap too (see useKeymap).
+    { key: "s", mod: true, run: () => void saveActive() },
     { key: "t", mod: true, shift: true, run: reopenLastClosed },
     { key: "1", mod: true, run: () => focusPane(sidebarPanel.current, sidebarPane.current) },
     { key: "2", mod: true, run: () => centerPane.current?.focus() },

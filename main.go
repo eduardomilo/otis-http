@@ -73,6 +73,7 @@ func runGUI() {
 			application.NewService(dialogs),
 			application.NewService(collections),
 			application.NewService(services.NewGitService(collections)),
+			application.NewService(services.NewRequestService(collections)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
