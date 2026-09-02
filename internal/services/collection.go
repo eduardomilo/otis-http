@@ -61,6 +61,8 @@ type CollectionService struct {
 	// that was already in flight when the collection changed can tell that
 	// its work is stale and drop it.
 	generation uint64
+	// onClose are the functions that drop per-collection state (see OnClose).
+	onClose []func()
 }
 
 // NewCollectionService constructs the service around the shared settings
@@ -70,9 +72,28 @@ func NewCollectionService(store *settings.Store) *CollectionService {
 }
 
 // Guard is the write guard every writer to a collection must hold, so Otis'
-// own writes are not mistaken for someone else's. Nothing writes yet; the
-// first writer arrives in Phase C.
+// own writes are not mistaken for someone else's.
 func (s *CollectionService) Guard() *watch.Guard { return s.guard }
+
+// OnClose registers a function to run when the current collection is closed or
+// replaced. It is how the state that belongs to a collection rather than to
+// the process — the cookie jar, the AWS credential cache, the session
+// variables — gets dropped without this service knowing what any of it is.
+func (s *CollectionService) OnClose(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onClose = append(s.onClose, fn)
+}
+
+// closing runs the OnClose functions.
+func (s *CollectionService) closing() {
+	s.mu.RLock()
+	fns := append([]func(){}, s.onClose...)
+	s.mu.RUnlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
 
 // ServiceStartup resolves the application and wires up drag-and-drop: a
 // directory dropped on the window opens exactly as one chosen in the dialog.
@@ -138,6 +159,11 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 	}
 
 	opened := CollectionInfo{Path: abs, Name: collection.DisplayName(abs)}
+	if s.Current().Path != abs {
+		// A different collection: the cookies, credentials and session
+		// variables of the old one do not carry over.
+		s.closing()
+	}
 	s.stopWatching()
 
 	s.mu.Lock()
@@ -176,6 +202,7 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 // Close forgets the current collection and emits events.CollectionOpened with
 // an empty path, which returns the window to the empty state.
 func (s *CollectionService) Close() error {
+	s.closing()
 	s.stopWatching()
 	s.mu.Lock()
 	s.current = CollectionInfo{}

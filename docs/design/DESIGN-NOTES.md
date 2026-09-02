@@ -489,13 +489,14 @@ dirty dot, and an amber `M` in the status bar for the same file. Similarly
 action. Both are legible in the mock because context separates them, but a
 color legend or a second channel (icon, weight) may be needed.
 
-**9.4 The design introduces a variable scope that `FORMAT.md` does not have.**
-Screen 3a shows a **session** scope: "set by scripts · this machine only",
-"Not written to disk, not committed, not shared. Cleared on Clear or when the
-collection closes", written by `vars.folder.set(k, v)`. `docs/FORMAT.md` §4.2
-defines request → folder → environment → builtins with no runtime-mutable
-layer. Adding it changes resolution order and introduces state that is not in
-any file. It needs a spec before it is built.
+**9.4 The session variable scope — resolved.** Screen 3a showed a **session**
+scope ("set by scripts · this machine only", written by `vars.folder.set(k, v)`)
+that `FORMAT.md` §4.2 did not have. It is now specified: `FORMAT.md` §4.5
+defines the two scopes (folder and environment), where they sit in resolution
+(§4.2, interleaved with the committed layer rather than stacked above it), that
+the value is literal and never written anywhere, and that every one records the
+request that set it and when. Implemented in Increment 11; the writer arrives
+with the script engine.
 
 **9.5 Disabled rows have no on-disk representation.** Both the request headers
 table and the environment variables table put a checkbox on every row,

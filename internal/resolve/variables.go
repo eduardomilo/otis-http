@@ -26,6 +26,7 @@ const (
 	OriginRequest Origin = "request" // @var in the request file
 	OriginFolder  Origin = "folder"  // @var in a _folder.http
 	OriginEnv     Origin = "env"     // env/<name>.json
+	OriginSession Origin = "session" // set by a run; in memory only (§4.5)
 	OriginBuiltin Origin = "builtin" // {{$uuid}} and friends
 )
 
@@ -81,20 +82,39 @@ type declared struct {
 	value  string
 	origin Origin
 	source Source
+	// literal suppresses recursive expansion of the value. File declarations
+	// are templates; a session value is data a run produced.
+	literal bool
 }
 
 // Scope is the ordered set of variable definitions visible to a request.
 type Scope struct {
 	// vars are file declarations, nearest scope first; within a scope the
-	// last declaration wins, so lookups scan each level from the end.
-	levels     [][]declared
+	// last declaration wins, so lookups scan each level from the end. Each
+	// level records the folder it belongs to, so a session value set for that
+	// folder can be consulted just before it.
+	levels     []level
 	env        *Environment
 	store      secrets.Store
 	collection string
 
+	// session and folders drive the session scope (docs/FORMAT.md §4.5).
+	// folders is nearest-folder-first and ends at the root, and it is passed
+	// in rather than derived from levels: a folder with no _folder.http
+	// contributes no level but can still hold a session value.
+	session *Session
+	folders []string
+	envName string
+
 	now     func() time.Time
 	uuid    func() string
 	randInt func(max int) int
+}
+
+// level is one file's declarations, with the folder that file sits in.
+type level struct {
+	folder string
+	decls  []declared
 }
 
 // NewScope builds the variable scope for an inheritance chain (outermost
@@ -102,6 +122,9 @@ type Scope struct {
 // store. collection is the collection key used for secret lookups.
 func NewScope(levels []Level, env *Environment, store secrets.Store, collection string) *Scope {
 	s := &Scope{env: env, store: store, collection: collection}
+	if env != nil {
+		s.envName = env.Name
+	}
 	for i := len(levels) - 1; i >= 0; i-- { // nearest first
 		lvl := levels[i]
 		origin := OriginFolder
@@ -115,9 +138,24 @@ func NewScope(levels []Level, env *Environment, store secrets.Store, collection 
 			}
 		}
 		if len(ds) > 0 {
-			s.levels = append(s.levels, ds)
+			s.levels = append(s.levels, level{folder: folderOf(lvl.Path), decls: ds})
 		}
 	}
+	return s
+}
+
+// folderOf is the folder a level's file sits in, as a node ID.
+func folderOf(levelPath string) string {
+	if i := strings.LastIndex(levelPath, "/"); i >= 0 {
+		return levelPath[:i]
+	}
+	return ""
+}
+
+// WithSession attaches the session store and the folder chain it is consulted
+// with, nearest folder first (see FolderChain).
+func (s *Scope) WithSession(session *Session, folders []string) *Scope {
+	s.session, s.folders = session, folders
 	return s
 }
 
@@ -132,17 +170,105 @@ func (s *Scope) WithRandom(uuid func() string, randInt func(max int) int) *Scope
 	return s
 }
 
-// lookup finds a name in file scopes then the environment. Builtins are
-// handled by the expander because they are evaluated per occurrence.
+// lookup finds a name in the file and session scopes, nearest first. The
+// environment and the builtins are handled by the expander: an environment
+// value is literal rather than expanded further, and a builtin is evaluated
+// per occurrence.
+//
+// The order within the folder scopes is the format's own rule applied to a new
+// layer: nearest definition wins, and at one level a session value beats the
+// committed one. Anything else would make vars.folder.set a no-op whenever the
+// folder already declared the name, which is exactly when it is wanted.
 func (s *Scope) lookup(name string) (declared, bool) {
-	for _, lvl := range s.levels {
-		for i := len(lvl) - 1; i >= 0; i-- {
-			if lvl[i].name == name {
-				return lvl[i], true
+	// The request file's own declarations come first and have no session
+	// layer: a per-request session value lives only for one execution and is
+	// the script engine's business (§4.5).
+	next := 0
+	if len(s.levels) > 0 && s.levels[0].isRequest() {
+		if d, ok := s.levels[0].find(name); ok {
+			return d, true
+		}
+		next = 1
+	}
+	// Then the folder chain, nearest first: session value, then that folder's
+	// _folder.http declarations.
+	for _, folder := range s.folders {
+		if d, ok := s.sessionValue(SessionFolder, folder, name); ok {
+			return d, true
+		}
+		for _, lvl := range s.levels[next:] {
+			if lvl.folder == folder {
+				if d, ok := lvl.find(name); ok {
+					return d, true
+				}
+			}
+		}
+	}
+	// A scope built without a folder chain (a caller that has no node, and
+	// every test written before the session scope existed) still resolves its
+	// file declarations in order.
+	if len(s.folders) == 0 {
+		for _, lvl := range s.levels[next:] {
+			if d, ok := lvl.find(name); ok {
+				return d, true
 			}
 		}
 	}
 	return declared{}, false
+}
+
+// isRequest reports whether the level is the request file rather than a
+// _folder.http.
+func (l level) isRequest() bool {
+	return len(l.decls) > 0 && l.decls[0].origin == OriginRequest
+}
+
+// find returns the last declaration of name in the level; within one file the
+// last declaration wins (docs/FORMAT.md §1.5).
+func (l level) find(name string) (declared, bool) {
+	for i := len(l.decls) - 1; i >= 0; i-- {
+		if l.decls[i].name == name {
+			return l.decls[i], true
+		}
+	}
+	return declared{}, false
+}
+
+// sessionValue looks one session variable up as a declaration.
+//
+// Its value is returned literal, not expanded: it was produced by a run, not
+// written by a person, so there is nothing in it a reader expected to be a
+// template — and expanding it would let a value carrying "{{" from a server
+// response reach into the variable scope.
+func (s *Scope) sessionValue(scope SessionScope, owner, name string) (declared, bool) {
+	if s.session == nil {
+		return declared{}, false
+	}
+	v, ok := s.session.Get(scope, owner, name)
+	if !ok {
+		return declared{}, false
+	}
+	return declared{
+		name:    name,
+		value:   v.Value,
+		origin:  OriginSession,
+		source:  Source{Path: sessionSourceLabel(scope, owner)},
+		literal: true,
+	}, true
+}
+
+// sessionSourceLabel names where a session value lives, for provenance. It is
+// not a file path — that is the point of it.
+func sessionSourceLabel(scope SessionScope, owner string) string {
+	switch scope {
+	case SessionEnv:
+		return "session:env/" + owner
+	default:
+		if owner == "" {
+			return "session:/"
+		}
+		return "session:" + owner + "/"
+	}
 }
 
 // Expander resolves {{variables}} in text against a Scope, accumulating
@@ -244,6 +370,15 @@ func (x *Expander) value(name string, chain []string) (string, bool, error) {
 		// Reserve the slot before recursing so uses read in first-use order
 		// (outer variable before the ones its value refers to).
 		slot := x.reserveUse(Use{Name: name, Origin: d.origin, Source: d.source})
+		if d.literal {
+			// A session value is data a run produced, not a template somebody
+			// wrote; "{{" arriving in a response must not reach into the
+			// variable scope.
+			if slot >= 0 {
+				x.uses[slot].Value = d.value
+			}
+			return d.value, true, nil
+		}
 		// A file variable whose value refers to a secret resolves *to* that
 		// secret: "@token = {{apiKey}}" is the secret with another name. So
 		// the recursion is bracketed to see whether it consumed one, and the
@@ -263,6 +398,14 @@ func (x *Expander) value(name string, chain []string) (string, bool, error) {
 			}
 		}
 		return v, true, nil
+	}
+	// A session value set for the active environment beats the committed one,
+	// for the same reason a folder session value beats the folder's own (§4.5).
+	if x.scope.envName != "" {
+		if d, ok := x.scope.sessionValue(SessionEnv, x.scope.envName, name); ok {
+			x.noteUse(Use{Name: name, Origin: d.origin, Source: d.source, Value: d.value})
+			return d.value, true, nil
+		}
 	}
 	if x.scope.env != nil {
 		if ev, ok := x.scope.env.Values[name]; ok {

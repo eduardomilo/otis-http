@@ -15,6 +15,14 @@ export const OtisEvent = {
   GitChanged: "git:changed",
   /** Emitted when Go changed the persisted settings itself. No payload; re-read the settings. */
   SettingsChanged: "settings:changed",
+  /** Emitted once a request is on the wire. Payload: SendStarted, keyed by send ID. */
+  SendStarted: "send:started",
+  /** Emitted when a response has been read in full. Payload: ResponseMeta; the body stays in Go. */
+  SendComplete: "send:complete",
+  /** Emitted when a send produced no response. Payload: SendFailure, with a masked message. */
+  SendError: "send:error",
+  /** Emitted when the variables a run set changed. No payload; re-read them. */
+  SessionVarsChanged: "session-vars:changed",
 } as const;
 
 export type OtisEventName = (typeof OtisEvent)[keyof typeof OtisEvent];

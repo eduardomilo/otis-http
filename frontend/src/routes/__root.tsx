@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { isMac } from "@/lib/platform";
 import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
+import { SendProvider } from "@/state/send-context";
 import { SettingsProvider } from "@/state/settings-context";
 import { TabsProvider } from "@/state/tabs-context";
 import { abbreviatePath, useHomeDir } from "@/state/use-recents";
@@ -34,11 +35,15 @@ function RootLayout() {
           {/* Documents sit inside Tabs: a draft is what makes a tab dirty, and
               the veto on closing a dirty tab is installed from here. */}
           <DocumentsProvider>
-            {/* One provider for every tooltip in the window: the tree's git
-                dots, parse errors and folder-settings markers all use it. */}
-            <TooltipProvider delayDuration={400}>
-              <Window />
-            </TooltipProvider>
+            {/* Sends sit inside Tabs too: the response pane shows whatever the
+                active tab is showing. */}
+            <SendProvider>
+              {/* One provider for every tooltip in the window: the tree's git
+                  dots, parse errors and folder-settings markers all use it. */}
+              <TooltipProvider delayDuration={400}>
+                <Window />
+              </TooltipProvider>
+            </SendProvider>
           </DocumentsProvider>
         </TabsProvider>
       </CollectionProvider>

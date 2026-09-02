@@ -66,8 +66,7 @@ export function Current(): $CancellablePromise<$models.CollectionInfo> {
 
 /**
  * Guard is the write guard every writer to a collection must hold, so Otis'
- * own writes are not mistaken for someone else's. Nothing writes yet; the
- * first writer arrives in Phase C.
+ * own writes are not mistaken for someone else's.
  */
 export function Guard(): $CancellablePromise<watch$0.Guard | null> {
     return $Call.ByID(2575404401);
@@ -80,6 +79,16 @@ export function Guard(): $CancellablePromise<watch$0.Guard | null> {
  */
 export function Loaded(): $CancellablePromise<collection$0.Collection | null> {
     return $Call.ByID(1400029889);
+}
+
+/**
+ * OnClose registers a function to run when the current collection is closed or
+ * replaced. It is how the state that belongs to a collection rather than to
+ * the process — the cookie jar, the AWS credential cache, the session
+ * variables — gets dropped without this service knowing what any of it is.
+ */
+export function OnClose(fn: any): $CancellablePromise<void> {
+    return $Call.ByID(31780067, fn);
 }
 
 /**

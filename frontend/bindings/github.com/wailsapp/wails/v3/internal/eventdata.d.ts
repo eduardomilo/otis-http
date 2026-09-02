@@ -19,6 +19,10 @@ declare module "@wailsio/runtime" {
             "collection:changed": services$0.Tree;
             "collection:opened": services$0.CollectionInfo;
             "git:changed": git$0.State;
+            "send:complete": services$0.ResponseMeta;
+            "send:error": services$0.SendFailure;
+            "send:started": services$0.SendStarted;
+            "session-vars:changed": void;
             "settings:changed": void;
         }
     }

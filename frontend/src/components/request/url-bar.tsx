@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { KeyBinding } from "@codemirror/view";
+import { Loader2 } from "lucide-react";
 
 import { CodeEditor } from "@/components/editor/code-editor";
 import {
@@ -37,7 +38,7 @@ export function UrlBar({
   method,
   url,
   variables,
-  disabled,
+  inFlight,
   onMethodChange,
   onUrlChange,
   onSend,
@@ -46,8 +47,8 @@ export function UrlBar({
   method: string;
   url: string;
   variables?: readonly VariableRef[];
-  /** Send is disabled until increment 11 wires the sender. */
-  disabled?: boolean;
+  /** True while a send for this request is in flight. */
+  inFlight?: boolean;
   onMethodChange: (method: string) => void;
   onUrlChange: (url: string) => void;
   onSend?: () => void;
@@ -106,15 +107,18 @@ export function UrlBar({
 
       <button
         type="button"
-        disabled={disabled}
         onClick={onSend}
-        title={disabled ? "Sending arrives in increment 11" : `Send ${hint("↵")}`}
+        title={`Send ${hint("↵")}`}
         className={cn(
           "flex h-[30px] shrink-0 items-center gap-2 rounded-md px-3.5 text-ui font-semibold",
           "bg-primary text-primary-foreground hover:bg-primary-hover",
-          "disabled:opacity-40 disabled:hover:bg-primary",
         )}
       >
+        {/* The button stays Send while a send is in flight rather than
+            becoming Cancel: the response pane owns cancelling, and a button
+            that changes what it does under the cursor is how you cancel a
+            request you meant to resend. */}
+        {inFlight ? <Loader2 className="size-3.5 animate-spin" /> : null}
         Send
         <span className="font-mono text-label font-medium opacity-70">{hint("↵")}</span>
       </button>

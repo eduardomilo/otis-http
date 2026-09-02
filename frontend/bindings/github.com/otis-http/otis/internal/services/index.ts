@@ -6,6 +6,7 @@ import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
 import * as GitService from "./gitservice.js";
 import * as RequestService from "./requestservice.js";
+import * as SendService from "./sendservice.js";
 import * as SettingsService from "./settingsservice.js";
 export {
     AppService,
@@ -13,20 +14,34 @@ export {
     DialogService,
     GitService,
     RequestService,
+    SendService,
     SettingsService
 };
 
 export {
-    NodeKind
+    FailureKind,
+    NodeKind,
+    SendState
 } from "./models.js";
 
 export type {
     AuthHeader,
+    BodyChunk,
+    BodyInfo,
+    BodyLine,
+    BodyView,
     CollectionInfo,
+    Cookie,
     Counts,
     Document,
     Node,
     Opened,
+    ResponseMeta,
+    SendFailure,
+    SendStarted,
+    SentHeader,
+    SentRequest,
+    Timings,
     Tree,
     VariableRef,
     Warning

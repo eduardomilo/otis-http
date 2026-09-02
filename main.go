@@ -11,6 +11,7 @@ import (
 	cli "github.com/otis-http/otis/cmd/otis"
 	"github.com/otis-http/otis/internal/events"
 	"github.com/otis-http/otis/internal/git"
+	"github.com/otis-http/otis/internal/secrets"
 	"github.com/otis-http/otis/internal/services"
 	"github.com/otis-http/otis/internal/settings"
 )
@@ -41,6 +42,10 @@ func init() {
 	// registered type, and validating nil against an interface type
 	// dereferences a nil reflect.Type. Void is the type for "no payload".
 	application.RegisterEvent[application.Void](events.SettingsChanged)
+	application.RegisterEvent[services.SendStarted](events.SendStarted)
+	application.RegisterEvent[services.ResponseMeta](events.SendComplete)
+	application.RegisterEvent[services.SendFailure](events.SendError)
+	application.RegisterEvent[application.Void](events.SessionVarsChanged)
 }
 
 func main() {
@@ -63,6 +68,13 @@ func runGUI() {
 
 	dialogs := services.NewDialogService()
 	collections := services.NewCollectionService(store)
+	// One secret store for the process. It is the only place a real secret
+	// value is ever fetched; every read path the window can reach uses
+	// secrets.Placeholder instead. The OS keychain backend arrives in
+	// increment 12. The send service registers its own collection-close
+	// cleanup in ServiceStartup — cookies, AWS credentials, held responses and
+	// session variables all belong to the collection, not to the process.
+	sends := services.NewSendService(collections, secrets.NewMemory())
 
 	app := application.New(application.Options{
 		Name:        "Otis",
@@ -74,6 +86,7 @@ func runGUI() {
 			application.NewService(collections),
 			application.NewService(services.NewGitService(collections)),
 			application.NewService(services.NewRequestService(collections)),
+			application.NewService(sends),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

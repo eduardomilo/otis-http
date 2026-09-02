@@ -19,6 +19,10 @@ type Options struct {
 	// (<collection>/<env>/<name>). Defaults to the collection directory's
 	// base name when resolving through a collection.
 	Collection string
+	// Session supplies the variables a run set (§4.5). nil means the request
+	// resolves against the files and the environment only, which is the CLI's
+	// case and every case before the first run.
+	Session *Session
 	// Scope hooks for deterministic tests; nil means real clock/randomness.
 	Configure func(*Scope)
 }
@@ -94,7 +98,7 @@ func Request(node *collection.Node, opts Options) (*Resolved, error) {
 	if err != nil {
 		return nil, err
 	}
-	return resolveWith(node.Request, levels, eff, opts)
+	return resolveWith(node.Request, levels, eff, opts, node.ID)
 }
 
 // InCollection is Request with the collection key defaulted to the
@@ -112,8 +116,11 @@ func CollectionKey(c *collection.Collection) string {
 	return collection.BaseName(c.Dir)
 }
 
-func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Options) (*Resolved, error) {
+func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Options, requestID string) (*Resolved, error) {
 	scope := NewScope(levels, opts.Env, opts.Secrets, opts.Collection)
+	if opts.Session != nil {
+		scope.WithSession(opts.Session, FolderChain(requestID))
+	}
 	if opts.Configure != nil {
 		opts.Configure(scope)
 	}

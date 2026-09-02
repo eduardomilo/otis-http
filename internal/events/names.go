@@ -44,6 +44,32 @@ const (
 	// its own initiative — opening a collection updates the recents list, for
 	// example. The frontend re-reads settings; there is no payload.
 	SettingsChanged = "settings:changed"
+
+	// SendStarted is emitted once the request is on the wire, which is after
+	// it has been resolved and prepared — so a send that fails to resolve
+	// never starts. Payload: services.SendStarted, keyed by send ID.
+	//
+	// A send reports itself through events rather than through the return of
+	// SendService.Send because it can take thirty seconds, and a binding call
+	// that blocks for thirty seconds blocks the window. Send answers with an
+	// ID immediately; everything after that arrives here.
+	SendStarted = "send:started"
+
+	// SendComplete is emitted when a response has been read in full. Payload:
+	// services.ResponseMeta — everything but the body, which stays in Go and
+	// is paged through SendService.Lines.
+	SendComplete = "send:complete"
+
+	// SendError is emitted when a send produced no response: it did not
+	// resolve, it could not be prepared, the transport failed, it timed out,
+	// or it was cancelled. Payload: services.SendFailure, whose message is
+	// masked and never names a secret's value.
+	SendError = "send:error"
+
+	// SessionVarsChanged is emitted when the variables a run set changed — a
+	// run set one, or they were cleared (docs/FORMAT.md §4.5). The frontend
+	// re-reads them; there is no payload.
+	SessionVarsChanged = "session-vars:changed"
 )
 
 // Entry is one event in the Registry.
@@ -65,4 +91,8 @@ var Registry = []Entry{
 	{"CollectionChanged", CollectionChanged, "Emitted when the collection directory changed on disk. Payload: the whole Tree."},
 	{"GitChanged", GitChanged, "Emitted when the repository's HEAD or index changed. Payload: the git State."},
 	{"SettingsChanged", SettingsChanged, "Emitted when Go changed the persisted settings itself. No payload; re-read the settings."},
+	{"SendStarted", SendStarted, "Emitted once a request is on the wire. Payload: SendStarted, keyed by send ID."},
+	{"SendComplete", SendComplete, "Emitted when a response has been read in full. Payload: ResponseMeta; the body stays in Go."},
+	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
+	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
 }

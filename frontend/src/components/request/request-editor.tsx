@@ -14,6 +14,7 @@ import { splitUrl } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import { indexVariables } from "@/lib/variables";
 import { useDocument, useDocuments } from "@/state/documents-context";
+import { useSends } from "@/state/send-context";
 import type { Request } from "@bindings/internal/httpfile";
 import type { Document } from "@bindings/internal/services";
 
@@ -35,7 +36,9 @@ type PanelKey = "params" | "headers" | "body" | "auth" | "scripts";
 export function RequestEditor({ path }: { path: string }) {
   const state = useDocument(path);
   const { edit, save, reload, keepMine } = useDocuments();
+  const { send, get: getSend } = useSends();
   const [panel, setPanel] = useState<PanelKey>("body");
+  const inFlight = getSend(path)?.phase === "in-flight";
 
   const document = state?.loaded;
   const entry = entryOf(state?.draft, document?.index ?? 0);
@@ -87,10 +90,10 @@ export function RequestEditor({ path }: { path: string }) {
         method={entry.method ?? "GET"}
         url={url}
         variables={variables}
-        // Sending arrives in increment 11.
-        disabled
+        inFlight={inFlight}
         onMethodChange={(method) => onEdit((e) => ({ ...e, method }))}
         onUrlChange={(next) => onEdit((e) => ({ ...e, url: next }))}
+        onSend={() => void send(path)}
         onSave={() => void save(path)}
       />
 
@@ -132,6 +135,7 @@ export function RequestEditor({ path }: { path: string }) {
             mode={mode}
             variables={variables}
             onEdit={onEdit}
+            onSend={() => void send(path)}
             onSave={() => void save(path)}
           />
         </TabsContent>

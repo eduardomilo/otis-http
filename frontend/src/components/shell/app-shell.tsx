@@ -7,7 +7,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { CommandPalette } from "@/components/shell/command-palette";
-import { ResponsePane } from "@/components/shell/response-pane";
+import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
 import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
@@ -16,6 +16,7 @@ import { useRouteDocument } from "@/hooks/use-route-document";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
+import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
 
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
   const { closeActive, reopenLastClosed } = useTabs();
   const { saveActive } = useDocuments();
+  const { send } = useSends();
   const { tree } = useCollection();
   const routeDocument = useRouteDocument();
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
@@ -92,6 +94,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     // CodeMirror consumes ⌘S before the window sees it, so the request editor
     // binds this same call as an editor keymap too (see useKeymap).
     { key: "s", mod: true, run: () => void saveActive() },
+    // ⌘↵ sends from anywhere in the request view; the editors bind it too.
+    {
+      key: "Enter",
+      mod: true,
+      run: () => {
+        if (routeDocument?.kind === "request") void send(routeDocument.path);
+      },
+    },
     { key: "t", mod: true, shift: true, run: reopenLastClosed },
     { key: "1", mod: true, run: () => focusPane(sidebarPanel.current, sidebarPane.current) },
     { key: "2", mod: true, run: () => centerPane.current?.focus() },

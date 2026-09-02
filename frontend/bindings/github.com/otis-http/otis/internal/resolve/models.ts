@@ -169,10 +169,68 @@ export enum Origin {
     OriginEnv = "env",
 
     /**
+     * set by a run; in memory only (§4.5)
+     */
+    OriginSession = "session",
+
+    /**
      * {{$uuid}} and friends
      */
     OriginBuiltin = "builtin",
 };
+
+/**
+ * SessionScope is the level a session variable belongs to.
+ */
+export enum SessionScope {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * SessionFolder is a value set for one folder, visible to every request
+     * in it and below it. It is what the design's vars.folder.set writes.
+     */
+    SessionFolder = "folder",
+
+    /**
+     * SessionEnv is a value set for one environment, visible to every request
+     * resolved against it.
+     */
+    SessionEnv = "env",
+};
+
+/**
+ * SessionValue is one session variable, with where it came from.
+ * 
+ * Provenance is not decoration here. A session variable is the one value in
+ * the system that is in no file, so "who set this and when" is the only
+ * account of it there is — and the reason the design shows both beside every
+ * row (screen 3a: "orderId · set by create-order · 2h ago").
+ */
+export interface SessionValue {
+    "scope": SessionScope;
+
+    /**
+     * Owner is the folder's node ID for SessionFolder, or the environment
+     * name for SessionEnv.
+     */
+    "owner": string;
+    "name": string;
+    "value": string;
+
+    /**
+     * Origin is the node ID of the request whose run set the value, or "" if
+     * it was set outside a request.
+     */
+    "origin"?: string;
+
+    /**
+     * At is when it was set.
+     */
+    "at": string;
+}
 
 /**
  * Source identifies where a resolved value was defined.

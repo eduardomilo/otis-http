@@ -412,16 +412,24 @@ A name is looked up in this order; the first scope that defines it wins:
 
 1. `@var` declarations in the request file. Within a file the last
    declaration wins.
-2. `@var` declarations in `_folder.http` files, nearest folder first, up to
-   the root.
-3. The active environment (section 4.3).
+2. For each folder from the request's own up to the root:
+   a. the folder's **session** value for the name (section 4.5);
+   b. `@var` declarations in that folder's `_folder.http`.
+3. The **session** value for the active environment (section 4.5), then the
+   active environment itself (section 4.3).
 4. Builtins (section 4.4).
+
+Levels 2 and 3 interleave the session layer with the committed one rather than
+stacking it above: nearest definition wins, and at one level a session value
+beats the file. So `orders/_folder.http` declaring `currency` still beats a
+session value set for the root, and a session value set for `orders/` beats
+`orders/_folder.http`.
 
 A file-scoped value may itself contain references; they are resolved
 recursively against the full scope. A value that refers back to itself,
 directly or through other variables, is an error naming the chain
-(`variable cycle: a -> b -> a`). Environment values and secrets are
-literal and are not expanded.
+(`variable cycle: a -> b -> a`). Environment values, secrets and session
+values are literal and are not expanded.
 
 Every name that cannot be resolved is collected, and one error lists all
 of them in first-use order (`unresolved variables: host, token`). Unknown
@@ -465,6 +473,40 @@ Builtins are evaluated separately for each occurrence: two `{{$uuid}}` in
 one request yield two different values. JetBrains' parameterised forms such
 as `{{$random.integer(0, 100)}}` are not supported and are reported as
 unresolved.
+
+### 4.5 Session variables
+
+A **session variable** is a value a run sets, held in memory for as long as the
+collection is open. It is the only value in Otis that is in no file.
+
+```
+vars.folder.set("orderId", body.id)     sets it for the request's folder
+vars.env.set("cursor", body.next)       sets it for the active environment
+```
+
+- **Scope.** A session variable belongs either to one folder — visible to every
+  request in it and below it — or to one environment. Its place in resolution
+  is section 4.2. There is no session variable at request scope: a value that
+  lives for one execution is the script engine's business and never reaches
+  this layer.
+- **Never written.** Not to the collection, not to the settings file, not to a
+  log, not to an export. Closing the collection forgets every session
+  variable, and so does an explicit clear. A teammate who pulls the branch
+  sees no trace of one, which is what makes it safe for the id of an order
+  somebody created against staging five minutes ago.
+- **Provenance.** Every session variable records the request whose run set it
+  and the time it was set. Those are the whole account of a value that is in
+  no file, so a surface showing session variables shows both.
+- **Literal.** The value is used exactly as it was set. It is data a run
+  produced, not a template somebody wrote, so `{{` arriving in a response
+  cannot reach into the variable scope.
+- **Not a way to avoid committing configuration.** A session variable is
+  scratch state between requests. Anything a teammate needs belongs in
+  `_folder.http` or in an environment, where it is reviewable.
+
+Setting one is a script's job, and scripts do not run yet *(planned)*. The
+scope, the store and the read-only surface exist from Increment 11; the writer
+arrives with the script engine.
 
 ## 5. Secrets
 

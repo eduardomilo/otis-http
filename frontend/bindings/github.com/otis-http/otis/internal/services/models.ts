@@ -6,10 +6,16 @@
 import * as git$0 from "../git/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as httpclient$0 from "../httpclient/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as httpfile$0 from "../httpfile/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as resolve$0 from "../resolve/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as response$0 from "../response/models.js";
 
 /**
  * AuthHeader describes the Authorization header @auth becomes at send time.
@@ -29,6 +35,76 @@ export interface AuthHeader {
 }
 
 /**
+ * BodyChunk is a window of lines.
+ */
+export interface BodyChunk {
+    "sendId": string;
+    "view": response$0.ViewKind;
+    "from": number;
+    "lines": BodyLine[] | null;
+    "total": number;
+}
+
+/**
+ * BodyInfo says what the body is and how to ask for it.
+ */
+export interface BodyInfo {
+    /**
+     * Kind is "json", "xml" or "text": what the window colours it as.
+     */
+    "kind": response$0.Kind;
+
+    /**
+     * ContentType is the response's own header, verbatim.
+     */
+    "contentType": string;
+    "size": number;
+
+    /**
+     * HasPretty is whether a formatted view is worth asking for. Whether it
+     * succeeds is only known once it is built (a body can be labelled JSON
+     * and not parse), which is what BodyView reports.
+     */
+    "hasPretty": boolean;
+
+    /**
+     * UTF8 is false for a binary body, which the window shows as a summary
+     * rather than as text.
+     */
+    "utf8": boolean;
+}
+
+/**
+ * BodyLine is one display line with its fold, if it opens one.
+ */
+export interface BodyLine {
+    "text": string;
+
+    /**
+     * Fold is set on a line that opens a collapsible node.
+     */
+    "fold"?: response$0.Fold | null;
+}
+
+/**
+ * BodyView is one rendering, described. Lines is what a virtualizer needs.
+ */
+export interface BodyView {
+    "sendId": string;
+    "view": response$0.ViewKind;
+    "lines": number;
+    "bytes": number;
+
+    /**
+     * Unavailable is set when this rendering does not exist — a body that is
+     * not JSON after all, or one past the size where formatting is worth it.
+     * It is a fact about the body, not an error, so the raw view is still
+     * there and the message says which.
+     */
+    "unavailable"?: string;
+}
+
+/**
  * CollectionInfo describes the collection the window is showing. The zero
  * value — an empty Path — means no collection is open, which is the state
  * screen 2b renders.
@@ -43,6 +119,21 @@ export interface CollectionInfo {
      * Name is the collection's display name (collection.DisplayName).
      */
     "name": string;
+}
+
+/**
+ * Cookie is one cookie the response set.
+ */
+export interface Cookie {
+    "name": string;
+    "value": string;
+    "domain"?: string;
+    "path"?: string;
+    "expires"?: string;
+    "maxAge"?: number;
+    "secure"?: boolean;
+    "httpOnly"?: boolean;
+    "sameSite"?: string;
 }
 
 /**
@@ -168,6 +259,71 @@ export interface Document {
 }
 
 /**
+ * FailureKind classifies a send that produced no response.
+ * 
+ * The classes exist because the response pane renders them differently: a
+ * refused connection, an unknown host and an expired certificate need
+ * different things done about them, and "Error: dial tcp: ..." tells the
+ * reader to go and parse a Go error themselves.
+ */
+export enum FailureKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * the host does not resolve
+     */
+    FailDNS = "dns",
+
+    /**
+     * nothing is listening
+     */
+    FailRefused = "refused",
+
+    /**
+     * the certificate was rejected
+     */
+    FailTLS = "tls",
+
+    /**
+     * @timeout expired
+     */
+    FailTimeout = "timeout",
+
+    /**
+     * the user stopped it
+     */
+    FailCancelled = "cancelled",
+
+    /**
+     * too many hops
+     */
+    FailRedirect = "redirect",
+
+    /**
+     * a variable or secret is missing
+     */
+    FailResolve = "resolve",
+
+    /**
+     * the request could not be built
+     */
+    FailRequest = "request",
+
+    /**
+     * any other transport failure
+     */
+    FailNetwork = "network",
+
+    /**
+     * the file is not a sendable request
+     */
+    FailCollection = "collection",
+};
+
+/**
  * Node is one entry in the tree the sidebar renders.
  */
 export interface Node {
@@ -267,6 +423,183 @@ export enum NodeKind {
 export interface Opened {
     "collection": CollectionInfo;
     "tree": Tree;
+}
+
+/**
+ * ResponseMeta is everything about a response except the body.
+ */
+export interface ResponseMeta {
+    "sendId": string;
+
+    /**
+     * Path is the request's node ID.
+     */
+    "path": string;
+    "state": SendState;
+    "status": string;
+
+    /**
+     * StatusCode is 0 when there was no response.
+     */
+    "statusCode": number;
+    "proto": string;
+
+    /**
+     * Headers are the response headers in the order the server sent them
+     * where Go preserves it, else sorted; duplicates are kept.
+     */
+    "headers": SentHeader[] | null;
+    "cookies": Cookie[] | null;
+
+    /**
+     * Size is the body's length in bytes.
+     */
+    "size": number;
+
+    /**
+     * DurationMs is the whole exchange, including reading the body.
+     */
+    "durationMs": number;
+    "timing": Timings;
+
+    /**
+     * At is when the response completed, for the header row's clock.
+     */
+    "at": string;
+
+    /**
+     * Redirects lists followed hops.
+     */
+    "redirects"?: httpclient$0.Redirect[] | null;
+    "finalUrl": string;
+
+    /**
+     * Body describes the renderings available (see BodyInfo).
+     */
+    "body": BodyInfo;
+
+    /**
+     * Request is what went on the wire, masked.
+     */
+    "request": SentRequest;
+
+    /**
+     * Warnings are non-fatal notes from preparing the request.
+     */
+    "warnings"?: string[] | null;
+}
+
+/**
+ * SendFailure is the events.SendError payload. It never carries a secret: the
+ * message is masked, and a missing secret is named by key, never by value
+ * (docs/FORMAT.md §5).
+ */
+export interface SendFailure {
+    "sendId": string;
+    "path": string;
+    "kind": FailureKind;
+
+    /**
+     * Message is one line, already readable.
+     */
+    "message": string;
+
+    /**
+     * Detail is the longer explanation, when there is one worth showing.
+     */
+    "detail"?: string;
+
+    /**
+     * DurationMs is how long it took to fail.
+     */
+    "durationMs": number;
+    "at": string;
+}
+
+/**
+ * SendStarted is the events.SendStarted payload.
+ */
+export interface SendStarted {
+    "sendId": string;
+    "path": string;
+    "method": string;
+
+    /**
+     * URL is masked.
+     */
+    "url": string;
+    "at": string;
+
+    /**
+     * Env is the environment it resolved against, "" for none.
+     */
+    "env": string;
+}
+
+/**
+ * SendState is where a send has got to.
+ */
+export enum SendState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    SendInFlight = "in-flight",
+    SendComplete = "complete",
+    SendFailed = "failed",
+    SendCancelled = "cancelled",
+};
+
+/**
+ * SentHeader is one header as it went on the wire, masked.
+ */
+export interface SentHeader {
+    "name": string;
+
+    /**
+     * Value has every secret the request used replaced by the mask
+     * (docs/FORMAT.md §5). Masking is presentation only; the real value is
+     * what was sent.
+     */
+    "value": string;
+
+    /**
+     * Secret is true when masking changed the value, so the window can say
+     * why it is showing dots.
+     */
+    "secret": boolean;
+}
+
+/**
+ * SentRequest is what actually went out, masked.
+ * 
+ * It exists so the claim the Headers tab makes is checkable: "7 sent · 4 local
+ * · 3 inherited" is a prediction, and this is the record. They must agree, and
+ * a test asserts they do.
+ */
+export interface SentRequest {
+    "method": string;
+    "url": string;
+    "headers": SentHeader[] | null;
+
+    /**
+     * BodyBytes is the length of the body sent, after a "< ./file" body was
+     * read and variables were substituted.
+     */
+    "bodyBytes": number;
+}
+
+/**
+ * Timings is the exchange broken down, in milliseconds. Zero means "not
+ * observed" — DNS and connect are zero on a reused connection.
+ */
+export interface Timings {
+    "dnsMs": number;
+    "connectMs": number;
+    "tlsMs": number;
+    "ttfbMs": number;
+    "totalMs": number;
 }
 
 /**

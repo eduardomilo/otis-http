@@ -133,6 +133,17 @@ type Client struct {
 // ErrTooManyRedirects is returned when a chain exceeds MaxRedirects.
 var ErrTooManyRedirects = errors.New("too many redirects")
 
+// ErrTimeout wraps a failure caused by @timeout expiring. It is a sentinel
+// rather than a message so a caller can tell a timeout from a refused
+// connection without matching on prose — the response pane renders the two
+// differently, and a user who sees "timed out" needs to know it was not the
+// server saying no.
+var ErrTimeout = errors.New("request timed out")
+
+// ErrCancelled wraps a send the caller stopped. Distinct from a timeout: the
+// user asked, so it is not a failure to report.
+var ErrCancelled = errors.New("send cancelled")
+
 func (c *Client) transport() http.RoundTripper {
 	if c.Transport != nil {
 		return c.Transport
@@ -210,8 +221,11 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 	trace.start = start
 	hresp, err := hc.Do(hreq)
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("request timed out after %s", timeout)
+		// The transport reports a cancelled or expired context as its own
+		// error wrapping context's, which says nothing about which of the two
+		// it was. The context knows, so it is asked first.
+		if cause := classifyContext(ctx, timeout); cause != nil {
+			return nil, cause
 		}
 		return nil, err
 	}
@@ -224,8 +238,8 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 		buf.Grow(int(hresp.ContentLength))
 	}
 	if _, err := buf.ReadFrom(hresp.Body); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("request timed out after %s while reading the body", timeout)
+		if cause := classifyContext(ctx, timeout); cause != nil {
+			return nil, fmt.Errorf("reading the response body: %w", cause)
 		}
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -241,6 +255,18 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 	resp.Timing = trace.timing(total)
 	resp.FinalURL = hresp.Request.URL.String()
 	return resp, nil
+}
+
+// classifyContext turns a finished context into the error that explains why,
+// or nil when the context is still live and the failure was something else.
+func classifyContext(ctx context.Context, timeout time.Duration) error {
+	switch ctx.Err() {
+	case context.DeadlineExceeded:
+		return fmt.Errorf("%w after %s", ErrTimeout, timeout)
+	case context.Canceled:
+		return ErrCancelled
+	}
+	return nil
 }
 
 // traceState collects httptrace callbacks.
