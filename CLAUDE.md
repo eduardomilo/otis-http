@@ -26,15 +26,19 @@ lists the design decisions that are still open — do not resolve them silently.
   `request.go` is the request editor's: it loads a `.http` file with its
   inheritance and provenance, and is the only thing that writes one. `send.go`
   is the sender: it resolves, prepares and sends a request, holds the response
-  and pages it to the window.
+  and pages it to the window. `environment.go` is the environment editor's, and
+  the only thing that puts a secret into the keychain or takes one out.
 - `internal/httpfile/` — `.http` parser + serializer.
 - `internal/collection/` — the directory walk, `.order` and the node tree.
 - `internal/resolve/` — inheritance, `{{variable}}` resolution, environments,
   and the in-memory session store (`session.go`, docs/FORMAT.md §4.5).
 - `internal/secrets/` — the secret store behind a `{"$secret": "keychain"}`
-  reference, and `Placeholder`, the display-only store read paths resolve
-  against so no real lookup happens when the editor only needs to know that a
-  secret exists.
+  reference: `Keyring` (the OS credential store, via go-keyring, pure Go so
+  `CGO_ENABLED=0` still works, with a key index beside `settings.json` because
+  no keyring enumerates), `Memory`, `Fallback` (read through a list, which is
+  how the CLI puts `OTIS_SECRET_*` ahead of the keychain), and `Placeholder`,
+  the display-only store read paths resolve against so no real lookup happens
+  when the editor only needs to know that a secret exists.
 - `internal/httpclient/` — preparing and sending a resolved request, including
   AWS SigV4.
 - `internal/response/` — a response body held in Go, formatted and indexed by
@@ -72,10 +76,16 @@ lists the design decisions that are still open — do not resolve them silently.
   - `components/response/` — the right pane: `response-pane` (status line and
     sub-tabs), `body-view` (the windowed body, whose lines come from Go) and
     `failure-view` (a send that produced no response, by failure kind).
+  - `components/environment/` — the centre pane for `/env/$name`:
+    `environment-editor` (the variable table), `secret-detail` (the split panel
+    of screen 1c), `secret-value-dialog` (the one place a value travels *in*)
+    and `environment-list` (the sidebar, which replaces the tree on this route).
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
-    `send-context`), each exporting a `useXxx` hook that throws outside its
-    provider. Providers are composed in `routes/__root.tsx`;
+    `send-context`, `environment-context`), each exporting a `useXxx` hook
+    that throws outside its provider. Providers are composed in
+    `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
+    because which environment is active decides how every document resolves;
     `documents-context` sits inside `tabs-context`, because a draft is what
     makes a tab dirty, and `send-context` inside both, because the response
     pane shows whatever the active tab is showing.
@@ -127,6 +137,13 @@ lists the design decisions that are still open — do not resolve them silently.
   whenever the expansion consumed a secret (a file variable that resolves to
   one *is* that secret), and `secrets.Placeholder`, the display-only store the
   editor resolves against so no real lookup happens on a read path.
+  `EnvironmentRow.Value` is empty for a secret rather than holding a mask: a
+  field that sometimes holds dots and sometimes a value is one refactor from
+  shipping the value, so the window is told `secret: true` and draws the dots
+  itself. Values travel *in* only — the user types one and it goes window → Go
+  → keychain — and the design's `Reveal` is `CopySecretValue`, which writes the
+  system clipboard from Go (DESIGN-NOTES §9.12). The key index beside
+  `settings.json` holds keys and nothing else; a test asserts it.
 - **Go's serializer is the only writer of a `.http` file.** The editor edits
   the parsed model and hands it back to `RequestService.Save`, which
   serializes it. A second formatter in the frontend would mean two answers to
@@ -188,7 +205,8 @@ lists the design decisions that are still open — do not resolve them silently.
   on-disk form for a disabled *local* header, so the Headers tab renders that
   checkbox and disables it with a title saying why; `!inherit` is not
   borrowed for it, because §3.2 gives that value one meaning. The Params tab
-  has no checkbox at all for the same reason.
+  has no checkbox at all for the same reason, and the environment table takes
+  the Headers tab's treatment — §9.5 names that table too.
 - A node's collection-relative path travels in routes as a single dynamic
   segment; build links with `nodeLink`/`nodeRoute` from `@/lib/paths` and let the
   router do the percent-encoding.

@@ -14,6 +14,7 @@ import { UnsavedChangesDialog, type DiscardChoice } from "@/components/request/u
 import { OtisEvent } from "@/lib/events.gen";
 import { sameFile } from "@/lib/http-file";
 import { useCollection } from "@/state/collection-context";
+import { useEnvironments } from "@/state/environment-context";
 import { useTabs } from "@/state/tabs-context";
 import { RequestService } from "@bindings/internal/services";
 import type { Document } from "@bindings/internal/services";
@@ -95,10 +96,9 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Record<string, DocumentState>>({});
   const [discard, setDiscard] = useState<DiscardRequest | null>(null);
 
-  // Environments arrive in increment 12; until then variables resolve against
-  // the file and folder scopes only, which is exactly what "no environment
-  // active" means (docs/FORMAT.md §4.2).
-  const env = "";
+  // The active environment; "" means the file and folder scopes only, which
+  // is what "no environment active" means (docs/FORMAT.md §4.2).
+  const { active: env } = useEnvironments();
 
   // Paths with a write in flight. A save re-walks the collection and announces
   // it, which would otherwise come back as a conflict with the very bytes that

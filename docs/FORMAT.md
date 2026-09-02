@@ -459,6 +459,46 @@ request tree. Each is a flat JSON object:
   backend name is accepted.
 - The environment name is the file name without `.json`. It must not
   contain path separators.
+- Keys beginning with `$` are **reserved**. `$otis` is the only one defined
+  (below); any other is an error naming the key. Nothing reserved is a
+  variable: `$otis` is not in scope, and `{{$otis}}` is an unresolved
+  reference like any other unknown `$builtin` (section 4.4).
+
+**Environment settings (`$otis`).** An environment may carry its own
+settings under the reserved key `$otis`, an object with these fields, all
+optional:
+
+```json
+{
+  "$otis": {"confirmBeforeSend": true, "description": "production"},
+  "baseUrl": "https://api.acme.dev"
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `confirmBeforeSend` | boolean | Ask for a confirmation before every send resolved against this environment. This is what marks production. |
+| `description` | string | A one-line note shown beside the environment. |
+
+An unknown field inside `$otis` is preserved and ignored, the same way an
+unknown directive is (section 1.4).
+
+These are **committed**, deliberately. Whether an environment is the
+dangerous one is a fact about the environment, not a per-machine
+preference: the whole team should get the same confirmation on the same
+environment, a new clone should get it without configuring anything, and
+turning it off should show up in review. Which environment is *active*, by
+contrast, is per-machine and is not in the collection at all — one person
+works against staging while another is on local, from the same branch — so
+it lives in the settings file.
+
+**Canonical form.** Otis writes an environment file with a two-space
+indent, one key per line, in the file's own key order with new keys
+appended after it (sorted), each value in the JSON shape it was read as,
+and `$otis` first when there is one. Parsing a canonical file and writing
+it back produces identical bytes, so changing one variable does not
+reshuffle a teammate's file or turn `8443` into `"8443"` — the same bargain
+section 1.13 makes for a `.http` file.
 
 ### 4.4 Builtins
 
@@ -518,8 +558,19 @@ the user's machine and looked up by the key
 <collection>/<env>/<name>
 ```
 
-where `<collection>` is the base name of the collection's root directory,
-`<env>` the environment name and `<name>` the variable name.
+where `<collection>` is the collection's **display name**, `<env>` the
+environment name and `<name>` the variable name.
+
+The display name is the root directory's base name, except for a
+dot-directory, where it is the parent's name: a collection rooted at
+`~/code/acme-api/.requests` is `acme-api`, so its staging API key is stored
+under `acme-api/staging/apiKey`. The parent's name rather than the literal
+one, because a collection kept beside the code it exercises is conventionally
+called `.requests` — and keying on that would give every such collection on
+the machine the same key, so two projects would share one entry per
+environment and variable, and opening the second would resolve the first's
+credential. The cost of the rule is that moving or renaming the directory a
+collection lives in moves its secrets, and they have to be set again.
 
 Rules:
 

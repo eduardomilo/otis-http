@@ -66,6 +66,20 @@ export interface Settings {
      * launch, or "" for none.
      */
     "lastCollection": string;
+
+    /**
+     * ActiveEnv is the environment selected in LastCollection, or "" for
+     * none. Which environment is active is a per-machine choice, not a
+     * property of the collection — one person works against staging while
+     * another is on local, from the same branch — so it lives here rather
+     * than in a committed file. It is cleared when the collection changes,
+     * for the same reason the tabs are: an environment names a file inside
+     * one collection.
+     * 
+     * Only the *name* is ever written here. A secret value never reaches this
+     * file (docs/FORMAT.md §5).
+     */
+    "activeEnv": string;
 }
 
 /**

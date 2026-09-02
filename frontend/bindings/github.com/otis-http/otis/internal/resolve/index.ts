@@ -3,6 +3,7 @@
 
 export {
     AuthKind,
+    EnvKind,
     HeaderState,
     Origin,
     SessionScope

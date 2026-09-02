@@ -7,6 +7,12 @@ export interface RouteDocument {
   kind: "request" | "folder" | "diff" | "environment";
   /** The node's collection-relative path, or the environment file's path. */
   path: string;
+  /**
+   * The environment's name, on an environment route only. The path is the
+   * file (`env/staging.json`) because that is what the status bar names, and
+   * the name is what every binding takes.
+   */
+  name?: string;
 }
 
 const KIND_BY_ROUTE: Record<string, RouteDocument["kind"]> = {
@@ -29,7 +35,7 @@ export function useRouteDocument(): RouteDocument | null {
         if (kind) return { kind, path: (match.params as { path: string }).path };
         if (match.routeId === "/env/$name") {
           const { name } = match.params as { name: string };
-          return { kind: "environment" as const, path: `env/${name}.json` };
+          return { kind: "environment" as const, path: `env/${name}.json`, name };
         }
       }
       return null;

@@ -90,6 +90,28 @@ export interface Effective {
 }
 
 /**
+ * EnvKind is the JSON shape a value was written as. It is recorded so writing
+ * the file back preserves it: docs/FORMAT.md §4.3 says a number is used as
+ * written, and turning 8443 into "8443" on the first save would be exactly the
+ * kind of gratuitous diff §1.13 exists to prevent.
+ */
+export enum EnvKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    EnvString = "string",
+    EnvNumber = "number",
+    EnvBool = "bool",
+
+    /**
+     * EnvSecret is a {"$secret": "keychain"} reference.
+     */
+    EnvSecret = "secret",
+};
+
+/**
  * Header is an effective header with provenance.
  */
 export interface Header {

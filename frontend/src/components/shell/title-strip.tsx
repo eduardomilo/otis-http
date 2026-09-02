@@ -1,6 +1,4 @@
-import { ChevronDown } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { EnvironmentChip } from "@/components/shell/environment-chip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,32 +44,7 @@ export function TitleStrip({
         )}
       </div>
 
-      <EnvironmentChip />
+      <EnvironmentChip enabled={name !== null} />
     </header>
-  );
-}
-
-/**
- * The environment selector. Environments are Phase C, so this is the disabled
- * chip screen 2b shows: an em dash and no menu. The design maps it to a
- * shadcn Select (DESIGN-NOTES §6) once there is something to select.
- */
-function EnvironmentChip() {
-  return (
-    <div
-      className="flex shrink-0 items-center gap-2 pr-3 pl-2"
-      style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
-    >
-      <span className="text-meta text-fg-faint">env</span>
-      <Button
-        type="button"
-        disabled
-        title="Environments arrive in Phase C"
-        className="h-6 rounded-md border border-border-control bg-control px-2 font-mono text-ui text-fg-dim hover:bg-control disabled:opacity-100"
-      >
-        —
-        <ChevronDown className="size-3 text-fg-faint" />
-      </Button>
-    </div>
   );
 }

@@ -4,6 +4,7 @@
 import * as AppService from "./appservice.js";
 import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
+import * as EnvironmentService from "./environmentservice.js";
 import * as GitService from "./gitservice.js";
 import * as RequestService from "./requestservice.js";
 import * as SendService from "./sendservice.js";
@@ -12,6 +13,7 @@ export {
     AppService,
     CollectionService,
     DialogService,
+    EnvironmentService,
     GitService,
     RequestService,
     SendService,
@@ -34,6 +36,11 @@ export type {
     Cookie,
     Counts,
     Document,
+    EnvironmentDocument,
+    EnvironmentRow,
+    EnvironmentSummary,
+    Environments,
+    KeychainState,
     Node,
     Opened,
     ResponseMeta,

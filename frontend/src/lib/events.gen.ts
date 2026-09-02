@@ -23,6 +23,8 @@ export const OtisEvent = {
   SendError: "send:error",
   /** Emitted when the variables a run set changed. No payload; re-read them. */
   SessionVarsChanged: "session-vars:changed",
+  /** Emitted when the environments or the active one changed. Payload: Environments; never a secret value. */
+  EnvironmentsChanged: "environments:changed",
 } as const;
 
 export type OtisEventName = (typeof OtisEvent)[keyof typeof OtisEvent];

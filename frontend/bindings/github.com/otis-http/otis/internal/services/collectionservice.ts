@@ -92,6 +92,21 @@ export function OnClose(fn: any): $CancellablePromise<void> {
 }
 
 /**
+ * OnDiskChange registers a function to run when something in the collection
+ * directory changed underneath Otis — the watcher's report, not a write Otis
+ * made itself.
+ * 
+ * It is how a service that owns part of the collection the *tree* does not
+ * cover gets told to re-read: env/ is not part of the tree (docs/FORMAT.md
+ * §2.1), so events.CollectionChanged says nothing about an environment file
+ * somebody edited in another editor. A write Otis makes announces itself
+ * instead (see Refresh), so these do not fire for it.
+ */
+export function OnDiskChange(fn: any): $CancellablePromise<void> {
+    return $Call.ByID(4032293140, fn);
+}
+
+/**
  * Open makes dir the current collection: it walks the tree, reads the
  * repository, starts watching for changes, records dir in the recents list and
  * as the collection to reopen next launch, then emits events.CollectionOpened.

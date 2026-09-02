@@ -110,10 +110,25 @@ func InCollection(c *collection.Collection, node *collection.Node, opts Options)
 	return Request(node, opts)
 }
 
-// CollectionKey is the key under which a collection's secrets are stored:
-// the base name of its root directory.
+// CollectionKey is the collection component of the key its secrets are stored
+// under: the collection's display name (docs/FORMAT.md §5).
+//
+// The display name, not the raw base name, and the difference matters now that
+// the store is a real machine-wide keychain. A collection kept beside the code
+// it exercises is conventionally called ".requests", so the raw base name
+// would key *every* such collection on the machine identically: project A's
+// "staging/apiKey" and project B's would be one keychain entry, and opening B
+// would silently resolve A's credential. The display name walks up out of a
+// dot-directory, which is also what the design specifies — screen 1c shows the
+// service string "acme-api/staging/apiKey" for a collection rooted at
+// "~/code/acme-api/.requests".
+//
+// The cost is that renaming the directory the collection sits in moves its
+// secrets, and they have to be set again. That is the smaller of the two
+// problems, and it is visible when it happens; a silent collision between two
+// projects is neither.
 func CollectionKey(c *collection.Collection) string {
-	return collection.BaseName(c.Dir)
+	return collection.DisplayName(c.Dir)
 }
 
 func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Options, requestID string) (*Resolved, error) {

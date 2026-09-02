@@ -63,6 +63,9 @@ type CollectionService struct {
 	generation uint64
 	// onClose are the functions that drop per-collection state (see OnClose).
 	onClose []func()
+	// onDiskChange are the functions told about a change the watcher saw (see
+	// OnDiskChange).
+	onDiskChange []func()
 }
 
 // NewCollectionService constructs the service around the shared settings
@@ -83,6 +86,31 @@ func (s *CollectionService) OnClose(fn func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onClose = append(s.onClose, fn)
+}
+
+// OnDiskChange registers a function to run when something in the collection
+// directory changed underneath Otis — the watcher's report, not a write Otis
+// made itself.
+//
+// It is how a service that owns part of the collection the *tree* does not
+// cover gets told to re-read: env/ is not part of the tree (docs/FORMAT.md
+// §2.1), so events.CollectionChanged says nothing about an environment file
+// somebody edited in another editor. A write Otis makes announces itself
+// instead (see Refresh), so these do not fire for it.
+func (s *CollectionService) OnDiskChange(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onDiskChange = append(s.onDiskChange, fn)
+}
+
+// diskChanged runs the OnDiskChange functions.
+func (s *CollectionService) diskChanged() {
+	s.mu.RLock()
+	fns := append([]func(){}, s.onDiskChange...)
+	s.mu.RUnlock()
+	for _, fn := range fns {
+		fn()
+	}
 }
 
 // closing runs the OnClose functions.
@@ -181,9 +209,10 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 
 	if _, err := s.settings.Update(func(v *settings.Settings) {
 		if v.LastCollection != abs {
-			// Tabs name paths inside a collection, so they do not survive
-			// switching to a different one.
+			// Tabs and the active environment name paths inside a collection,
+			// so they do not survive switching to a different one.
 			v.Tabs = settings.Tabs{}
+			v.ActiveEnv = ""
 		}
 		v.LastCollection = abs
 		v.AddRecent(opened.Name, abs, time.Now())
@@ -213,6 +242,7 @@ func (s *CollectionService) Close() error {
 	if _, err := s.settings.Update(func(v *settings.Settings) {
 		v.LastCollection = ""
 		v.Tabs = settings.Tabs{}
+		v.ActiveEnv = ""
 	}); err != nil {
 		s.logError("clearing the last collection", err)
 	} else {
@@ -353,6 +383,11 @@ func (s *CollectionService) onChange(root string, generation uint64, change watc
 		} else if s.isCurrent(root, generation) {
 			s.cache(root, loaded)
 			s.emit(events.CollectionChanged, tree)
+		}
+		// The tree does not cover every file in a collection: env/ is
+		// outside it, so whoever owns those has to be told separately.
+		if s.isCurrent(root, generation) {
+			s.diskChanged()
 		}
 	}
 	if change.Git {

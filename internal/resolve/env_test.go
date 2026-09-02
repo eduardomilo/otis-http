@@ -20,11 +20,11 @@ func TestParseEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]EnvValue{
-		"baseUrl": {Value: "https://dev.example.com"},
-		"port":    {Value: "8443"},
-		"ratio":   {Value: "0.50"},
-		"debug":   {Value: "true"},
-		"token":   {Secret: true},
+		"baseUrl": {Value: "https://dev.example.com", Kind: EnvString},
+		"port":    {Value: "8443", Kind: EnvNumber},
+		"ratio":   {Value: "0.50", Kind: EnvNumber},
+		"debug":   {Value: "true", Kind: EnvBool},
+		"token":   {Secret: true, Kind: EnvSecret},
 	}
 	if !reflect.DeepEqual(env.Values, want) {
 		t.Errorf("values = %+v\nwant %+v", env.Values, want)
@@ -93,5 +93,148 @@ func TestLoadAndListEnvironments(t *testing.T) {
 		if _, err := LoadEnvironment(dir, bad); err == nil || !strings.Contains(err.Error(), "invalid environment name") {
 			t.Errorf("%q: error = %v", bad, err)
 		}
+	}
+}
+
+// The round-trip guarantee docs/FORMAT.md §4.3 makes for an environment file,
+// which is the same bargain §1.13 makes for a .http file: parsing a canonical
+// file and writing it back produces identical bytes. Without it, changing one
+// variable reshuffles every key and turns 8443 into "8443".
+func TestEnvironmentMarshalRoundTripsCanonicalBytes(t *testing.T) {
+	canonical := `{
+  "$otis": {"confirmBeforeSend":true,"description":"production"},
+  "baseUrl": "https://prod.example.com",
+  "port": 8443,
+  "ratio": 0.50,
+  "debug": true,
+  "token": {"$secret": "keychain"},
+  "query": "a=1&b=2"
+}
+`
+	env, err := ParseEnvironment("prod", []byte(canonical))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(env.Marshal()); got != canonical {
+		t.Errorf("Marshal =\n%s\nwant\n%s", got, canonical)
+	}
+	// A second pass must be a fixed point too.
+	again, err := ParseEnvironment("prod", env.Marshal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(again.Marshal()); got != canonical {
+		t.Errorf("second Marshal =\n%s\nwant\n%s", got, canonical)
+	}
+}
+
+// A URL's & must survive as an &: encoding/json escapes HTML by default, which
+// would rewrite every query string in a file people read in review.
+func TestEnvironmentMarshalDoesNotEscapeHTML(t *testing.T) {
+	env := &Environment{
+		Name:   "dev",
+		Values: map[string]EnvValue{"url": {Value: "https://x.test/?a=1&b=<2>"}},
+		Order:  []string{"url"},
+	}
+	if got := string(env.Marshal()); !strings.Contains(got, `"https://x.test/?a=1&b=<2>"`) {
+		t.Errorf("Marshal = %s", got)
+	}
+}
+
+// A variable the editor adds goes at the end, where somebody adding one by
+// hand would put it — it does not reshuffle the file.
+func TestEnvironmentMarshalAppendsNewKeysAfterTheFileOrder(t *testing.T) {
+	env, err := ParseEnvironment("dev", []byte("{\n  \"zeta\": \"1\",\n  \"alpha\": \"2\"\n}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env.Values["mid"] = EnvValue{Value: "3"}
+	env.Values["new"] = EnvValue{Value: "4"}
+	want := `{
+  "zeta": "1",
+  "alpha": "2",
+  "mid": "3",
+  "new": "4"
+}
+`
+	if got := string(env.Marshal()); got != want {
+		t.Errorf("Marshal =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// $otis is settings, not a variable: it must not appear as a resolvable name,
+// and it must not be written back when it holds nothing.
+func TestEnvironmentMetaIsNotAVariable(t *testing.T) {
+	env, err := ParseEnvironment("prod", []byte(`{"$otis": {"confirmBeforeSend": true}, "host": "x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !env.Meta.ConfirmBeforeSend {
+		t.Error("ConfirmBeforeSend was not read")
+	}
+	if _, ok := env.Values[MetaKey]; ok {
+		t.Error("$otis leaked into Values")
+	}
+	if got := env.Names(); !reflect.DeepEqual(got, []string{"host"}) {
+		t.Errorf("Names = %v, want just the variable", got)
+	}
+
+	env.Meta = EnvMeta{}
+	if got := string(env.Marshal()); strings.Contains(got, MetaKey) {
+		t.Errorf("an empty $otis was written: %s", got)
+	}
+}
+
+// The "$" namespace is reserved so a later version can add a second settings
+// key without migrating any collection.
+func TestEnvironmentRejectsOtherReservedKeys(t *testing.T) {
+	for _, key := range []string{"$other", "$", "$secret"} {
+		if _, err := ParseEnvironment("dev", []byte(`{"`+key+`": "x"}`)); err == nil {
+			t.Errorf("ParseEnvironment with the key %q should fail", key)
+		}
+	}
+}
+
+// A "$otis" field this version does not know is preserved, not dropped: the
+// same bargain §1.4 makes for an unknown directive. Otherwise opening a
+// collection in an older Otis and changing one variable would silently delete
+// a setting a newer one wrote.
+func TestEnvironmentPreservesUnknownMetaFields(t *testing.T) {
+	env, err := ParseEnvironment("prod", []byte(
+		`{"$otis": {"confirmBeforeSend": true, "fromTheFuture": {"a": [1,2]}}, "host": "x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !env.Meta.ConfirmBeforeSend {
+		t.Error("the known field was not read")
+	}
+	if len(env.Meta.Extra) != 1 {
+		t.Fatalf("Extra = %v, want the unknown field kept", env.Meta.Extra)
+	}
+
+	// Changing a variable must not cost the unknown field.
+	env.Values["host"] = EnvValue{Value: "y", Kind: EnvString}
+	out := string(env.Marshal())
+	if !strings.Contains(out, `"fromTheFuture":{"a": [1,2]}`) {
+		t.Errorf("the unknown field was dropped:\n%s", out)
+	}
+	if !strings.Contains(out, `"confirmBeforeSend":true`) {
+		t.Errorf("the known field was dropped:\n%s", out)
+	}
+
+	// And it survives a second round trip unchanged.
+	again, err := ParseEnvironment("prod", []byte(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again.Marshal()) != out {
+		t.Errorf("not a fixed point:\n%s\n%s", again.Marshal(), out)
+	}
+}
+
+func TestEnvironmentMarshalIsEmptyObjectForNoValues(t *testing.T) {
+	env := &Environment{Name: "dev", Values: map[string]EnvValue{}}
+	if got := string(env.Marshal()); got != "{\n}\n" {
+		t.Errorf("Marshal = %q", got)
 	}
 }

@@ -10,15 +10,16 @@ import (
 // The registry and the constants must not drift apart.
 func TestRegistryCoversEveryConstant(t *testing.T) {
 	want := map[string]string{
-		"AppReady":           AppReady,
-		"CollectionOpened":   CollectionOpened,
-		"CollectionChanged":  CollectionChanged,
-		"GitChanged":         GitChanged,
-		"SettingsChanged":    SettingsChanged,
-		"SendStarted":        SendStarted,
-		"SendComplete":       SendComplete,
-		"SendError":          SendError,
-		"SessionVarsChanged": SessionVarsChanged,
+		"AppReady":            AppReady,
+		"CollectionOpened":    CollectionOpened,
+		"CollectionChanged":   CollectionChanged,
+		"GitChanged":          GitChanged,
+		"SettingsChanged":     SettingsChanged,
+		"SendStarted":         SendStarted,
+		"SendComplete":        SendComplete,
+		"SendError":           SendError,
+		"SessionVarsChanged":  SessionVarsChanged,
+		"EnvironmentsChanged": EnvironmentsChanged,
 	}
 	if len(Registry) != len(want) {
 		t.Fatalf("Registry has %d entries, want %d", len(Registry), len(want))

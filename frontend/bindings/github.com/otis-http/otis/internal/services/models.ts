@@ -259,6 +259,115 @@ export interface Document {
 }
 
 /**
+ * EnvironmentDocument is one environment open in the editor.
+ */
+export interface EnvironmentDocument {
+    "name": string;
+    "path": string;
+    "active": boolean;
+    "confirmBeforeSend": boolean;
+    "description"?: string;
+    "rows": EnvironmentRow[] | null;
+    "variables": number;
+    "secrets": number;
+
+    /**
+     * ReferencedBy is how many requests in the collection mention at least
+     * one of this environment's variables (screen 1c's status bar). See
+     * resolve.ReferencedNames for what "mention" means and why it is not the
+     * same as "resolve from here".
+     */
+    "referencedBy": number;
+    "keychain": KeychainState;
+}
+
+/**
+ * EnvironmentRow is one variable in the editor's table (screen 1c).
+ */
+export interface EnvironmentRow {
+    "name": string;
+
+    /**
+     * Value is the literal value — and is **empty for a secret**, always.
+     * 
+     * Not a mask: a mask is a string, and a string that sometimes holds a
+     * value and sometimes holds dots is one refactor away from shipping the
+     * value. The window is told Secret is true and draws the dots itself
+     * (DESIGN-NOTES §8.3), so there is no path by which a resolved secret
+     * value can reach it.
+     */
+    "value": string;
+    "secret": boolean;
+
+    /**
+     * Present reports that a secret reference has a value in this machine's
+     * keychain. False means a teammate committed the reference and this
+     * machine has never been given the value — which the editor has to be
+     * able to say, because it is the difference between "ready" and "this
+     * request will fail".
+     */
+    "present": boolean;
+
+    /**
+     * Key is the keychain key, <collection>/<env>/<name>. It is public: the
+     * design puts it on screen (screen 1c), and every part of it is already
+     * committed.
+     */
+    "key": string;
+
+    /**
+     * Kind is the JSON shape the value is written as: a number stays a
+     * number in the file.
+     */
+    "kind": resolve$0.EnvKind;
+}
+
+/**
+ * EnvironmentSummary is one row of the environment list (screen 1c's sidebar).
+ */
+export interface EnvironmentSummary {
+    "name": string;
+
+    /**
+     * Path is relative to the collection root, e.g. "env/staging.json".
+     */
+    "path": string;
+    "variables": number;
+    "secrets": number;
+    "active": boolean;
+
+    /**
+     * ConfirmBeforeSend is the environment's own "$otis" setting
+     * (docs/FORMAT.md §4.3). It is what paints the row's dot as production.
+     */
+    "confirmBeforeSend": boolean;
+    "description"?: string;
+
+    /**
+     * ReferencedBy is how many requests in the collection mention at least
+     * one of this environment's variables. See referenceCounts.
+     */
+    "referencedBy": number;
+
+    /**
+     * Error is the parse error for a file that could not be read. The row
+     * still appears: an environment you cannot parse is exactly the one you
+     * need to see in order to fix it.
+     */
+    "error"?: string;
+}
+
+/**
+ * Environments is the whole environment surface in one payload: the list, the
+ * active one, and whether this machine can reach a keychain at all.
+ */
+export interface Environments {
+    "active": string;
+    "items": EnvironmentSummary[] | null;
+    "keychain": KeychainState;
+}
+
+/**
  * FailureKind classifies a send that produced no response.
  * 
  * The classes exist because the response pane renders them differently: a
@@ -322,6 +431,25 @@ export enum FailureKind {
      */
     FailCollection = "collection",
 };
+
+/**
+ * KeychainState is what the window may say about the machine's credential
+ * store.
+ * 
+ * Unavailable is a normal state, not an error (secrets.ErrUnavailable): a
+ * collection whose environments reference secrets is still perfectly readable,
+ * because the references are the part that is committed. The editor then shows
+ * the references and says the values cannot be reached, rather than refusing.
+ */
+export interface KeychainState {
+    "available": boolean;
+
+    /**
+     * Reason explains an unavailable keychain, in words a person can act on.
+     * It never names a key's value, because there is none to name.
+     */
+    "reason"?: string;
+}
 
 /**
  * Node is one entry in the tree the sidebar renders.

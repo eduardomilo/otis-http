@@ -16,6 +16,7 @@ import { useRouteDocument } from "@/hooks/use-route-document";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
+import { useEnvironments } from "@/state/environment-context";
 import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
@@ -48,8 +49,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { saveActive } = useDocuments();
   const { send } = useSends();
   const { tree } = useCollection();
+  const { environments } = useEnvironments();
   const routeDocument = useRouteDocument();
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
+
+  // On an environment route the sidebar shows the environment list instead of
+  // the tree (screen 1c), and the status bar names the file rather than a node.
+  const environment = routeDocument?.kind === "environment" ? routeDocument.name : null;
+  const environmentRow = environment
+    ? (environments.find((e) => e.name === environment) ?? null)
+    : null;
 
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const responsePanel = useRef<PanelImperativeHandle>(null);
@@ -184,7 +193,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             collapsedSize={0}
           >
             <div ref={sidebarPane} tabIndex={-1} className="h-full outline-none">
-              <Sidebar ref={filterInput} activePath={routeDocument?.path ?? ""} />
+              <Sidebar
+                ref={filterInput}
+                activePath={routeDocument?.path ?? ""}
+                environment={environment}
+              />
             </div>
           </ResizablePanel>
 
@@ -218,6 +231,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         git={tree?.git ?? null}
         file={routeDocument?.path ?? null}
         gitStatus={document?.gitStatus ?? null}
+        // §8.4: the right slot is a one-line summary of the current view.
+        // Screen 1c's is "Referenced by 23 requests", which Go counts.
+        context={
+          environmentRow
+            ? referencedBy(environmentRow.referencedBy)
+            : null
+        }
       />
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
@@ -234,6 +254,11 @@ function PaneHandle() {
   return (
     <ResizableHandle className="w-px bg-border transition-colors after:w-[7px] hover:bg-border-strong data-[resizing]:bg-border-strong" />
   );
+}
+
+/** Screen 1c's status-bar summary. The count is exact (DESIGN-NOTES §8.5). */
+function referencedBy(count: number): string {
+  return `Referenced by ${count} ${count === 1 ? "request" : "requests"}`;
 }
 
 /** Expands a collapsed pane before focusing it, so ⌘1/⌘3 always land. */

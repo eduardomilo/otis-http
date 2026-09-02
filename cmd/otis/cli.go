@@ -116,13 +116,21 @@ func FindRoot(dir string) string {
 	}
 }
 
+// hasMarker reports whether dir looks like part of a collection, which is
+// what lets the walk in FindRoot cross into it.
+//
+// env/ counts, and has to: a collection root commonly carries nothing but
+// env/ and its folders — the design's own `acme-api/.requests` is exactly
+// that — and without this the walk stops at the request's own folder and the
+// root holding env/ is never even tested. `otis run -e staging` then reports
+// the environment as missing while looking at it from one level down.
 func hasMarker(dir string) bool {
 	for _, name := range []string{collection.FolderFileName, collection.OrderFileName} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			return true
 		}
 	}
-	return false
+	return isDir(filepath.Join(dir, collection.EnvDirName))
 }
 
 func isDir(path string) bool {
@@ -130,16 +138,24 @@ func isDir(path string) bool {
 	return err == nil && st.IsDir()
 }
 
-// loadEnv loads the named environment from the collection and stocks an
-// in-memory secret store from OTIS_SECRET_* environment variables.
+// loadEnv loads the named environment from the collection and builds the
+// secret store: OTIS_SECRET_* environment variables first, then this machine's
+// OS keychain (docs/FORMAT.md §5).
+//
+// That order is the point. CI has no keychain and supplies secrets as
+// environment variables, so those must work with none present; a developer
+// running `otis run` locally has the values the window put in the keychain and
+// should not have to export them again. Environment variables winning also
+// means a one-off override is a prefix on the command line, which is what
+// anybody would expect.
 //
 // Names are matched leniently: both the suffix and the variable name are
 // converted to SCREAMING_SNAKE_CASE, so OTIS_SECRET_API_KEY supplies apiKey,
 // api-key, api.key, API_KEY or ApiKey.
 //
-// Secrets that no environment variable supplies are returned in missing (as
-// the variable names). That is not fatal: the request may never reference
-// them. secretEnvHint turns one into advice if resolution does fail.
+// Secrets that neither source supplies are returned in missing (as the
+// variable names). That is not fatal: the request may never reference them.
+// secretEnvHint turns one into advice if resolution does fail.
 func loadEnv(c *collection.Collection, name string) (*resolve.Environment, secrets.Store, []string, error) {
 	if name == "" {
 		return nil, nil, nil, nil
@@ -160,17 +176,27 @@ func loadEnv(c *collection.Collection, name string) (*resolve.Environment, secre
 		}
 		supplied[normalizeSecretName(strings.TrimPrefix(k, SecretEnvPrefix))] = v
 	}
-	store := secrets.NewMemory()
+	fromEnv := secrets.NewMemory()
+	var store secrets.Store = fromEnv
+	if index, err := secrets.DefaultIndexPath(); err == nil {
+		store = secrets.Fallback{fromEnv, secrets.NewKeyring(index)}
+	}
+
 	var missing []string
 	for _, varName := range env.SecretNames() {
-		v, ok := supplied[normalizeSecretName(varName)]
-		if !ok {
-			missing = append(missing, varName)
+		key := secrets.Key(resolve.CollectionKey(c), env.Name, varName)
+		if v, ok := supplied[normalizeSecretName(varName)]; ok {
+			if err := fromEnv.Set(key, v); err != nil {
+				return nil, nil, nil, err
+			}
 			continue
 		}
-		if err := store.Set(secrets.Key(resolve.CollectionKey(c), env.Name, varName), v); err != nil {
-			return nil, nil, nil, err
-		}
+		// Not supplied by the environment. The keychain may still have it,
+		// but asking now would prompt for every secret in the file whether
+		// the request references it or not, so this only records that no
+		// environment variable named it — the resolver's own lookup, which
+		// happens for the secrets actually used, goes through the fallback.
+		missing = append(missing, varName)
 	}
 	return env, store, missing, nil
 }

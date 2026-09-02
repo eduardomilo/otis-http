@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Placeholder } from "@/components/shell/placeholder";
+import { EnvironmentEditor } from "@/components/environment/environment-editor";
 
 export const Route = createFileRoute("/env/$name")({
   component: EnvironmentView,
@@ -9,5 +9,5 @@ export const Route = createFileRoute("/env/$name")({
 /** The environment editor (screen 1c). $name is the environment's name. */
 function EnvironmentView() {
   const { name } = Route.useParams();
-  return <Placeholder kind="Environment" path={`env/${name}.json`} phase="Phase C" />;
+  return <EnvironmentEditor name={name} />;
 }

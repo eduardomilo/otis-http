@@ -46,6 +46,7 @@ func init() {
 	application.RegisterEvent[services.ResponseMeta](events.SendComplete)
 	application.RegisterEvent[services.SendFailure](events.SendError)
 	application.RegisterEvent[application.Void](events.SessionVarsChanged)
+	application.RegisterEvent[services.Environments](events.EnvironmentsChanged)
 }
 
 func main() {
@@ -68,13 +69,22 @@ func runGUI() {
 
 	dialogs := services.NewDialogService()
 	collections := services.NewCollectionService(store)
-	// One secret store for the process. It is the only place a real secret
-	// value is ever fetched; every read path the window can reach uses
-	// secrets.Placeholder instead. The OS keychain backend arrives in
-	// increment 12. The send service registers its own collection-close
-	// cleanup in ServiceStartup — cookies, AWS credentials, held responses and
-	// session variables all belong to the collection, not to the process.
-	sends := services.NewSendService(collections, secrets.NewMemory())
+
+	// One secret store for the process, backed by the OS keychain. It is the
+	// only place a real secret value is ever fetched; every read path the
+	// window can reach uses secrets.Placeholder instead.
+	//
+	// A machine with no reachable keychain still gets a working app: the store
+	// reports itself unavailable, the environment editor says so, and the
+	// committed references are all still readable. Falling back to an
+	// in-memory store would be worse than that — it would accept a secret and
+	// silently forget it on quit.
+	secretStore := secretStore()
+
+	// The send service registers its own collection-close cleanup in
+	// ServiceStartup — cookies, AWS credentials, held responses and session
+	// variables all belong to the collection, not to the process.
+	sends := services.NewSendService(collections, secretStore)
 
 	app := application.New(application.Options{
 		Name:        "Otis",
@@ -87,6 +97,7 @@ func runGUI() {
 			application.NewService(services.NewGitService(collections)),
 			application.NewService(services.NewRequestService(collections)),
 			application.NewService(sends),
+			application.NewService(services.NewEnvironmentService(collections, store, secretStore)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -126,6 +137,22 @@ func runGUI() {
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// secretStore is the process's secret store: the OS keychain, keyed as
+// docs/FORMAT.md §5 describes, with its key index beside the settings file.
+//
+// A config directory that cannot be located costs the index, not the keychain:
+// values are still stored and fetched, and only the editor's "which references
+// have a value here" list goes empty. That is worth degrading rather than
+// refusing to start.
+func secretStore() secrets.Store {
+	index, err := secrets.DefaultIndexPath()
+	if err != nil {
+		log.Printf("secrets: the key index is unavailable, so stored secrets cannot be listed: %v", err)
+		index = ""
+	}
+	return secrets.NewKeyring(index)
 }
 
 // macMenu is the macOS application menu.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/httpfile"
 	"github.com/otis-http/otis/internal/secrets"
 )
@@ -18,6 +19,15 @@ import (
 // varRe matches {{name}} with optional inner whitespace. Anything else
 // between braces is literal text.
 var varRe = regexp.MustCompile(`\{\{\s*([A-Za-z_$][\w.\-]*)\s*\}\}`)
+
+// nameRe is varRe's name alone, anchored. It is what tells a surface that
+// accepts a new variable name — the environment editor — that the name it was
+// given can actually be referenced (docs/FORMAT.md §4.1). A name no {{...}}
+// can match would be a row that silently never applies.
+var nameRe = regexp.MustCompile(`^[A-Za-z_$][\w.\-]*$`)
+
+// ValidReferenceName reports whether name can appear inside {{ }}.
+func ValidReferenceName(name string) bool { return nameRe.MatchString(name) }
 
 // Origin says which scope a variable value came from.
 type Origin string
@@ -492,4 +502,74 @@ const MaskPlaceholder = "•••••"
 
 func declaredFrom(v httpfile.Variable, origin Origin, path string) declared {
 	return declared{name: v.Name, value: v.Value, origin: origin, source: Source{Path: path, Line: v.Line}}
+}
+
+// ReferencedNames returns every {{name}} the request at node would need,
+// sorted and deduplicated: its URL, its body, its effective headers (so a
+// header inherited from a folder counts for the request that inherits it) and
+// its effective auth arguments.
+//
+// It answers "which requests mention this variable", which is not the same
+// question as "which requests resolve it here": a name a nearer scope shadows
+// is still referenced. That is the honest reading of the design's "Referenced
+// by 23 requests" (screen 1c), and it is deliberately the cheap one — no
+// values are looked up, nothing is expanded, and no secret is touched. The
+// alternative would mean resolving every request in the collection to fill in
+// one number in the status bar.
+//
+// A broken node, or one with no request line, references nothing.
+func ReferencedNames(node *collection.Node) []string {
+	if node == nil || node.Request == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	add := func(text string) {
+		for _, m := range varRe.FindAllStringSubmatch(text, -1) {
+			if name := m[1]; !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+
+	add(node.Request.URL)
+	// The raw body only: a "< ./path" reference is not expanded, and even the
+	// "<@" form's file is read at send time and never parsed here
+	// (docs/FORMAT.md §1.8, §4.1).
+	add(node.Request.Body.Raw)
+
+	// Effective rather than the file's own headers: the point of the count is
+	// that a folder header carrying {{idemKey}} makes every request below it a
+	// reference to idemKey (screen 4a).
+	if eff, err := Inheritance(node); err == nil {
+		for _, h := range eff.Headers {
+			add(h.Value)
+		}
+		if a := eff.Auth; a != nil {
+			add(a.Token)
+			add(a.Username)
+			add(a.Password)
+			add(a.Profile)
+			add(a.AccessKey)
+			add(a.SecretKey)
+			add(a.SessionToken)
+			add(a.Region)
+			add(a.Service)
+		}
+	}
+
+	// @var declarations can reference other names, and a request that only
+	// mentions a variable through one of its own declarations still depends
+	// on it.
+	for _, lvl := range LevelsOf(node) {
+		for _, entry := range lvl.Entries {
+			for _, v := range entry.Variables {
+				add(v.Value)
+			}
+		}
+	}
+
+	sort.Strings(names)
+	return names
 }

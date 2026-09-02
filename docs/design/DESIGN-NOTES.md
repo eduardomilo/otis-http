@@ -505,6 +505,11 @@ disabled header into a `.http` file or a disabled key into an environment
 JSON. Unchecking a local header currently has nowhere to be saved. (Unchecking
 an *inherited* header is well defined — it writes `Header: !inherit`.)
 
+Both tables therefore render the checkbox checked and **disabled**, with the
+reason in its `title`, and offer removal in the row menu instead — an
+operation the format does have. That keeps the decision visibly open rather
+than resolving it by inventing syntax.
+
 **9.6 Two request counts disagree in wording.** Screen 3a's folder header says
 "5 requests · 1 subfolder" while the same screen's auth panel says "inherited
 by 6 requests" and screen 4b says "changes apply to all 6 requests". Both are
@@ -537,6 +542,32 @@ container, which is inert because every inner span sets its own color. None of
 these affect the rendered design; they are noted so a future reader does not
 mistake them for intent.
 
-**9.11 Screen 1c shows an open dropdown that is not drawn.** The environment
-chip has an accent border and an up-chevron, indicating the menu is open, but
-no menu is rendered. The environment switcher's popover has no design.
+**9.11 Screen 1c shows an open dropdown that is not drawn — resolved.** The
+environment chip has an accent border and an up-chevron, indicating the menu is
+open, but no menu is rendered, so the switcher's popover had no design. It is
+now a `DropdownMenu` of radio items rather than the `Select` §6 maps the
+selector to, for two reasons: the surface has to carry an action ("Edit
+environments…") as well as a choice, and "no environment" is a real option that
+Radix `Select` cannot represent, since its item values may not be empty. The
+radio items keep the one-of-N semantics `Select` would have given. Implemented
+in Increment 12.
+
+**9.12 The `Reveal` chip has no implementation that is allowed — resolved as
+Copy.** Screen 1c puts `Reveal` beside every masked secret. Revealing means
+putting the value on screen, which means handing it to the webview, where it
+lives in a React tree, a DOM node and any devtools session — and CLAUDE.md's
+hard constraint is that a resolved secret value never crosses the binding, not
+once, not for display. The chip therefore reads **Copy** and copies: Go reads
+the keychain and writes the system clipboard, and the value never enters the
+window's process at all. The user still gets at their own credential; it simply
+never becomes pixels. The "Remove from keychain" confirmation says so, because
+the value being unrecoverable-by-reading is the thing that makes removal
+different from every other destructive action in the app.
+
+**9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
+dates a stored secret. No OS keyring reports when an entry was written, and
+Otis' key index deliberately holds nothing but keys — adding a date would be
+the first exception to that, and the promise is worth more than the line. The
+panel says whether a value is stored here, which is the half that changes what
+you do next. If the design wants the date, the index is where it would have to
+go, and §9's next reader should know that is the trade.

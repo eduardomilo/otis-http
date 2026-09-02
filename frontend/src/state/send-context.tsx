@@ -12,6 +12,7 @@ import { Events } from "@wailsio/runtime";
 
 import { OtisEvent } from "@/lib/events.gen";
 import { useCollection } from "@/state/collection-context";
+import { useEnvironments } from "@/state/environment-context";
 import { SendService } from "@bindings/internal/services";
 import type { ResponseMeta, SendFailure, SendStarted } from "@bindings/internal/services";
 import type { SessionValue } from "@bindings/internal/resolve";
@@ -65,9 +66,10 @@ export function SendProvider({ children }: { children: ReactNode }) {
   const [sends, setSends] = useState<Record<string, Send>>({});
   const [sessionVars, setSessionVars] = useState<SessionValue[]>([]);
 
-  // Environments arrive in increment 12; a send resolves against the files
-  // and the folder scopes until then.
-  const env = "";
+  // The active environment. "" is a real state, not a placeholder: a request
+  // then resolves against its file and folder scopes only (docs/FORMAT.md
+  // §4.2).
+  const { active: env } = useEnvironments();
 
   const latest = useRef(sends);
   latest.current = sends;

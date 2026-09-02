@@ -151,7 +151,17 @@ creating a new environment (`+`); the environment chip's open menu (§9.11 of
 DESIGN-NOTES).
 
 The keychain service string `acme-api/staging/apiKey` matches the implemented
-`secrets.Key(collection, env, name)` exactly.
+`secrets.Key(collection, env, name)` exactly — and this screen is what forced
+the collection component to be the *display* name. Keying on the root
+directory's own base name would make it `.requests/staging/apiKey`, which is
+the same string for every collection on the machine that follows the
+convention, so two projects would share one entry (`FORMAT.md` §5).
+
+Two things on this screen are deliberately not built as drawn, both because of
+the secrets rule: `Reveal` is `Copy` (DESIGN-NOTES §9.12) and the "Set on this
+machine · Aug 28" date is reduced to whether a value is stored here (§9.13).
+The environment switcher's popover, which this screen shows open but does not
+draw, is resolved in §9.11.
 
 ---
 

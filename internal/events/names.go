@@ -70,6 +70,21 @@ const (
 	// run set one, or they were cleared (docs/FORMAT.md §4.5). The frontend
 	// re-reads them; there is no payload.
 	SessionVarsChanged = "session-vars:changed"
+
+	// EnvironmentsChanged is emitted when the environments or the active one
+	// changed: Otis wrote an env/*.json, somebody else did, or a different
+	// environment was activated. Payload: services.Environments, the whole
+	// list.
+	//
+	// It is a separate event from CollectionChanged because env/ is not part
+	// of the tree (docs/FORMAT.md §2.1), so the tree payload has nothing to
+	// say about it. The whole list rather than a delta, for the same reason
+	// the tree is whole: there are a handful of environments, and a delta
+	// protocol would have to be right about renames before it saved anything.
+	//
+	// The payload names environments, variable names and secret *references*.
+	// It never carries a secret value.
+	EnvironmentsChanged = "environments:changed"
 )
 
 // Entry is one event in the Registry.
@@ -95,4 +110,5 @@ var Registry = []Entry{
 	{"SendComplete", SendComplete, "Emitted when a response has been read in full. Payload: ResponseMeta; the body stays in Go."},
 	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
 	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
+	{"EnvironmentsChanged", EnvironmentsChanged, "Emitted when the environments or the active one changed. Payload: Environments; never a secret value."},
 }

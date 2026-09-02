@@ -124,10 +124,6 @@ func Load(dir string) (*Collection, error) {
 	return c, nil
 }
 
-// BaseName returns the last element of an absolute directory path. It is the
-// default key under which a collection's secrets are stored.
-func BaseName(dir string) string { return filepath.Base(dir) }
-
 // DisplayName is the name the UI shows for a collection rooted at dir.
 //
 // It is the directory's base name, except for a dot-directory, where it is the
@@ -136,9 +132,10 @@ func BaseName(dir string) string { return filepath.Base(dir) }
 // would be useless. The design's example is exactly this case — the collection
 // named "acme-api" is rooted at "~/code/acme-api/.requests".
 //
-// Display only. BaseName, not this, is the key secrets are stored under
-// (docs/FORMAT.md §5); changing what a collection is *called* must never move
-// anyone's secrets.
+// This is also the collection component of a secret's key (docs/FORMAT.md §5,
+// resolve.CollectionKey). Using the raw base name there would key every
+// ".requests" collection on the machine identically, so two projects would
+// share one keychain entry per environment and variable.
 func DisplayName(dir string) string {
 	base := filepath.Base(dir)
 	if !strings.HasPrefix(base, ".") {

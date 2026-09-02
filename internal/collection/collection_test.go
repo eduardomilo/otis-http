@@ -309,7 +309,7 @@ func TestDisplayName(t *testing.T) {
 		{"/code/acme-api", "acme-api"},
 		{"/code/acme-api/.requests", "acme-api"}, // the design's example
 		{"/code/acme-api/http", "http"},
-		{"/.requests", ".requests"},              // no useful parent: keep the base
+		{"/.requests", ".requests"}, // no useful parent: keep the base
 		{"/code/.a/.b", ".a"},
 	}
 	for _, c := range cases {
@@ -317,8 +317,13 @@ func TestDisplayName(t *testing.T) {
 			t.Errorf("DisplayName(%q) = %q, want %q", c.dir, got, c.want)
 		}
 	}
-	// The secrets key is unaffected by the display rule.
-	if got := BaseName(filepath.FromSlash("/code/acme-api/.requests")); got != ".requests" {
-		t.Errorf("BaseName = %q, want .requests", got)
+	// This name is also the collection component of a secret's key
+	// (docs/FORMAT.md §5), so two projects using the ".requests" convention
+	// must not collapse onto one key. That collision is the whole reason the
+	// rule walks up out of a dot-directory.
+	a := DisplayName(filepath.FromSlash("/code/acme-api/.requests"))
+	b := DisplayName(filepath.FromSlash("/code/other-api/.requests"))
+	if a == b {
+		t.Errorf("two collections share the secrets key %q", a)
 	}
 }
