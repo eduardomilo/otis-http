@@ -1,0 +1,21 @@
+# Build outputs
+.task
+bin
+frontend/dist
+
+# Dependencies
+frontend/node_modules
+
+# Platform packaging artefacts
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+
+# Mobile generated (per-machine; overlays hold absolute paths)
+build/ios/xcode/overlay.json
+build/ios/xcode/gen/
+build/android/overlay.json
+build/android/gen/
+
+# OS / editor noise
+.DS_Store
+*.log

@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Otis",
+			"FileDescription": "File-based HTTP client",
+			"LegalCopyright": "© 2026 Otis",
+			"ProductName": "Otis",
+			"Comments": "Otis"
+		}
+	}
+}
