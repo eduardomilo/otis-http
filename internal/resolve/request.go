@@ -45,6 +45,30 @@ type Resolved struct {
 	// secretValues are the raw secret values used, kept unexported so they
 	// never serialize; Mask uses them.
 	secretValues []string
+	// scope lets Expand resolve more text (a body loaded from a file) with
+	// the same variables.
+	scope *Scope
+}
+
+// Expand resolves {{variables}} in text against the same scope as the
+// request, for content that becomes known only later, such as a body read
+// from a file with the "<@" form. Secrets it uses are added to the set that
+// Mask hides.
+func (r *Resolved) Expand(text string) (string, error) {
+	if r.scope == nil {
+		return text, nil
+	}
+	x := NewExpander(r.scope)
+	out, err := x.Expand(text)
+	if err != nil {
+		return "", err
+	}
+	if err := x.Err(); err != nil {
+		return "", err
+	}
+	r.secretValues = append(r.secretValues, x.Secrets...)
+	r.Variables = append(r.Variables, x.Uses()...)
+	return out, nil
 }
 
 // HasSecrets reports whether any resolved value came from a secret.
@@ -129,5 +153,6 @@ func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Opt
 	}
 	res.Variables = x.Uses()
 	res.secretValues = x.Secrets
+	res.scope = scope
 	return res, nil
 }

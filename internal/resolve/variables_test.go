@@ -245,6 +245,30 @@ func TestResolveRequest(t *testing.T) {
 	}
 }
 
+func TestResolvedExpand(t *testing.T) {
+	env := &Environment{Name: "e", Path: "env/e.json", Values: map[string]EnvValue{"s": {Secret: true}}}
+	store := secrets.NewMemory()
+	_ = store.Set("k/e/s", "hidden")
+	c := tree(t, map[string]string{"r.http": "@a = A\nGET https://x.test\n"})
+	r, err := Request(c.Find("r.http"), Options{Env: env, Secrets: store, Collection: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := r.Expand("{{a}}/{{s}}")
+	if err != nil || out != "A/hidden" {
+		t.Errorf("Expand = %q, %v", out, err)
+	}
+	if r.Mask(out) != "A/•••••" || len(r.Variables) != 2 || !r.Variables[1].Secret {
+		t.Errorf("secrets not tracked after Expand: %q %+v", r.Mask(out), r.Variables)
+	}
+	if _, err := r.Expand("{{nope}}"); err == nil || err.Error() != "unresolved variables: nope" {
+		t.Errorf("missing = %v", err)
+	}
+	if out, err := (&Resolved{}).Expand("{{x}}"); err != nil || out != "{{x}}" {
+		t.Errorf("no scope: %q %v", out, err)
+	}
+}
+
 func TestErrorTypes(t *testing.T) {
 	c := tree(t, map[string]string{"r.http": "GET https://x.test/{{a}}/{{b}}\n"})
 	_, err := Request(c.Find("r.http"), Options{})

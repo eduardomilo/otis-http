@@ -73,7 +73,13 @@ Directives Otis understands today:
 | Directive | Meaning |
 | --- | --- |
 | `@name VALUE` | The request's display name. Falls back to the separator title, then to the file name (collection layer). |
-| `@auth ...` | Authentication; see section 3 *(planned, Increment 3)*. |
+| `@auth ...` | Authentication; see section 3. Inherited from `_folder.http`. |
+| `@no-redirect` | Return the first 3xx response instead of following it. |
+| `@no-cookie-jar` | Send and store no cookies for this request. |
+| `@timeout SECONDS` | Overall timeout for the exchange, a positive number (decimals allowed). Default 30. A non-positive or non-numeric value is an error. |
+
+`@no-redirect`, `@no-cookie-jar` and `@timeout` apply to the request they
+appear in only; they are not inherited.
 
 Unknown directives are preserved and ignored.
 
@@ -130,10 +136,16 @@ terminator, so `{}` and `{}⏎` are the same body.
 <@latin1 ./relative/path      ...with an explicit charset
 ```
 
-is a file reference. The parser records the path relative to the `.http`
-file and does not read it. A `< ./path` line that is part of a larger body
-(for example inside a multipart boundary) is left as body text; resolving
-it is the sender's job *(planned)*.
+is a file reference. The parser records the path and does not read it. At
+send time the path is resolved relative to the `.http` file's directory (an
+absolute path is used as-is) and the file's bytes become the body. With the
+`<@` form, `{{variables}}` in the file content are resolved with the
+request's scope (section 4); with plain `<` the content is sent verbatim. A
+charset argument is recorded but not converted: the bytes are sent as-is
+and a warning is raised.
+
+A `< ./path` line that is part of a larger body (for example inside a
+multipart boundary) is body text and is sent literally.
 
 ### 1.9 Entries without a request line
 
@@ -333,9 +345,11 @@ removed, so a review or the UI can show what was switched off and where.
 - `none` is an explicit opt-out: the request sends no auth even though a
   folder above declares one. It is distinct from *absent*, which means no
   level declared anything.
-- `@auth` is not a header. It is turned into an `Authorization` header when
-  the request is sent *(Increment 5)*. An explicit `Authorization` header on
-  the request wins over any `@auth` *(Increment 5)*.
+- `@auth` is not a header. At send time `bearer <token>` becomes
+  `Authorization: Bearer <token>` and `basic <user> <password>` becomes
+  `Authorization: Basic base64(user:password)`; `none` adds nothing.
+- If the effective headers (section 3.1) already contain `Authorization`
+  at any level, that header is sent and the `@auth` is dropped.
 - A malformed `@auth` (missing token, unknown scheme, `none` with
   arguments) is an **error** naming the file and line, not a warning.
 
@@ -356,7 +370,7 @@ between double braces is literal text, not an error.
 References are resolved in the URL, header values (after inheritance,
 section 3), `@auth` arguments, and the raw body. They are **not** resolved
 in `< ./path` body file paths, in script blocks, or inside a body loaded
-from a file unless the `<@` form was used *(Increment 5)*.
+from a file unless the `<@` form was used (section 1.8).
 
 ### 4.2 Scopes
 
@@ -446,3 +460,24 @@ Rules:
 
 Only an in-memory store exists today; the OS keychain backend is a later
 increment.
+
+## 6. Sending
+
+What happens when a resolved request is sent:
+
+- The HTTP version on the request line is informational; the client
+  negotiates the protocol.
+- Headers are sent in effective order (section 3.1). A `Host` header sets
+  the request's Host rather than being sent as a plain header.
+- Redirects are followed up to 10 hops unless `@no-redirect` is set; each
+  hop (URL, status, location) is recorded. Exceeding the limit is an error.
+- Cookies are kept in a per-collection session in memory only and are never
+  written to disk. `@no-cookie-jar` bypasses the session for one request.
+- The whole exchange is bounded by `@timeout` (default 30 s). A timeout is
+  an error, not a response.
+- The response body is read fully into memory. A 4xx or 5xx status is a
+  response, not an error; the CLI maps it to exit code 1.
+- Recorded timing: DNS, connect, TLS handshake, time to first byte and
+  total. Values describe the last hop; DNS and connect are zero on a reused
+  connection.
+
