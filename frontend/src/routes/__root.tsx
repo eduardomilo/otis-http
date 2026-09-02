@@ -9,6 +9,7 @@ import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
 import { DiffProvider } from "@/state/diff-context";
 import { EnvironmentProvider } from "@/state/environment-context";
+import { RunProvider } from "@/state/run-context";
 import { SendProvider } from "@/state/send-context";
 import { SettingsProvider } from "@/state/settings-context";
 import { TabsProvider } from "@/state/tabs-context";
@@ -41,22 +42,27 @@ function RootLayout() {
               it is a view of the whole collection, and a stage or a commit
               changes what every other view says about a file. */}
           <DiffProvider>
-            <TabsProvider>
-              {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
-                  and the veto on closing a dirty tab is installed from here. */}
-              <DocumentsProvider>
-                {/* Sends sit inside Tabs too: the response pane shows whatever
-                    the active tab is showing. */}
-                <SendProvider>
-                  {/* One provider for every tooltip in the window: the tree's
-                      git dots, parse errors and folder-settings markers all use
-                      it. */}
-                  <TooltipProvider delayDuration={400}>
-                    <Window />
-                  </TooltipProvider>
-                </SendProvider>
-              </DocumentsProvider>
-            </TabsProvider>
+            {/* Folder runs sit beside the documents too: a run is a sequence
+                of sends against a folder, and its results outlive whichever
+                tab happened to start it. */}
+            <RunProvider>
+              <TabsProvider>
+                {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
+                    and the veto on closing a dirty tab is installed from here. */}
+                <DocumentsProvider>
+                  {/* Sends sit inside Tabs too: the response pane shows whatever
+                      the active tab is showing. */}
+                  <SendProvider>
+                    {/* One provider for every tooltip in the window: the tree's
+                        git dots, parse errors and folder-settings markers all use
+                        it. */}
+                    <TooltipProvider delayDuration={400}>
+                      <Window />
+                    </TooltipProvider>
+                  </SendProvider>
+                </DocumentsProvider>
+              </TabsProvider>
+            </RunProvider>
           </DiffProvider>
         </EnvironmentProvider>
       </CollectionProvider>

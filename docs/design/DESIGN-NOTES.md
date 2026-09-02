@@ -510,11 +510,23 @@ reason in its `title`, and offer removal in the row menu instead — an
 operation the format does have. That keeps the decision visibly open rather
 than resolving it by inventing syntax.
 
-**9.6 Two request counts disagree in wording.** Screen 3a's folder header says
-"5 requests · 1 subfolder" while the same screen's auth panel says "inherited
-by 6 requests" and screen 4b says "changes apply to all 6 requests". Both are
-arguably right — 5 direct children, 6 including `fixtures/seed-order` — but
-the labels do not distinguish direct from recursive. Pick one and say which.
+**9.6 Two request counts disagree in wording — resolved.** Screen 3a's folder
+header says "5 requests · 1 subfolder" while the same screen's auth panel says
+"inherited by 6 requests" and screen 4b says "changes apply to all 6
+requests". Both are right — 5 direct children, 6 including
+`fixtures/seed-order` — and the labels did not distinguish direct from
+recursive.
+
+The rule: **a count describing a folder's *contents* is direct; a count
+describing the *reach* of its settings is recursive**, and the label says
+which. So the header reads "2 requests · 1 subfolder · 3 below in all" —
+naming both, because a folder whose settings reach further than its own
+listing is the normal case and hiding that is what made the two numbers look
+like a contradiction. An inheritance line ("inherited by N requests") is
+always recursive, and subtracts the descendants that override, since counting
+a request that opted out would be the same untruth in a different place.
+`FolderCounts` carries both and names them `Requests`/`Subfolders` and
+`Below`. Implemented in Increment 14.
 
 **9.7 The folder "has shared settings" icon is a plus sign.** In screen 3a the
 marker next to `auth` and `orders` is a `+` glyph (`M6 1.5v9M1.5 6h9`), which
@@ -527,6 +539,13 @@ Screen 4a shows an inherited header `Idempotency-Key: {{idemKey}}` annotated
 header and variable resolution, and to be able to write a variable that a
 folder-level header then references. The current sender resolves variables
 before preparing the request; the hook order needs defining.
+
+Increment 14 made this observable rather than theoretical. Running the
+design's own `orders/` folder fails every request that does *not* override
+`Idempotency-Key`, with "unresolved variables: idemKey" — because the header
+references a value only the pre-request script sets, and nothing runs the
+script yet. It is the correct behaviour for a collection whose scripts do not
+run, and it is exactly the case the hook order has to answer. Increment 15.
 
 **9.9 Two features in the empty state are not in any phase.** "Clone
 repository" (git clone with credentials) and "Start fresh" (`mkdir` + `git
@@ -585,6 +604,25 @@ is worse than an honest offset.
 Split view is named in the segmented control and never drawn. It pairs a
 removed line with the added line that replaced it, padding the shorter run,
 which is what every split diff does.
+
+**9.15 Screen 3a's tabs and its right column say the same things.** The screen
+draws Overview with the README on the left and all four panels — Auth,
+Variables, Scripts, Headers — stacked on the right, *and* a tab for each of
+those four. What the other tabs show is never drawn.
+
+Resolved as: the right column is the folder's settings at a glance and is the
+same on every tab; the left column is what the tab chooses. On Overview that
+is the README, which is why there is no Docs tab — the documentation *is* the
+overview. On the other four the left column is that one panel again at full
+width, where its rows have room. The duplication is deliberate: dropping the
+panels from the other tabs would mean losing the glance while editing one of
+them, which is the thing the screen is for.
+
+The run's results have no design at all — screen 3a shows only "Run folder"
+and a status-bar "Last run: 6/6 passed". They render as a fifth panel above
+the others, with every row drawn as soon as the plan arrives and filled in as
+each request finishes: a run that reveals itself one row at a time says
+nothing about how far through it is.
 
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and

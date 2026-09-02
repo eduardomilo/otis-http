@@ -216,8 +216,10 @@ A collection is a directory. Loading a collection never modifies it.
 | directory | a folder |
 | `*.http` | a request (section 1) |
 | `_folder.http` | the folder's settings (section 2.3); not a request |
+| `*.js` | a script (section 2.4) |
 | `.order` | the folder's display order (section 2.2) |
 | `env/` at the root | environments (section 4); not part of the tree |
+| `README.md` | a folder's documentation (section 2.5); not part of the tree |
 | anything else | ignored: other file types, and any name starting with `.` |
 
 Every node has a stable **ID**: its path relative to the collection root
@@ -269,7 +271,44 @@ its sub-folders; section 3 defines how. A request line in `_folder.http` is
 ignored with a warning. A `_folder.http` that fails to parse produces a
 warning and contributes no settings; the folder still appears.
 
-### 2.4 Warnings
+### 2.4 Scripts (`*.js`)
+
+A `.js` file in a collection is a script. Scripts are part of the tree,
+because a file that changes what a request does while staying invisible is
+exactly what this format exists to avoid. Two kinds, told apart by name:
+
+| Name | Kind | When it runs |
+| --- | --- | --- |
+| `_pre.js` | folder hook | before every request in the folder and below |
+| `_post.js` | folder hook | after every response in the folder and below |
+| `<name>.pre.js` | request hook | before `<name>.http` only |
+| `<name>.post.js` | request hook | after `<name>.http` only |
+| anything else | module | never on its own; only when a hook imports it |
+
+- A **hook** runs automatically. A **module** is a plain ES module: nothing
+  runs it unless a hook imports it. The convention is to keep modules in a
+  `lib/` directory at the root, but that is a convention and not a rule —
+  what decides the kind is the name, and a surface showing a script says
+  which kind it is rather than leaving the reader to know the convention.
+- `<name>.pre.js` is a request hook only when `<name>.http` is in the same
+  directory. `utils.pre.js` beside no `utils.http` is a module with an
+  unfortunate name; calling it a hook would say it runs when nothing will
+  ever run it.
+- A script's display name keeps its `.js`, unlike a request's, so a tree row
+  reads as the file it is.
+- Scripts are listed in `.order` like any other entry (section 2.2).
+
+Execution — the API, the sandbox, the order hooks run in — is defined in a
+later increment *(planned, Increment 15)*. Until then a script is a file the
+tree shows and the folder view displays; nothing runs it.
+
+### 2.5 Folder documentation (`README.md`)
+
+A folder may hold a `README.md`. It is the folder's documentation and is
+rendered in the folder view. It is not part of the request tree and has no
+effect on any request.
+
+### 2.6 Warnings
 
 Loading is lenient. The following are warnings, not errors; the tree is
 always produced.
@@ -390,7 +429,7 @@ removed, so a review or the UI can show what was switched off and where.
 ### 3.4 Broken folder files
 
 A `_folder.http` that fails to parse contributes nothing to inheritance
-(and raises a collection warning, section 2.4). Levels below it still
+(and raises a collection warning, section 2.6). Levels below it still
 apply.
 
 ## 4. Variables and environments

@@ -72,6 +72,15 @@ func treeRows(n *collection.Node, depth int) []treeRow {
 		case collection.KindFolder:
 			rows = append(rows, treeRow{label: indent + ch.Name + "/"})
 			rows = append(rows, treeRows(ch, depth+1)...)
+		case collection.KindScript:
+			// "js" in the method gutter, the way the tree draws it, and the
+			// kind of script in the name column so "does this run?" is on the
+			// line rather than in the naming convention (docs/FORMAT.md §2.4).
+			kind := "module"
+			if ch.Hook {
+				kind = "hook"
+			}
+			rows = append(rows, treeRow{method: "js", label: indent + ch.Name, name: kind})
 		default:
 			base := strings.TrimSuffix(pathBase(ch.ID), collection.RequestExt)
 			method := ch.Method

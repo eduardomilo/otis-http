@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { Placeholder } from "@/components/shell/placeholder";
+import { FolderView } from "@/components/folder/folder-view";
 
 export const Route = createFileRoute("/f/$path")({
-  component: FolderView,
+  component: FolderRoute,
 });
 
-/** A folder document (screen 3a). */
-function FolderView() {
+/** A folder document (screen 3a). "" is the collection root. */
+function FolderRoute() {
   const { path } = Route.useParams();
-  return <Placeholder kind="Folder" path={path || "(collection root)"} phase="Phase D" />;
+  return <FolderView path={path} />;
 }

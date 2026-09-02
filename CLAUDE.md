@@ -26,10 +26,15 @@ lists the design decisions that are still open — do not resolve them silently.
   `request.go` is the request editor's: it loads a `.http` file with its
   inheritance and provenance, and is the only thing that writes one. `send.go`
   is the sender: it resolves, prepares and sends a request, holds the response
-  and pages it to the window. `environment.go` is the environment editor's, and
-  the only thing that puts a secret into the keychain or takes one out.
+  and pages it to the window, and runs a folder's requests in sequence.
+  `environment.go` is the environment editor's, and the only thing that puts a
+  secret into the keychain or takes one out. `folder.go` is the folder view's:
+  it reads a folder's shared settings with their provenance, its documentation
+  and scripts, and which descendants opt out of each setting, and is the only
+  thing that writes a `_folder.http`.
 - `internal/httpfile/` — `.http` parser + serializer.
-- `internal/collection/` — the directory walk, `.order` and the node tree.
+- `internal/collection/` — the directory walk, `.order` and the node tree,
+  including script nodes and the hook/module distinction (docs/FORMAT.md §2.4).
 - `internal/resolve/` — inheritance, `{{variable}}` resolution, environments,
   and the in-memory session store (`session.go`, docs/FORMAT.md §4.5).
 - `internal/secrets/` — the secret store behind a `{"$secret": "keychain"}`
@@ -84,13 +89,19 @@ lists the design decisions that are still open — do not resolve them silently.
     `/diff/$path`: `changes-list` (the changes and the commit box, replacing
     the tree), `diff-view` (the header, the hunk headers and their controls)
     and `hunk-view` (one hunk, unified or split).
+  - `components/folder/` — the centre pane for `/f/$path` (screen 3a):
+    `folder-view` (header, tabs, the `1fr 440px` split, the README's
+    Preview/Edit and the live run), `panels` (the Auth, Headers, Variables and
+    Scripts panels, each naming where its values come from) and `markdown`
+    (the README, rendered).
   - `components/environment/` — the centre pane for `/env/$name`:
     `environment-editor` (the variable table), `secret-detail` (the split panel
     of screen 1c), `secret-value-dialog` (the one place a value travels *in*)
     and `environment-list` (the sidebar, which replaces the tree on this route).
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
-    `send-context`, `environment-context`, `diff-context`), each exporting a `useXxx` hook
+    `send-context`, `environment-context`, `diff-context`, `run-context`),
+    each exporting a `useXxx` hook
     that throws outside its provider. Providers are composed in
     `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
     because which environment is active decides how every document resolves;
@@ -138,6 +149,13 @@ lists the design decisions that are still open — do not resolve them silently.
   emitting `nil` panics inside Wails.
 - **The frontend never touches disk, network, git or secrets.** If the window
   needs something from the machine, it goes through a Go service.
+- **A README is rendered, never injected.** `components/folder/markdown` uses
+  `react-markdown`, which builds a React element tree; there is no
+  `dangerouslySetInnerHTML` anywhere in the app and there must not be. A
+  README is repository content written by whoever wrote the branch, and the
+  window it renders in is the one holding the collection. Links are not
+  navigable and images are not loaded, for the same reason: neither should be
+  a request the collection made without being asked.
 - **A resolved secret value never leaves Go.** Not across a binding, not in a
   log line, not in an error message, not in `settings.json`. Where the window
   has to show that a secret exists it gets a reference and a masked

@@ -20,6 +20,9 @@ declare module "@wailsio/runtime" {
             "collection:opened": services$0.CollectionInfo;
             "environments:changed": services$0.Environments;
             "git:changed": git$0.State;
+            "run:complete": services$0.RunComplete;
+            "run:result": services$0.RunResult;
+            "run:started": services$0.RunStarted;
             "send:complete": services$0.ResponseMeta;
             "send:error": services$0.SendFailure;
             "send:started": services$0.SendStarted;

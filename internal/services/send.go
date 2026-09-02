@@ -472,6 +472,26 @@ func (s *SendService) SessionVars() []resolve.SessionValue {
 	return out
 }
 
+// SessionScope returns the variables a run set for one scope and owner: a
+// folder's node ID, or an environment's name (docs/FORMAT.md §4.5).
+//
+// It is what the folder view's Session group lists, which has to be the
+// folder's own values and not the collection's — a group headed "this
+// machine only" that showed somebody else's folder's variables would be
+// answering a different question from the one it asks.
+func (s *SendService) SessionScope(scope resolve.SessionScope, owner string) []resolve.SessionValue {
+	var out []resolve.SessionValue
+	for _, v := range s.vars.List() {
+		if v.Scope == scope && v.Owner == owner {
+			out = append(out, v)
+		}
+	}
+	if out == nil {
+		return []resolve.SessionValue{}
+	}
+	return out
+}
+
 // ClearSessionVars forgets every session variable.
 func (s *SendService) ClearSessionVars() error {
 	s.vars.Clear()
@@ -496,14 +516,30 @@ func (s *SendService) Discard(sendID string) error {
 	return nil
 }
 
+// outcome is what one send came to. Exactly one of meta and failure is set.
+//
+// It exists so a folder run can wait for a send and know what happened,
+// without listening to its own events. Send itself ignores the return: the
+// events are the window's channel and the only one it needs.
+type outcome struct {
+	meta    *ResponseMeta
+	failure *SendFailure
+}
+
+// ok reports a send that produced a response the run counts as a pass: a
+// status under 400 (docs/FORMAT.md §6 — a 4xx or 5xx is a response, not an
+// error, and the CLI maps it to exit code 1).
+func (o outcome) ok() bool {
+	return o.meta != nil && o.meta.StatusCode < 400
+}
+
 // run performs one send. It runs on its own goroutine; every exit emits.
-func (s *SendService) run(ctx context.Context, id string, loaded *collection.Collection, node *collection.Node, envName string, started time.Time) {
+func (s *SendService) run(ctx context.Context, id string, loaded *collection.Collection, node *collection.Node, envName string, started time.Time) outcome {
 	var env *resolve.Environment
 	if envName != "" {
 		var err error
 		if env, err = resolve.LoadEnvironment(loaded.Dir, envName); err != nil {
-			s.fail(id, node.ID, FailResolve, "The environment could not be read.", err.Error(), started)
-			return
+			return outcome{failure: s.fail(id, node.ID, FailResolve, "The environment could not be read.", err.Error(), started)}
 		}
 	}
 
@@ -514,8 +550,7 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 	})
 	if err != nil {
 		kind, message := classifyResolveError(err)
-		s.fail(id, node.ID, kind, message, err.Error(), started)
-		return
+		return outcome{failure: s.fail(id, node.ID, kind, message, err.Error(), started)}
 	}
 
 	session := s.wireSession(loaded.Dir)
@@ -523,8 +558,7 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 	if err != nil {
 		// Masked: a Prepare failure can quote an argument, and an AWS secret
 		// key is an argument.
-		s.fail(id, node.ID, FailRequest, "The request could not be prepared.", res.Mask(err.Error()), started)
-		return
+		return outcome{failure: s.fail(id, node.ID, FailRequest, "The request could not be prepared.", res.Mask(err.Error()), started)}
 	}
 
 	// The window is told what is on the wire before the wire answers, so the
@@ -538,8 +572,7 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 	resp, err := client.Do(ctx, req)
 	if err != nil {
 		kind, message := classifySendError(err)
-		s.fail(id, node.ID, kind, message, res.Mask(err.Error()), started)
-		return
+		return outcome{failure: s.fail(id, node.ID, kind, message, res.Mask(err.Error()), started)}
 	}
 
 	doc := response.New(resp.Body, resp.Headers.Get("Content-Type"))
@@ -577,11 +610,13 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 
 	s.keep(id, &stored{meta: meta, doc: doc})
 	s.emit(events.SendComplete, meta)
+	return outcome{meta: &meta}
 }
 
-// fail records and emits a send that produced no response.
-func (s *SendService) fail(id, path string, kind FailureKind, message, detail string, started time.Time) {
-	s.emit(events.SendError, SendFailure{
+// fail records and emits a send that produced no response, and returns what
+// it emitted so a folder run can report the same thing in its summary.
+func (s *SendService) fail(id, path string, kind FailureKind, message, detail string, started time.Time) *SendFailure {
+	failure := SendFailure{
 		SendID:     id,
 		Path:       path,
 		Kind:       kind,
@@ -589,7 +624,9 @@ func (s *SendService) fail(id, path string, kind FailureKind, message, detail st
 		Detail:     detail,
 		DurationMs: ms(time.Since(started)),
 		At:         time.Now(),
-	})
+	}
+	s.emit(events.SendError, failure)
+	return &failure
 }
 
 // sessionFor returns the cookie jar and credential cache for a collection,
@@ -860,3 +897,197 @@ func utf8Body(body []byte) bool { return utf8.Valid(body) }
 func joinNames(names []string) string { return strings.Join(names, ", ") }
 
 func joinArrow(chain []string) string { return strings.Join(chain, " → ") }
+
+// RunState is where a folder run has got to.
+type RunState string
+
+const (
+	RunRunning   RunState = "running"
+	RunFinished  RunState = "finished"
+	RunStopped   RunState = "stopped"
+	RunCancelled RunState = "cancelled"
+)
+
+// RunStarted announces a folder run and what it is about to do.
+type RunStarted struct {
+	RunID string `json:"runId"`
+	// Folder is the folder's node path, "" for the collection root.
+	Folder string `json:"folder"`
+	// Requests are the paths about to be sent, in the order they will be
+	// sent — which is the folder's display order, and therefore `.order`
+	// (docs/FORMAT.md §2.2).
+	Requests      []string  `json:"requests"`
+	Env           string    `json:"env,omitempty"`
+	StopOnFailure bool      `json:"stopOnFailure"`
+	At            time.Time `json:"at"`
+}
+
+// RunResult is one request's outcome inside a folder run.
+type RunResult struct {
+	RunID string `json:"runId"`
+	// Index is the request's position in RunStarted.Requests, so the window
+	// can fill in a row it has already drawn rather than guessing.
+	Index int    `json:"index"`
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	// SendID is the send this was, so the response pane can show its body.
+	SendID string `json:"sendId"`
+	// Passed is a response with a status under 400. A 4xx or 5xx is a
+	// response, not an error (docs/FORMAT.md §6), and it fails the run.
+	Passed     bool    `json:"passed"`
+	StatusCode int     `json:"statusCode,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	DurationMs float64 `json:"durationMs"`
+	// Message is why it failed, already readable and already masked.
+	Message string    `json:"message,omitempty"`
+	At      time.Time `json:"at"`
+}
+
+// RunComplete is a folder run's summary.
+type RunComplete struct {
+	RunID  string   `json:"runId"`
+	Folder string   `json:"folder"`
+	State  RunState `json:"state"`
+	Passed int      `json:"passed"`
+	Failed int      `json:"failed"`
+	// Skipped is what stop-on-failure did not get to.
+	Skipped    int       `json:"skipped"`
+	Total      int       `json:"total"`
+	DurationMs float64   `json:"durationMs"`
+	At         time.Time `json:"at"`
+}
+
+// RunFolder sends every request below a folder, one at a time, in the folder's
+// display order — which is `.order` where there is one and alphabetical where
+// there is not (docs/FORMAT.md §2.2).
+//
+// One at a time, deliberately: the requests in a folder are usually a sequence
+// (create an order, then read it back), a post-response script sets the
+// variable the next request references, and they share one cookie jar. Running
+// them in parallel would make the outcome depend on scheduling.
+//
+// It answers with the run's id immediately and reports itself over events:
+// events.RunStarted with the whole plan, events.RunResult per request as it
+// finishes, and events.RunComplete with the summary. Each request also emits
+// its own send events, so the response pane fills in as the run goes.
+func (s *SendService) RunFolder(nodePath, envName string, stopOnFailure bool) (string, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return "", err
+	}
+	folder := loaded.Find(nodePath)
+	switch {
+	case folder == nil:
+		return "", fmt.Errorf("%s is not in the collection", displayPath(nodePath))
+	case folder.Kind != collection.KindFolder:
+		return "", fmt.Errorf("%s is a request, not a folder", nodePath)
+	}
+
+	var requests []*collection.Node
+	walk(folder, func(n *collection.Node) bool {
+		if n.Kind == collection.KindRequest && !n.Broken && n.Request != nil {
+			requests = append(requests, n)
+		}
+		return true
+	})
+	if len(requests) == 0 {
+		return "", fmt.Errorf("%s has no requests to run", displayPath(nodePath))
+	}
+
+	paths := make([]string, 0, len(requests))
+	for _, n := range requests {
+		paths = append(paths, n.ID)
+	}
+
+	id := newSendID()
+	ctx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.inflight[id] = cancel
+	s.mu.Unlock()
+
+	started := time.Now()
+	s.emit(events.RunStarted, RunStarted{
+		RunID: id, Folder: folder.ID, Requests: paths,
+		Env: envName, StopOnFailure: stopOnFailure, At: started,
+	})
+
+	go func() {
+		defer func() {
+			cancel()
+			s.mu.Lock()
+			delete(s.inflight, id)
+			s.mu.Unlock()
+		}()
+		s.runFolder(ctx, id, loaded, folder, requests, envName, stopOnFailure, started)
+	}()
+	return id, nil
+}
+
+// runFolder is the sequence itself. It runs on its own goroutine.
+//
+// It returns the summary as well as emitting it, so a test can drive the
+// sequence directly rather than waiting on an event the service does not emit
+// outside Wails. The window ignores the return and reads the event.
+func (s *SendService) runFolder(
+	ctx context.Context,
+	runID string,
+	loaded *collection.Collection,
+	folder *collection.Node,
+	requests []*collection.Node,
+	envName string,
+	stopOnFailure bool,
+	started time.Time,
+) RunComplete {
+	summary := RunComplete{RunID: runID, Folder: folder.ID, State: RunFinished, Total: len(requests)}
+
+	for i, node := range requests {
+		if ctx.Err() != nil {
+			summary.State = RunCancelled
+			summary.Skipped = len(requests) - i
+			break
+		}
+		// Each request is a send in its own right: its own id, its own
+		// events, its own held response. The run is the sequence, not a
+		// different kind of send.
+		sendID := newSendID()
+		at := time.Now()
+		out := s.run(ctx, sendID, loaded, node, envName, at)
+
+		result := RunResult{
+			RunID: runID, Index: i, Path: node.ID, Name: node.Name,
+			SendID: sendID, Passed: out.ok(), At: time.Now(),
+		}
+		switch {
+		case out.meta != nil:
+			result.StatusCode = out.meta.StatusCode
+			result.Status = out.meta.Status
+			result.DurationMs = out.meta.DurationMs
+			if !out.ok() {
+				result.Message = out.meta.Status
+			}
+		case out.failure != nil:
+			result.DurationMs = out.failure.DurationMs
+			result.Message = out.failure.Message
+		}
+		if result.Passed {
+			summary.Passed++
+		} else {
+			summary.Failed++
+		}
+		s.emit(events.RunResult, result)
+
+		if !result.Passed && stopOnFailure {
+			summary.State = RunStopped
+			summary.Skipped = len(requests) - i - 1
+			break
+		}
+	}
+
+	if ctx.Err() != nil && summary.State == RunFinished {
+		summary.State = RunCancelled
+	}
+	summary.DurationMs = ms(time.Since(started))
+	summary.At = time.Now()
+	s.emit(events.RunComplete, summary)
+	return summary
+}

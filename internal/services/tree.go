@@ -26,6 +26,17 @@ const (
 	// KindBroken is a *.http file that failed to parse. It is still a row and
 	// still opens: seeing the parse error is the point.
 	KindBroken NodeKind = "broken"
+	// KindHook is a *.js file that runs automatically: a folder's _pre.js or
+	// _post.js, or a request's <name>.pre.js or <name>.post.js.
+	KindHook NodeKind = "hook"
+	// KindModule is any other *.js file — a plain ES module that runs only
+	// when a hook imports it (docs/FORMAT.md §2.4).
+	//
+	// Two kinds rather than one with a flag, because the whole point of the
+	// distinction is that the reader can see it: the tree badges them HOOK and
+	// LIB, and a row that says neither would leave "does this run?" to the
+	// naming convention.
+	KindModule NodeKind = "module"
 )
 
 // Node is one entry in the tree the sidebar renders.
@@ -41,6 +52,9 @@ type Node struct {
 	// Method is a request's HTTP method, empty when the file has no request
 	// line or failed to parse.
 	Method string `json:"method,omitempty"`
+	// HookOf is the request a KindHook node runs around, as a node path, or
+	// "" for a folder hook.
+	HookOf string `json:"hookOf,omitempty"`
 	// GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
 	// in a repository.
 	GitStatus string `json:"gitStatus,omitempty"`
@@ -116,6 +130,12 @@ func convert(n *collection.Node, warnings map[string][]string, state git.State) 
 				// broken one is told from an absent one.
 				Error: settingsError(n),
 			}
+		}
+	case n.Kind == collection.KindScript:
+		out.Kind = KindModule
+		if n.Hook {
+			out.Kind = KindHook
+			out.HookOf = n.HookOf
 		}
 	case n.Broken:
 		out.Kind = KindBroken

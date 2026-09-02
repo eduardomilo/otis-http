@@ -71,6 +71,25 @@ const (
 	// re-reads them; there is no payload.
 	SessionVarsChanged = "session-vars:changed"
 
+	// RunStarted is emitted when a folder run begins, carrying the whole
+	// plan: every request it will send, in the order it will send them.
+	// Payload: services.RunStarted, keyed by run ID.
+	//
+	// The plan up front rather than a row per result as they arrive, because
+	// the window can then draw the sequence immediately and fill it in — a
+	// run of twenty requests that reveals itself one row at a time tells you
+	// nothing about how far through it is.
+	RunStarted = "run:started"
+
+	// RunResult is emitted as each request in a folder run finishes.
+	// Payload: services.RunResult, keyed by run ID and by the request's
+	// index in the plan.
+	RunResult = "run:result"
+
+	// RunComplete is emitted when a folder run ends, whether it finished,
+	// stopped on a failure, or was cancelled. Payload: services.RunComplete.
+	RunComplete = "run:complete"
+
 	// EnvironmentsChanged is emitted when the environments or the active one
 	// changed: Otis wrote an env/*.json, somebody else did, or a different
 	// environment was activated. Payload: services.Environments, the whole
@@ -111,4 +130,7 @@ var Registry = []Entry{
 	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
 	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
 	{"EnvironmentsChanged", EnvironmentsChanged, "Emitted when the environments or the active one changed. Payload: Environments; never a secret value."},
+	{"RunStarted", RunStarted, "Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order."},
+	{"RunResult", RunResult, "Emitted as each request in a folder run finishes. Payload: RunResult."},
+	{"RunComplete", RunComplete, "Emitted when a folder run ends, however it ended. Payload: RunComplete."},
 }

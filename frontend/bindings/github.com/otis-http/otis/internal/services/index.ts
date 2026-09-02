@@ -6,6 +6,7 @@ import * as CollectionService from "./collectionservice.js";
 import * as DialogService from "./dialogservice.js";
 import * as DiffService from "./diffservice.js";
 import * as EnvironmentService from "./environmentservice.js";
+import * as FolderService from "./folderservice.js";
 import * as GitService from "./gitservice.js";
 import * as RequestService from "./requestservice.js";
 import * as SendService from "./sendservice.js";
@@ -16,6 +17,7 @@ export {
     DialogService,
     DiffService,
     EnvironmentService,
+    FolderService,
     GitService,
     RequestService,
     SendService,
@@ -25,6 +27,7 @@ export {
 export {
     FailureKind,
     NodeKind,
+    RunState,
     SendState
 } from "./models.js";
 
@@ -43,10 +46,20 @@ export type {
     EnvironmentRow,
     EnvironmentSummary,
     Environments,
+    FolderAuth,
+    FolderCounts,
+    FolderDocument,
+    FolderHeader,
+    FolderOverride,
+    FolderScript,
+    FolderVariable,
     KeychainState,
     Node,
     Opened,
     ResponseMeta,
+    RunComplete,
+    RunResult,
+    RunStarted,
     SendFailure,
     SendStarted,
     SentHeader,

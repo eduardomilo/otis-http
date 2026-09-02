@@ -28,6 +28,15 @@ const (
 	// EnvDirName is the environments directory at the collection root. It
 	// belongs to the resolver (Increment 4) and is not part of the tree.
 	EnvDirName = "env"
+	// ScriptExt is the extension of script files (docs/FORMAT.md §2.4).
+	ScriptExt = ".js"
+	// PreHookName and PostHookName are a folder's automatic hooks.
+	PreHookName  = "_pre" + ScriptExt
+	PostHookName = "_post" + ScriptExt
+	// PreHookSuffix and PostHookSuffix mark a script belonging to one
+	// request: "create-order.pre.js" runs around "create-order.http".
+	PreHookSuffix  = ".pre" + ScriptExt
+	PostHookSuffix = ".post" + ScriptExt
 )
 
 // Kind distinguishes folders from requests.
@@ -36,6 +45,11 @@ type Kind string
 const (
 	KindFolder  Kind = "folder"
 	KindRequest Kind = "request"
+	// KindScript is a *.js file. It is a tree row because it is a file in the
+	// collection that changes what requests do, and a file that changes
+	// behaviour while staying invisible is the thing this product exists to
+	// argue against.
+	KindScript Kind = "script"
 )
 
 // Node is a folder or a request in the collection tree.
@@ -51,6 +65,14 @@ type Node struct {
 	// Method is the HTTP method label of a request node ("" if broken or
 	// if the file has no request line).
 	Method string `json:"method,omitempty"`
+	// Hook is set on a KindScript node that runs automatically — a folder's
+	// _pre.js or _post.js, or a request's <name>.pre.js or <name>.post.js.
+	// A script that is not a hook is a plain ES module: nothing runs it
+	// unless a hook imports it (docs/FORMAT.md §2.4).
+	Hook bool `json:"hook,omitempty"`
+	// HookOf is the node ID of the request a request-level hook belongs to,
+	// or "" for a folder hook and for a module.
+	HookOf string `json:"hookOf,omitempty"`
 	// Broken is set when the file failed to parse. The node still appears.
 	Broken bool   `json:"broken,omitempty"`
 	Error  string `json:"error,omitempty"`
@@ -228,6 +250,8 @@ func (c *Collection) loadFolder(folder *Node) {
 			c.loadFolderSettings(folder)
 		case strings.HasSuffix(name, RequestExt):
 			listing = append(listing, dirEntry{name: name})
+		case strings.HasSuffix(name, ScriptExt):
+			listing = append(listing, dirEntry{name: name})
 		}
 	}
 	// Directory listings are already sorted by name, but make the
@@ -254,15 +278,42 @@ func (c *Collection) loadFolder(folder *Node) {
 			Path:   filepath.Join(folder.Path, e.name),
 			Parent: folder,
 		}
-		if e.isDir {
+		switch {
+		case e.isDir:
 			child.Kind = KindFolder
 			c.loadFolder(child)
-		} else {
+		case strings.HasSuffix(e.name, ScriptExt):
+			child.Kind = KindScript
+			child.Hook, child.HookOf = classifyScript(folder, e.name)
+		default:
 			child.Kind = KindRequest
 			c.loadRequest(child)
 		}
 		folder.Children = append(folder.Children, child)
 	}
+}
+
+// classifyScript decides what kind of script a file name is: a folder hook, a
+// request hook, or a plain module (docs/FORMAT.md §2.4).
+//
+// A request hook has to name a request that is actually there. "utils.pre.js"
+// beside no "utils.http" is a module with an unfortunate name, and calling it
+// a hook would tell the reader it runs when nothing will ever run it.
+func classifyScript(folder *Node, name string) (hook bool, hookOf string) {
+	if name == PreHookName || name == PostHookName {
+		return true, ""
+	}
+	for _, suffix := range []string{PreHookSuffix, PostHookSuffix} {
+		base, ok := strings.CutSuffix(name, suffix)
+		if !ok {
+			continue
+		}
+		request := base + RequestExt
+		if _, err := os.Stat(filepath.Join(folder.Path, request)); err == nil {
+			return true, path.Join(folder.ID, request)
+		}
+	}
+	return false, ""
 }
 
 func (c *Collection) loadFolderSettings(folder *Node) {

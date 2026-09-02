@@ -20,6 +20,7 @@ import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
 import { useDiff } from "@/state/diff-context";
 import { useEnvironments } from "@/state/environment-context";
+import { useRuns } from "@/state/run-context";
 import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
@@ -54,6 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { tree } = useCollection();
   const { environments } = useEnvironments();
   const { overview } = useDiff();
+  const { runFor, start } = useRuns();
   const routeDocument = useRouteDocument();
   // Read inside rememberLayout, which is registered once and must not be
   // re-created every time the route changes.
@@ -65,6 +67,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const environment = routeDocument?.kind === "environment" ? routeDocument.name : null;
   const onDiff = useRouterState({ select: (state) => state.location.pathname.startsWith("/diff") });
   onDiffRef.current = onDiff;
+
+  // Screen 3a's status-bar summary: "Last run: 6/6 passed · 2h ago".
+  const folderRun =
+    routeDocument?.kind === "folder" ? lastRun(runFor(routeDocument.path)) : null;
   const environmentRow = environment
     ? (environments.find((e) => e.name === environment) ?? null)
     : null;
@@ -130,6 +136,15 @@ export function AppShell({ children }: { children: ReactNode }) {
       },
     },
     { key: "t", mod: true, shift: true, run: reopenLastClosed },
+    // ⌘⇧↵ runs the folder on screen (screen 3a puts the hint on the button).
+    {
+      key: "Enter",
+      mod: true,
+      shift: true,
+      run: () => {
+        if (routeDocument?.kind === "folder") void start(routeDocument.path, false);
+      },
+    },
     // ⌘G shows what changed. SCREENS.md notes the design never says how you
     // get into or out of this view; the status bar's branch is the other way
     // in, and pressing it again goes back to the document that was open.
@@ -277,7 +292,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             ? lastCommit(overview)
             : environmentRow
               ? referencedBy(environmentRow.referencedBy)
-              : null
+              : folderRun
+                ? folderRun
+                : null
         }
       />
 
@@ -306,6 +323,27 @@ function lastCommit(overview: { lastCommit?: { subject: string; author: string; 
   const commit = overview?.lastCommit;
   if (!commit) return null;
   return `Last commit: “${commit.subject}” · ${relativeTime(commit.when)} · ${commit.author}`;
+}
+
+/**
+ * Screen 3a's status-bar summary. A run still going says how far it has got,
+ * because "Last run" for something that has not finished would be a lie.
+ */
+function lastRun(run: ReturnType<ReturnType<typeof useRuns>["runFor"]>): string | null {
+  if (!run) return null;
+  if (run.error) return "Last run: could not start";
+  const summary = run.summary;
+  if (!summary) {
+    const done = run.rows.filter((row) => row.result).length;
+    return `Running: ${done}/${run.rows.length}`;
+  }
+  const state =
+    summary.state === "stopped"
+      ? ` · stopped, ${summary.skipped} skipped`
+      : summary.state === "cancelled"
+        ? " · cancelled"
+        : "";
+  return `Last run: ${summary.passed}/${summary.total} passed${state} · ${relativeTime(summary.at)}`;
 }
 
 /** Screen 1c's status-bar summary. The count is exact (DESIGN-NOTES §8.5). */

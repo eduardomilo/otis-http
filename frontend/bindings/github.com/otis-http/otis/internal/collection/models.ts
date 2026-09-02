@@ -20,6 +20,14 @@ export enum Kind {
 
     KindFolder = "folder",
     KindRequest = "request",
+
+    /**
+     * KindScript is a *.js file. It is a tree row because it is a file in the
+     * collection that changes what requests do, and a file that changes
+     * behaviour while staying invisible is the thing this product exists to
+     * argue against.
+     */
+    KindScript = "script",
 };
 
 /**
@@ -45,6 +53,20 @@ export interface Node {
      * if the file has no request line).
      */
     "method"?: string;
+
+    /**
+     * Hook is set on a KindScript node that runs automatically — a folder's
+     * _pre.js or _post.js, or a request's <name>.pre.js or <name>.post.js.
+     * A script that is not a hook is a plain ES module: nothing runs it
+     * unless a hook imports it (docs/FORMAT.md §2.4).
+     */
+    "hook"?: boolean;
+
+    /**
+     * HookOf is the node ID of the request a request-level hook belongs to,
+     * or "" for a folder hook and for a module.
+     */
+    "hookOf"?: string;
 
     /**
      * Broken is set when the file failed to parse. The node still appears.

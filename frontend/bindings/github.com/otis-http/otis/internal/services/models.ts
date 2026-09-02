@@ -444,6 +444,242 @@ export enum FailureKind {
 };
 
 /**
+ * FolderAuth is the auth every request below a folder starts with.
+ */
+export interface FolderAuth {
+    /**
+     * Kind is "bearer", "basic", "aws", "none", or "" when no level declares
+     * any auth at all — which is distinct from "none" (docs/FORMAT.md §3.3).
+     */
+    "kind": resolve$0.AuthKind;
+
+    /**
+     * Summary describes the scheme in words, e.g. "Bearer token".
+     */
+    "summary": string;
+
+    /**
+     * Token, Username, Region, Service and Profile carry the arguments that
+     * are safe to show. A secret is never among them: the token is the
+     * {{reference}} as written, not its value.
+     */
+    "token"?: string;
+    "username"?: string;
+    "profile"?: string;
+    "region"?: string;
+    "service"?: string;
+
+    /**
+     * Sends is what goes on the wire, masked: "Authorization: Bearer •••••".
+     */
+    "sends"?: string;
+
+    /**
+     * Secret reports that resolving the arguments would consume a secret, so
+     * the panel can show the keychain lock the design puts beside the token.
+     */
+    "secret"?: boolean;
+
+    /**
+     * Source is the file and line the auth came from. Local is true when that
+     * file is this folder's own _folder.http rather than an ancestor's.
+     */
+    "source": resolve$0.Source;
+    "local": boolean;
+
+    /**
+     * Error is a malformed @auth, which is an error and not a warning
+     * (§3.3). The panel says so rather than showing nothing.
+     */
+    "error"?: string;
+}
+
+/**
+ * FolderCounts is what the folder header says about a folder's contents.
+ * 
+ * Direct and recursive are both here, and both labelled, because the design
+ * says two different things and DESIGN-NOTES §9.6 flagged it: the header reads
+ * "5 requests · 1 subfolder" (direct) while the auth panel reads "inherited by
+ * 6 requests" (recursive, including the one in fixtures/). Both are right. The
+ * rule now is that a count describing the folder's *contents* is direct and a
+ * count describing its *reach* is recursive, and the labels say which.
+ */
+export interface FolderCounts {
+    /**
+     * Requests and Subfolders are the folder's direct children.
+     */
+    "requests": number;
+    "subfolders": number;
+
+    /**
+     * Below is every request in the subtree — what the settings here reach.
+     */
+    "below": number;
+
+    /**
+     * Scripts is the folder's own hooks and modules.
+     */
+    "scripts": number;
+}
+
+/**
+ * FolderDocument is a folder open in the folder view (screen 3a).
+ */
+export interface FolderDocument {
+    /**
+     * Path is the folder's node path, "" for the collection root.
+     */
+    "path": string;
+
+    /**
+     * Name is the directory name, or the collection's display name at the
+     * root.
+     */
+    "name": string;
+    "counts": FolderCounts;
+
+    /**
+     * SettingsPath is "orders/_folder.http", empty when the folder has none.
+     */
+    "settingsPath"?: string;
+
+    /**
+     * Settings is the parsed _folder.http, for editing. The frontend changes
+     * this model and hands it back to Save; Go's serializer is still the only
+     * thing that writes the file.
+     */
+    "settings"?: httpfile$0.File | null;
+
+    /**
+     * SettingsError is a _folder.http that does not parse. The folder still
+     * opens: seeing the error is the point (§3.4).
+     */
+    "settingsError"?: string;
+
+    /**
+     * ReadmePath and Readme are the folder's README.md, empty when absent.
+     */
+    "readmePath"?: string;
+    "readme"?: string;
+    "auth"?: FolderAuth | null;
+    "headers": FolderHeader[] | null;
+    "variables": FolderVariable[] | null;
+    "session": resolve$0.SessionValue[] | null;
+    "scripts": FolderScript[] | null;
+    "overrides": FolderOverride[] | null;
+
+    /**
+     * References is every {{name}} the folder's own values use, resolved
+     * against the active environment, with its origin and provenance. It is
+     * the index the `{{token}}` styling consults, so a reference to an
+     * environment secret reads as resolved rather than as a warning — the
+     * same shape the request editor gets.
+     * 
+     * No secret value is in it: the resolution runs against
+     * secrets.Placeholder, which is enough to tell "defined" from "missing".
+     */
+    "references": VariableRef[] | null;
+
+    /**
+     * Inheriting is every request below the folder, in display order. It is
+     * what "inherited by N requests" counts and what Run folder runs.
+     */
+    "inheriting": string[] | null;
+
+    /**
+     * Env is the environment the values were described against, "" for none.
+     */
+    "env"?: string;
+}
+
+/**
+ * FolderHeader is one header every request below a folder starts with.
+ */
+export interface FolderHeader {
+    "name": string;
+    "value": string;
+
+    /**
+     * Source is the _folder.http and line it came from; Local is true for
+     * this folder's own.
+     */
+    "source": resolve$0.Source;
+    "local": boolean;
+}
+
+/**
+ * FolderOverride is a descendant that does not take one of the folder's
+ * settings.
+ * 
+ * The design's Overrides row ("fixtures/seed-order uses none") is the honest
+ * half of an inheritance model: a panel that says "inherited by 6 requests"
+ * without saying which of them opted out is telling you something untrue about
+ * at least one of them.
+ */
+export interface FolderOverride {
+    /**
+     * Path is the descendant's node path.
+     */
+    "path": string;
+    "name": string;
+
+    /**
+     * What is "auth" or a header name.
+     */
+    "what": string;
+
+    /**
+     * How describes the override in words: "uses none", "sets its own",
+     * "switched off with !inherit".
+     */
+    "how": string;
+
+    /**
+     * Source is where the descendant does it.
+     */
+    "source": resolve$0.Source;
+}
+
+/**
+ * FolderScript is one script file belonging to a folder.
+ */
+export interface FolderScript {
+    /**
+     * Path is collection-relative.
+     */
+    "path": string;
+    "name": string;
+
+    /**
+     * Hook is "pre", "post", or "" for a module.
+     */
+    "hook"?: string;
+
+    /**
+     * Lines is the file's line count, which is what the design shows beside
+     * each hook.
+     */
+    "lines": number;
+
+    /**
+     * Source is the file's text. Hooks are shown verbatim in the panel; a
+     * module is listed but not quoted, because nothing runs it here.
+     */
+    "source"?: string;
+    "error"?: string;
+}
+
+/**
+ * FolderVariable is one committed variable in scope at a folder.
+ */
+export interface FolderVariable {
+    "name": string;
+    "value": string;
+    "source": resolve$0.Source;
+    "local": boolean;
+}
+
+/**
  * KeychainState is what the window may say about the machine's credential
  * store.
  * 
@@ -485,6 +721,12 @@ export interface Node {
      * line or failed to parse.
      */
     "method"?: string;
+
+    /**
+     * HookOf is the request a KindHook node runs around, as a node path, or
+     * "" for a folder hook.
+     */
+    "hookOf"?: string;
 
     /**
      * GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
@@ -553,6 +795,23 @@ export enum NodeKind {
      * still opens: seeing the parse error is the point.
      */
     KindBroken = "broken",
+
+    /**
+     * KindHook is a *.js file that runs automatically: a folder's _pre.js or
+     * _post.js, or a request's <name>.pre.js or <name>.post.js.
+     */
+    KindHook = "hook",
+
+    /**
+     * KindModule is any other *.js file — a plain ES module that runs only
+     * when a hook imports it (docs/FORMAT.md §2.4).
+     * 
+     * Two kinds rather than one with a flag, because the whole point of the
+     * distinction is that the reader can see it: the tree badges them HOOK and
+     * LIB, and a row that says neither would leave "does this run?" to the
+     * naming convention.
+     */
+    KindModule = "module",
 };
 
 /**
@@ -627,6 +886,97 @@ export interface ResponseMeta {
      */
     "warnings"?: string[] | null;
 }
+
+/**
+ * RunComplete is a folder run's summary.
+ */
+export interface RunComplete {
+    "runId": string;
+    "folder": string;
+    "state": RunState;
+    "passed": number;
+    "failed": number;
+
+    /**
+     * Skipped is what stop-on-failure did not get to.
+     */
+    "skipped": number;
+    "total": number;
+    "durationMs": number;
+    "at": string;
+}
+
+/**
+ * RunResult is one request's outcome inside a folder run.
+ */
+export interface RunResult {
+    "runId": string;
+
+    /**
+     * Index is the request's position in RunStarted.Requests, so the window
+     * can fill in a row it has already drawn rather than guessing.
+     */
+    "index": number;
+    "path": string;
+    "name": string;
+
+    /**
+     * SendID is the send this was, so the response pane can show its body.
+     */
+    "sendId": string;
+
+    /**
+     * Passed is a response with a status under 400. A 4xx or 5xx is a
+     * response, not an error (docs/FORMAT.md §6), and it fails the run.
+     */
+    "passed": boolean;
+    "statusCode"?: number;
+    "status"?: string;
+    "durationMs": number;
+
+    /**
+     * Message is why it failed, already readable and already masked.
+     */
+    "message"?: string;
+    "at": string;
+}
+
+/**
+ * RunStarted announces a folder run and what it is about to do.
+ */
+export interface RunStarted {
+    "runId": string;
+
+    /**
+     * Folder is the folder's node path, "" for the collection root.
+     */
+    "folder": string;
+
+    /**
+     * Requests are the paths about to be sent, in the order they will be
+     * sent — which is the folder's display order, and therefore `.order`
+     * (docs/FORMAT.md §2.2).
+     */
+    "requests": string[] | null;
+    "env"?: string;
+    "stopOnFailure": boolean;
+    "at": string;
+}
+
+/**
+ * RunState is where a folder run has got to.
+ */
+export enum RunState {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    RunRunning = "running",
+    RunFinished = "finished",
+    RunStopped = "stopped",
+    RunCancelled = "cancelled",
+};
 
 /**
  * SendFailure is the events.SendError payload. It never carries a secret: the

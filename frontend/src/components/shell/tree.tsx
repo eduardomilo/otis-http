@@ -144,9 +144,19 @@ const TreeRow = memo(function TreeRow({
   const { openTab } = useTabs();
   const { node, depth, expandable, expanded } = row;
   const isFolder = node.kind === "folder";
+  const isScript = node.kind === "hook" || node.kind === "module";
 
   const open = useCallback(
     (activate: boolean) => {
+      // A script has no document of its own yet: the editor arrives with the
+      // script engine (Increment 15). Until then it opens the folder that
+      // owns it, whose Scripts panel shows the file.
+      if (isScript) {
+        const folder = node.path.includes("/") ? node.path.replace(/\/[^/]*$/, "") : "";
+        openTab(folder, "folder", { activate });
+        if (activate) void navigate({ to: nodeRoute("folder"), params: { path: folder } });
+        return;
+      }
       const kind = isFolder ? "folder" : "request";
       if (!activate) {
         openTab(node.path, kind, { activate: false });
@@ -158,7 +168,7 @@ const TreeRow = memo(function TreeRow({
       if (isFolder && expandable && !expanded) onToggle(node.path, depth);
       void navigate({ to: nodeRoute(kind), params: { path: node.path } });
     },
-    [isFolder, expandable, expanded, node.path, depth, onToggle, navigate, openTab],
+    [isFolder, isScript, expandable, expanded, node.path, depth, onToggle, navigate, openTab],
   );
 
   return (
@@ -209,6 +219,10 @@ const TreeRow = memo(function TreeRow({
 
       {isFolder ? (
         <span className="w-2 shrink-0" />
+      ) : isScript ? (
+        // "js" in the method gutter, so a script sits on the same axis as
+        // every other row (DESIGN-NOTES §4.2) and reads as not-a-request.
+        <span className={cn(methodGutter, "text-fg-dim")}>js</span>
       ) : (
         <span className={cn(methodGutter, methodColor(node.method))} title={node.method}>
           {node.method}
@@ -219,11 +233,17 @@ const TreeRow = memo(function TreeRow({
         className={cn(
           "truncate text-ui",
           isFolder && !selected && "text-fg-muted",
+          isScript && !selected && "text-fg-muted",
           selected && "font-medium",
         )}
       >
         {node.name}
       </span>
+
+      {/* HOOK or LIB. The badge is the point: a reader must be able to tell
+          whether a script runs on its own without knowing that "_pre.js" is
+          special and "idempotency.js" is not (docs/FORMAT.md §2.4). */}
+      {isScript ? <ScriptBadge kind={node.kind} hookOf={node.hookOf} /> : null}
 
       {/* A folder that carries shared settings. The design draws a plus here
           (DESIGN-NOTES §9.7, unresolved); it means "this folder has a
@@ -243,6 +263,37 @@ const TreeRow = memo(function TreeRow({
     </div>
   );
 });
+
+/**
+ * The HOOK / LIB badge of screen 3a: 9px sans, uppercase, `.06em` tracking
+ * (DESIGN-NOTES §3's micro tag).
+ *
+ * A plain `title` rather than a Tooltip, for the same reason the git dots use
+ * one: the tree is virtualized and a Radix component per row is what took a
+ * scroll step from 18ms to 1ms at 2,000 requests.
+ */
+function ScriptBadge({ kind, hookOf }: { kind: string; hookOf?: string }) {
+  const hook = kind === "hook";
+  return (
+    <span
+      title={
+        hook
+          ? hookOf
+            ? `Runs around ${hookOf}`
+            : "Runs around every request in this folder and below"
+          : "A plain ES module: nothing runs it unless a hook imports it"
+      }
+      className={cn(
+        "ml-1.5 shrink-0 rounded-sm border px-1 text-micro tracking-[.06em] uppercase",
+        hook
+          ? "border-border-control text-fg-muted"
+          : "border-border-control text-fg-faint",
+      )}
+    >
+      {hook ? "hook" : "lib"}
+    </span>
+  );
+}
 
 /**
  * A file that did not parse. This one keeps a real tooltip: the parse error is

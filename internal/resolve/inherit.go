@@ -425,3 +425,36 @@ func AncestorAuth(levels []Level) *Auth {
 	}
 	return eff.Auth
 }
+
+// FolderLevels builds the inheritance chain *at* a folder: every folder from
+// the collection root down to and including this one that has settings.
+//
+// LevelsOf answers "what does this request end up with"; this answers "what
+// does every request below this folder start with", which is the folder view's
+// question (screen 3a: "Settings in orders/_folder.http · inherited by every
+// request below"). The folder's own settings are the last level, so they win
+// over its ancestors' exactly as they will for the requests underneath.
+func FolderLevels(folder *collection.Node) []Level {
+	if folder == nil || folder.Kind != collection.KindFolder {
+		return nil
+	}
+	chain := append([]*collection.Node{folder}, folder.Ancestors()...) // nearest first
+	levels := make([]Level, 0, len(chain))
+	for i := len(chain) - 1; i >= 0; i-- {
+		node := chain[i]
+		if node.Settings == nil {
+			continue
+		}
+		levels = append(levels, Level{
+			Path:    path.Join(node.ID, collection.FolderFileName),
+			Entries: node.Settings.Requests,
+		})
+	}
+	return levels
+}
+
+// FolderInheritance is the effective headers and auth every request below
+// folder starts with.
+func FolderInheritance(folder *collection.Node) (*Effective, error) {
+	return Levels(FolderLevels(folder))
+}

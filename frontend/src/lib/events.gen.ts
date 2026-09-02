@@ -25,6 +25,12 @@ export const OtisEvent = {
   SessionVarsChanged: "session-vars:changed",
   /** Emitted when the environments or the active one changed. Payload: Environments; never a secret value. */
   EnvironmentsChanged: "environments:changed",
+  /** Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order. */
+  RunStarted: "run:started",
+  /** Emitted as each request in a folder run finishes. Payload: RunResult. */
+  RunResult: "run:result",
+  /** Emitted when a folder run ends, however it ended. Payload: RunComplete. */
+  RunComplete: "run:complete",
 } as const;
 
 export type OtisEventName = (typeof OtisEvent)[keyof typeof OtisEvent];

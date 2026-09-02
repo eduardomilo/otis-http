@@ -47,6 +47,9 @@ func init() {
 	application.RegisterEvent[services.SendFailure](events.SendError)
 	application.RegisterEvent[application.Void](events.SessionVarsChanged)
 	application.RegisterEvent[services.Environments](events.EnvironmentsChanged)
+	application.RegisterEvent[services.RunStarted](events.RunStarted)
+	application.RegisterEvent[services.RunResult](events.RunResult)
+	application.RegisterEvent[services.RunComplete](events.RunComplete)
 }
 
 func main() {
@@ -102,6 +105,10 @@ func runGUI() {
 			// review needs: the index, and a commit. internal/git stays
 			// read-only.
 			application.NewService(services.NewDiffService(collections)),
+			// The folder view borrows the sender's session store: the
+			// variables a run set are half of its Variables panel, and they
+			// live nowhere on disk (docs/FORMAT.md §4.5).
+			application.NewService(services.NewFolderService(collections, sends)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -285,6 +285,23 @@ func names(es []OrderEntry) []string {
 	return out
 }
 
+// writeTree lays out a collection in a temp directory from a map of
+// collection-relative paths to contents.
+func writeTree(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for rel, body := range files {
+		path := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
 func snapshot(t *testing.T, dir string) map[string]string {
 	out := map[string]string{}
 	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
@@ -325,5 +342,106 @@ func TestDisplayName(t *testing.T) {
 	b := DisplayName(filepath.FromSlash("/code/other-api/.requests"))
 	if a == b {
 		t.Errorf("two collections share the secrets key %q", a)
+	}
+}
+
+// Script files are tree rows: a file in the collection that changes what
+// requests do must not be invisible (docs/FORMAT.md §2.4).
+func TestScriptsAreTreeRows(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"orders/_folder.http":         "Accept: application/json\n",
+		"orders/_pre.js":              "vars.request.set(\"idemKey\", 1);\n",
+		"orders/_post.js":             "vars.folder.set(\"orderId\", 1);\n",
+		"orders/create-order.http":    "POST https://x.test/orders\n",
+		"orders/create-order.pre.js":  "// runs around create-order only\n",
+		"orders/create-order.post.js": "// and after it\n",
+		// A .pre.js naming no request is a module with an unfortunate name.
+		"orders/utils.pre.js": "export const x = 1;\n",
+		"lib/idempotency.js":  "export function idempotencyKey() {}\n",
+		"lib/assert.js":       "export function ok() {}\n",
+	})
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Warnings) != 0 {
+		t.Errorf("warnings = %v", c.Warnings)
+	}
+
+	byID := map[string]*Node{}
+	c.Walk(func(n *Node) bool {
+		byID[n.ID] = n
+		return true
+	})
+
+	cases := []struct {
+		id     string
+		hook   bool
+		hookOf string
+	}{
+		{"orders/_pre.js", true, ""},
+		{"orders/_post.js", true, ""},
+		{"orders/create-order.pre.js", true, "orders/create-order.http"},
+		{"orders/create-order.post.js", true, "orders/create-order.http"},
+		{"orders/utils.pre.js", false, ""},
+		{"lib/idempotency.js", false, ""},
+		{"lib/assert.js", false, ""},
+	}
+	for _, c := range cases {
+		node := byID[c.id]
+		if node == nil {
+			t.Errorf("%s is not in the tree", c.id)
+			continue
+		}
+		if node.Kind != KindScript {
+			t.Errorf("%s kind = %q, want script", c.id, node.Kind)
+		}
+		if node.Hook != c.hook {
+			t.Errorf("%s hook = %v, want %v", c.id, node.Hook, c.hook)
+		}
+		if node.HookOf != c.hookOf {
+			t.Errorf("%s hookOf = %q, want %q", c.id, node.HookOf, c.hookOf)
+		}
+	}
+
+	// A script is not a request, so Requests() does not list one.
+	for _, n := range c.Requests() {
+		if strings.HasSuffix(n.ID, ScriptExt) {
+			t.Errorf("Requests() includes the script %s", n.ID)
+		}
+	}
+	// _folder.http is still settings rather than a row (§2.1).
+	if _, ok := byID["orders/_folder.http"]; ok {
+		t.Error("_folder.http became a tree row")
+	}
+}
+
+// .order names scripts like anything else, and unlisted ones still sort
+// alphabetically after the listed entries (§2.2).
+func TestScriptsParticipateInOrdering(t *testing.T) {
+	dir := writeTree(t, map[string]string{
+		"orders/.order":            "_pre.js\ncreate-order.http\n",
+		"orders/_pre.js":           "// first\n",
+		"orders/create-order.http": "POST https://x.test/orders\n",
+		"orders/aaa.js":            "// unlisted, sorts after\n",
+	})
+	c, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder := c.Find("orders")
+	if folder == nil {
+		t.Fatal("no orders folder")
+	}
+	var names []string
+	for _, ch := range folder.Children {
+		names = append(names, ch.Name)
+	}
+	// A request's display name drops the .http (§2.1); a script keeps its
+	// extension, which is what screen 3a shows and what tells a reader at a
+	// glance that the row is not a request.
+	want := []string{"_pre.js", "create-order", "aaa.js"}
+	if strings.Join(names, ",") != strings.Join(want, ",") {
+		t.Errorf("children = %v, want %v", names, want)
 	}
 }

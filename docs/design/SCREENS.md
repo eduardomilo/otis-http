@@ -331,8 +331,22 @@ where results appear; where "Last run" history is stored; how the Overrides
 row is computed, which needs a reverse index over descendants; the other four
 folder tabs.
 
-This screen introduces the session variable scope and the script API, neither
-of which exists in `FORMAT.md`. See DESIGN-NOTES §9.4 and §9.8.
+Resolved in Increment 14. Edit / Add / Open all go to the folder's
+`_folder.http` in the request editor, which is where those values actually
+live; the README has its own Preview/Edit and writes itself. `Run folder`
+sends every request below the folder in `.order` sequence, one at a time,
+reporting itself over events; its results are a panel above the others
+(DESIGN-NOTES §9.15) and its summary is the status bar's right slot. "Last
+run" is not history — it is this session's run, held in the window and
+forgotten when it closes. The Overrides row is the reverse index: Go walks
+the folder's descendants and reports each one whose nearest `@auth` or header
+is not the folder's. The other four tabs are §9.15. The two request counts
+are §9.6.
+
+This screen introduces the session variable scope and the script API. The
+scope is specified and built (`FORMAT.md` §4.5, DESIGN-NOTES §9.4); the API
+is Increment 15, and §9.8 is the ordering question it has to answer — which
+running this folder now demonstrates rather than merely asserts.
 
 ---
 

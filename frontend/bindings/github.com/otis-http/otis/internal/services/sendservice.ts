@@ -75,6 +75,25 @@ export function Meta(sendID: string): $CancellablePromise<$models.ResponseMeta> 
 }
 
 /**
+ * RunFolder sends every request below a folder, one at a time, in the folder's
+ * display order — which is `.order` where there is one and alphabetical where
+ * there is not (docs/FORMAT.md §2.2).
+ * 
+ * One at a time, deliberately: the requests in a folder are usually a sequence
+ * (create an order, then read it back), a post-response script sets the
+ * variable the next request references, and they share one cookie jar. Running
+ * them in parallel would make the outcome depend on scheduling.
+ * 
+ * It answers with the run's id immediately and reports itself over events:
+ * events.RunStarted with the whole plan, events.RunResult per request as it
+ * finishes, and events.RunComplete with the summary. Each request also emits
+ * its own send events, so the response pane fills in as the run goes.
+ */
+export function RunFolder(nodePath: string, envName: string, stopOnFailure: boolean): $CancellablePromise<string> {
+    return $Call.ByID(3357851903, nodePath, envName, stopOnFailure);
+}
+
+/**
  * Send starts sending the request at nodePath against envName ("" for none)
  * and returns the send's id immediately.
  * 
@@ -85,6 +104,19 @@ export function Meta(sendID: string): $CancellablePromise<$models.ResponseMeta> 
  */
 export function Send(nodePath: string, envName: string): $CancellablePromise<string> {
     return $Call.ByID(3168637144, nodePath, envName);
+}
+
+/**
+ * SessionScope returns the variables a run set for one scope and owner: a
+ * folder's node ID, or an environment's name (docs/FORMAT.md §4.5).
+ * 
+ * It is what the folder view's Session group lists, which has to be the
+ * folder's own values and not the collection's — a group headed "this
+ * machine only" that showed somebody else's folder's variables would be
+ * answering a different question from the one it asks.
+ */
+export function SessionScope(scope: resolve$0.SessionScope, owner: string): $CancellablePromise<resolve$0.SessionValue[] | null> {
+    return $Call.ByID(915136890, scope, owner);
 }
 
 /**
