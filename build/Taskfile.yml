@@ -96,8 +96,27 @@ tasks:
       - task: frontend:run
         vars:
           SCRIPT: '{{if eq .DEV "true"}}build:dev{{else}}build{{end}}'
+      # Vite empties outDir, which deletes the tracked placeholder that keeps
+      # gui.go's //go:embed pattern matching in a module with no bundle (see
+      # .gitignore and gui.go's assetsPresent). Restoring it here rather than
+      # setting emptyOutDir:false, because a dist that is never cleaned
+      # accumulates the asset hashes of every previous build.
+      #
+      # Without this, every frontend build leaves the file showing as deleted,
+      # and the first person to commit that deletion breaks
+      # `go install github.com/otis-http/otis@latest`.
+      - task: frontend:dist:placeholder
     env:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
+
+  frontend:dist:placeholder:
+    summary: Restores the tracked placeholder Vite's outDir cleaning removes
+    internal: true
+    cmds:
+      - cmd: git checkout -- frontend/dist/.gitkeep 2>/dev/null || true
+        ignore_error: true
+    status:
+      - test -f frontend/dist/.gitkeep
 
   frontend:run:
     summary: Run a frontend script with selected runner
