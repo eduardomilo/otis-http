@@ -405,6 +405,34 @@ shortcuts and a result count, per-row trailing `↵` hints, or the
 character-level match highlighting the design shows (matched characters take
 the accent at weight 500, not a background). All four are custom on top.
 
+Built in Increment 16 as `frontend/src/lib/fuzzy.ts` plus
+`components/shell/command-palette.tsx`. `Command` is not used: its filtering
+returns a boolean per item, and the design needs the matched character
+positions, so the matcher is ours and the list is a plain scroller. Three
+things the design leaves open, decided there:
+
+- **The typed query filters requests. It does not filter the other
+  sections.** Screen 2c shows `local` and `prod` listed under ENVIRONMENT
+  while `ord cre` is typed in the input, which only makes sense if those rows
+  are a standing list — which is also what the section asides (`type @ to
+  filter`, `type : to filter`) say. Under a prefix, that section is the only
+  one and the term filters it.
+- **Sections hold fixed positions with a per-section cap** (12 requests, 6
+  environments, 8 commands, 6 recents), rather than re-ranking against the
+  query. At 2,000 requests a re-ranking palette buries the environments under
+  400 matches, and "requests, then environments, then recents" is a layout
+  worth learning once; ↓↓↵ has to mean the same thing between keystrokes. A
+  capped section says what it is hiding in its heading aside (`12 of 50`), and
+  the footer counts total matches, not rendered rows.
+- **A standing row never takes the keyboard selection.** With a term typed,
+  only rows that term filtered are selectable; the listed environments and
+  recents stay visible and clickable but the cursor skips them. Without this,
+  a request query that matches nothing leaves ↵ sitting on "switch
+  environment" — typing a name that turned out not to exist would silently
+  change where every send goes. A click is aim and still works; a keystroke is
+  not. When the searched section matches nothing it says so in its own place,
+  so the standing sections below are not mistaken for results.
+
 **7.5 The auth radio group expands.** The selected option renders a detail
 panel inside its own card (type, token, what gets sent, an "Edit in orders/"
 action), the unselected ones are single rows. `RadioGroup` handles state;

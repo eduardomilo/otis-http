@@ -14,7 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { methodColor, methodGutter } from "@/lib/method";
 import { nodeRoute } from "@/lib/paths";
 import { fileManagerName } from "@/lib/platform";
-import { findNode, flatten, indentOf, isExpanded, type Expansion, type Row } from "@/lib/tree";
+import { expandTo, findNode, flatten, indentOf, isExpanded, type Expansion, type Row } from "@/lib/tree";
 import { cn } from "@/lib/utils";
 import type { Node, Tree as CollectionTree } from "@bindings/internal/services";
 import { CollectionService } from "@bindings/internal/services";
@@ -38,17 +38,27 @@ import { useTabs } from "@/state/tabs-context";
 const ROW_HEIGHT = 24;
 const NODE_PATH_ATTRIBUTE = "data-node-path";
 
+/** What the shell can ask the tree to do. */
+export interface TreeHandle {
+  /** Opens the ancestors of a path, scrolls to it and marks it. */
+  reveal: (path: string) => void;
+}
+
 export function Tree({
   tree,
   filter,
   activePath,
+  revealRef,
 }: {
   tree: CollectionTree;
   filter: ReadonlySet<string> | undefined;
   activePath: string;
+  /** Filled in with the reveal handle, for the palette's ⇧↵. */
+  revealRef?: React.RefObject<TreeHandle | null>;
 }) {
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
   const [menuTarget, setMenuTarget] = useState<Node | null>(null);
+  const [revealed, setRevealed] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   const rows = useMemo(() => flatten(tree.root, overrides, filter), [tree, overrides, filter]);
@@ -68,6 +78,15 @@ export function Tree({
     });
   }, []);
 
+  // A selected row inside a closed folder is a selected row nobody can see,
+  // so the ancestors open. This is what makes a deep link, a restored tab and
+  // the palette all land somewhere visible, and it is why the palette needs no
+  // expansion plumbing of its own for ↵.
+  useEffect(() => {
+    if (!activePath) return;
+    setOverrides((current) => expandTo(current, activePath));
+  }, [activePath]);
+
   // Keep the selected row on screen when the route changes from somewhere
   // else — a deep link, a tab, the palette.
   const index = rows.findIndex((row) => row.node.path === activePath);
@@ -77,6 +96,33 @@ export function Tree({
     // Only when the selection moves, not on every re-measure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePath]);
+
+  // Reveal is the palette's ⇧↵: open the ancestors, put the row on screen and
+  // mark it, without opening a document. Imperative because it is an event
+  // rather than a state — revealing the same path twice has to work.
+  useEffect(() => {
+    if (!revealRef) return;
+    revealRef.current = {
+      reveal(path: string) {
+        setOverrides((current) => expandTo(current, path));
+        setRevealed(path);
+      },
+    };
+    return () => {
+      revealRef.current = null;
+    };
+  }, [revealRef]);
+
+  // The revealed row is marked until the next reveal or selection change, so
+  // "it is over there" is visible for longer than the scroll takes.
+  useEffect(() => {
+    if (!revealed) return;
+    const at = rows.findIndex((row) => row.node.path === revealed);
+    if (at >= 0) scrollToIndex(at, { align: "center" });
+    const timer = window.setTimeout(() => setRevealed(null), 2000);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed, rows.length]);
 
   // Right-clicking anywhere in the tree finds the row under the pointer, so
   // one menu serves every row.
@@ -118,7 +164,12 @@ export function Tree({
                   className="absolute top-0 left-0 w-full"
                   style={{ height: item.size, transform: `translateY(${item.start}px)` }}
                 >
-                  <TreeRow row={row} selected={row.node.path === activePath} onToggle={toggle} />
+                  <TreeRow
+                    row={row}
+                    selected={row.node.path === activePath}
+                    revealed={row.node.path === revealed}
+                    onToggle={toggle}
+                  />
                 </div>
               );
             })}
@@ -134,10 +185,13 @@ export function Tree({
 const TreeRow = memo(function TreeRow({
   row,
   selected,
+  revealed,
   onToggle,
 }: {
   row: Row;
   selected: boolean;
+  /** Briefly marked by the palette's ⇧↵, so "it is over there" is visible. */
+  revealed: boolean;
   onToggle: (path: string, depth: number) => void;
 }) {
   const navigate = useNavigate();
@@ -191,7 +245,9 @@ const TreeRow = memo(function TreeRow({
         "flex h-[var(--row-height)] cursor-default items-center pr-2 select-none",
         selected
           ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--accent)]"
-          : "text-fg-secondary hover:bg-control",
+          : revealed
+            ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--border-strong)]"
+            : "text-fg-secondary hover:bg-control",
       )}
     >
       <span className="shrink-0" style={{ width: indentOf(depth) }} />

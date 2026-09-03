@@ -10,7 +10,19 @@ import {
 } from "react";
 import { Events } from "@wailsio/runtime";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { OtisEvent } from "@/lib/events.gen";
+import { nodeDisplayName } from "@/lib/paths";
+import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useEnvironments } from "@/state/environment-context";
 import { SendService } from "@bindings/internal/services";
@@ -22,6 +34,7 @@ import type {
   SendStarted,
 } from "@bindings/internal/services";
 import type { ConsoleLine, TestResult } from "@bindings/internal/script";
+import type { EnvironmentSummary } from "@bindings/internal/services";
 import type { SessionValue } from "@bindings/internal/resolve";
 
 /**
@@ -74,22 +87,91 @@ interface SendContextValue {
   sessionVars: SessionValue[];
   /** Forgets every session variable. */
   clearSessionVars: () => Promise<void>;
+  /**
+   * The requests sent this session, most recent first — what the command
+   * palette's `:` mode lists (screen 2c).
+   *
+   * This session's, deliberately. A "recent" from last week carrying a status
+   * code from last week is worse than no row at all: it invites you to trust
+   * a verdict about a server that has been deployed six times since. They are
+   * forgotten with the window, like the cookie jar and the session variables.
+   */
+  recents: Recent[];
+}
+
+/** One past send, for the palette's Recent group. */
+export interface Recent {
+  path: string;
+  name: string;
+  method: string;
+  /** 0 when the send produced no response. */
+  statusCode: number;
+  /** The failure's one-line message, when there was no response. */
+  message: string;
+  durationMs: number;
+  /** When it finished, as an ISO string, for relativeTime. */
+  at: string;
 }
 
 const SendContext = createContext<SendContextValue | null>(null);
 
 export function SendProvider({ children }: { children: ReactNode }) {
-  const { collection } = useCollection();
+  const { collection, tree: walked } = useCollection();
   const [sends, setSends] = useState<Record<string, Send>>({});
   const [sessionVars, setSessionVars] = useState<SessionValue[]>([]);
+  // Most recent first, one row per path: the palette lists requests, not
+  // individual attempts, so sending the same request twice moves its row up
+  // rather than adding a second.
+  const [recents, setRecents] = useState<Recent[]>([]);
 
   // The active environment. "" is a real state, not a placeholder: a request
   // then resolves against its file and folder scopes only (docs/FORMAT.md
   // §4.2).
-  const { active: env } = useEnvironments();
+  const { active: env, activeEnvironment } = useEnvironments();
 
   const latest = useRef(sends);
   latest.current = sends;
+
+  // The tree, in a ref: the event handlers below name a recent from its node
+  // and would otherwise have to resubscribe on every re-walk. A ref reads the
+  // current tree without making the subscription depend on it.
+  const tree = useRef(walked);
+  tree.current = walked;
+
+  /**
+   * What to call a request in the Recent list, and which method to colour it
+   * with.
+   *
+   * Taken from the node rather than from the send, because a send that never
+   * reached the wire has no method to report and its `# @name` is what the
+   * rest of the palette calls it — a Recent row reading `create-order-00`
+   * beside a Requests row reading `create-order v2` would be two names for
+   * one file.
+   */
+  const describe = useCallback((path: string): { name: string; method: string } => {
+    const root = tree.current?.root;
+    const node = root ? findNode(root, path) : undefined;
+    return {
+      name: node?.name || nodeDisplayName(path),
+      method: node?.method ?? "",
+    };
+  }, []);
+
+  // A path names a file inside one collection, so switching forgets the
+  // recents — the same reason the tabs and the active environment are
+  // cleared.
+  useEffect(() => {
+    setRecents([]);
+  }, [collection?.path]);
+
+  // One row per path: sending the same request twice moves its row up rather
+  // than adding a second, because the palette lists requests and not attempts.
+  const remember = useCallback((entry: Recent) => {
+    setRecents((current) => [
+      entry,
+      ...current.filter((r) => r.path !== entry.path),
+    ].slice(0, MAX_RECENTS));
+  }, []);
 
   /**
    * Applies an event to the send it belongs to.
@@ -130,6 +212,18 @@ export function SendProvider({ children }: { children: ReactNode }) {
           meta,
           failure: null,
         }));
+        const named = describe(meta.path);
+        remember({
+          ...named,
+          path: meta.path,
+          // What actually went on the wire wins over the file's method: a
+          // pre-request script may have changed it (docs/FORMAT.md §9.5).
+          method: meta.request?.method || named.method,
+          statusCode: meta.statusCode,
+          message: "",
+          durationMs: meta.durationMs,
+          at: meta.at,
+        });
       }),
       Events.On(OtisEvent.SendError, (event) => {
         const failure = event.data as SendFailure;
@@ -139,6 +233,18 @@ export function SendProvider({ children }: { children: ReactNode }) {
           failure,
           meta: null,
         }));
+        // A send that failed is still a send you made, and the palette saying
+        // so is more use than a gap where the row would be.
+        if (failure.kind !== "cancelled") {
+          remember({
+            ...describe(failure.path),
+            path: failure.path,
+            statusCode: 0,
+            message: failure.message,
+            durationMs: failure.durationMs,
+            at: failure.at,
+          });
+        }
       }),
       // Tests and console output stream as they happen (docs/FORMAT.md §9.9),
       // so a long suite fills in rather than appearing all at once when the
@@ -165,9 +271,9 @@ export function SendProvider({ children }: { children: ReactNode }) {
     ];
     void SendService.SessionVars().then((values) => setSessionVars(values ?? []));
     return () => offs.forEach((off) => off());
-  }, [apply]);
+  }, [apply, describe, remember]);
 
-  const send = useCallback(
+  const reallySend = useCallback(
     async (path: string) => {
       const previous = latest.current[path];
       // Sending again supersedes: the old send is stopped rather than left to
@@ -227,6 +333,31 @@ export function SendProvider({ children }: { children: ReactNode }) {
     [env],
   );
 
+  // A send an environment asked to confirm, waiting for an answer. One at a
+  // time: the dialog is modal.
+  const [pending, setPending] = useState<string | null>(null);
+
+  /**
+   * Sends, unless the active environment asked to be confirmed first
+   * (docs/FORMAT.md §4.3).
+   *
+   * The gate is here rather than at each call site, so the Send button, ⌘↵ in
+   * the editor, the palette's ⌘↵ and a folder run all get it. A safety feature
+   * with a hole in it is not one — and "this environment is the dangerous one"
+   * is a fact about the environment, not about which button you pressed.
+   */
+  const send = useCallback(
+    async (path: string) => {
+      if (activeEnvironment?.confirmBeforeSend) {
+        setPending(path);
+        return;
+      }
+      await reallySend(path);
+    },
+    [activeEnvironment?.confirmBeforeSend, reallySend],
+  );
+
+
   const cancel = useCallback(async (path: string) => {
     const existing = latest.current[path];
     if (!existing?.sendId) return;
@@ -266,11 +397,79 @@ export function SendProvider({ children }: { children: ReactNode }) {
       forget,
       sessionVars,
       clearSessionVars,
+      recents,
     }),
-    [sends, send, cancel, forget, sessionVars, clearSessionVars],
+    [sends, send, cancel, forget, sessionVars, clearSessionVars, recents],
   );
 
-  return <SendContext.Provider value={value}>{children}</SendContext.Provider>;
+  return (
+    <SendContext.Provider value={value}>
+      {children}
+      <ConfirmSendDialog
+        path={pending}
+        environment={activeEnvironment}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const path = pending;
+          setPending(null);
+          if (path) void reallySend(path);
+        }}
+      />
+    </SendContext.Provider>
+  );
+}
+
+/**
+ * The confirmation an environment asked for (docs/FORMAT.md §4.3).
+ *
+ * It names the environment and the request, because "are you sure?" is not a
+ * question anybody can answer — what makes this worth stopping for is that
+ * the environment is production and the request is the one that mutates.
+ */
+function ConfirmSendDialog({
+  path,
+  environment,
+  onCancel,
+  onConfirm,
+}: {
+  path: string | null;
+  environment: EnvironmentSummary | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog open={path !== null} onOpenChange={(open) => !open && onCancel()}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Send to <span className="font-mono">{environment?.name}</span>?
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            <span className="font-mono text-fg-secondary">{path}</span> resolves against{" "}
+            <span className="font-mono text-fg-secondary">{environment?.path}</span>, which asks to
+            be confirmed before every send.
+            {environment?.description ? (
+              <>
+                {" "}
+                <span className="text-modified">{environment.description}</span>
+              </>
+            ) : null}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(event) => {
+              event.preventDefault();
+              onConfirm();
+            }}
+          >
+            Send
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 export function useSends(): SendContextValue {
@@ -282,3 +481,15 @@ export function useSends(): SendContextValue {
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/** How many past sends the palette's Recent group remembers. */
+const MAX_RECENTS = 20;
+
+/**
+ * A request's display name from its path, for a recent row.
+ *
+ * The path rather than the tree, because a recent has to survive the file
+ * being renamed or deleted underneath it: the row then still says what was
+ * sent, and opening it reports the file is gone rather than the row silently
+ * vanishing.
+ */

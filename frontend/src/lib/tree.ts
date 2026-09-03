@@ -37,6 +37,28 @@ export function isExpanded(overrides: Expansion, path: string, depth: number): b
 }
 
 /**
+ * The overrides needed to make every ancestor of a path open.
+ *
+ * Returns the same map when nothing had to change, so a caller can use the
+ * identity to decide whether to set state at all — the tree is virtualized and
+ * a new map every time the route changes would re-flatten it for nothing.
+ */
+export function expandTo(overrides: Expansion, path: string): Expansion {
+  const segments = path.split("/");
+  if (segments.length < 2) return overrides;
+  let next: Map<string, boolean> | null = null;
+  let ancestor = "";
+  // Every ancestor folder, root-most first, so its depth is its index.
+  for (let depth = 0; depth < segments.length - 1; depth++) {
+    ancestor = ancestor === "" ? segments[depth] : ancestor + "/" + segments[depth];
+    if (isExpanded(overrides, ancestor, depth)) continue;
+    next ??= new Map(overrides);
+    next.set(ancestor, true);
+  }
+  return next ?? overrides;
+}
+
+/**
  * Flattens the tree into the visible rows.
  *
  * When `visible` is given (a filter is active) only nodes in it are rendered,

@@ -2,7 +2,7 @@ import { forwardRef, useMemo, useState } from "react";
 
 import { ChangesList } from "@/components/diff/changes-list";
 import { EnvironmentList } from "@/components/environment/environment-list";
-import { Tree } from "@/components/shell/tree";
+import { Tree, type TreeHandle } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
 import { hint } from "@/lib/platform";
 import { filterTree } from "@/lib/tree";
@@ -20,8 +20,14 @@ import { useCollection } from "@/state/collection-context";
  */
 export const Sidebar = forwardRef<
   HTMLInputElement,
-  { activePath: string; environment?: string | null; diff?: boolean }
->(function Sidebar({ activePath, environment, diff }, filterRef) {
+  {
+    activePath: string;
+    environment?: string | null;
+    diff?: boolean;
+    /** Filled in with the tree's reveal handle, for the palette's ⇧↵. */
+    revealRef?: React.RefObject<TreeHandle | null>;
+  }
+>(function Sidebar({ activePath, environment, diff, revealRef }, filterRef) {
   const { tree } = useCollection();
   const [query, setQuery] = useState("");
 
@@ -71,7 +77,7 @@ export const Sidebar = forwardRef<
       </div>
 
       {tree ? (
-        <Tree tree={tree} filter={filter} activePath={activePath} />
+        <Tree tree={tree} filter={filter} activePath={activePath} revealRef={revealRef} />
       ) : (
         <p className="px-1 py-2 text-meta text-fg-faint">Reading the collection…</p>
       )}

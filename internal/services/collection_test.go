@@ -38,7 +38,7 @@ func fixture(t *testing.T) string {
 	write(t, filepath.Join(root, "auth", "login-check.http"), "GET https://example.test/me\n")
 	write(t, filepath.Join(root, "orders", "_folder.http"), "# @auth bearer {{apiKey}}\nAccept: application/json\n")
 	write(t, filepath.Join(root, "orders", "create-order.http"), "# @name Create order\nPOST https://example.test/orders\n")
-	write(t, filepath.Join(root, "orders", "list-orders.http"), "GET https://example.test/orders\n")
+	write(t, filepath.Join(root, "orders", "list-orders.http"), "GET {{baseUrl}}/orders?limit=10\n")
 	write(t, filepath.Join(root, "orders", "fixtures", "seed-order.http"), "POST https://example.test/orders?seed=1\n")
 	write(t, filepath.Join(root, "orders", ".order"), "create-order.http\nlist-orders.http\nfixtures/\n")
 	write(t, filepath.Join(root, "broken.http"), "GET https://example.test/ nonsense trailing\n")
@@ -99,6 +99,34 @@ func TestOpenReturnsTheTree(t *testing.T) {
 	}
 	if create.Name != "Create order" {
 		t.Errorf("name = %q, want the @name directive", create.Name)
+	}
+}
+
+// The command palette searches a request's URL and shows it (screen 2c), so
+// the URL travels with the tree rather than costing a binding call per
+// keystroke — and it travels as written, references intact, because the
+// palette has no environment in mind and a URL that changed as you switched
+// environments would be a moving target to search.
+func TestRequestURLTravelsWithTheTreeUnresolved(t *testing.T) {
+	root := fixture(t)
+	s := newService(t)
+	opened, err := s.Open(root)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	list := find(&opened.Tree.Root, "orders/list-orders.http")
+	if list == nil {
+		t.Fatal("no list-orders")
+	}
+	if list.URL != "{{baseUrl}}/orders?limit=10" {
+		t.Errorf("URL = %q, want it as written with {{baseUrl}} intact", list.URL)
+	}
+
+	// A folder has no URL, and neither does a file that did not parse: the
+	// field is omitted rather than carrying an empty string into the window.
+	if orders := find(&opened.Tree.Root, "orders"); orders == nil || orders.URL != "" {
+		t.Errorf("folder URL = %q, want empty", orders.URL)
 	}
 }
 

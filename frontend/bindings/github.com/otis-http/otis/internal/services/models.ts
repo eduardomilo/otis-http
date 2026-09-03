@@ -740,6 +740,18 @@ export interface Node {
     "hookOf"?: string;
 
     /**
+     * URL is a request's URL as written, with its `{{references}}` intact.
+     * 
+     * It travels with the tree because the command palette searches it and
+     * shows it (screen 2c matches "ord" against `/v2/orders`), and asking Go
+     * for it per row would be a binding call per keystroke. As written rather
+     * than resolved: the palette has no environment in mind, and a URL that
+     * changed as you switched environments would be a moving target to
+     * search.
+     */
+    "url"?: string;
+
+    /**
      * GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
      * in a repository.
      */

@@ -55,6 +55,15 @@ type Node struct {
 	// HookOf is the request a KindHook node runs around, as a node path, or
 	// "" for a folder hook.
 	HookOf string `json:"hookOf,omitempty"`
+	// URL is a request's URL as written, with its `{{references}}` intact.
+	//
+	// It travels with the tree because the command palette searches it and
+	// shows it (screen 2c matches "ord" against `/v2/orders`), and asking Go
+	// for it per row would be a binding call per keystroke. As written rather
+	// than resolved: the palette has no environment in mind, and a URL that
+	// changed as you switched environments would be a moving target to
+	// search.
+	URL string `json:"url,omitempty"`
 	// GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
 	// in a repository.
 	GitStatus string `json:"gitStatus,omitempty"`
@@ -142,6 +151,9 @@ func convert(n *collection.Node, warnings map[string][]string, state git.State) 
 		out.Error = n.Error
 	default:
 		out.Kind = KindRequest
+		if n.Request != nil {
+			out.URL = n.Request.URL
+		}
 	}
 
 	for _, child := range n.Children {

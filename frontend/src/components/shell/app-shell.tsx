@@ -10,6 +10,7 @@ import {
 import { CommandPalette } from "@/components/shell/command-palette";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
+import type { TreeHandle } from "@/components/shell/tree";
 import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { useKeymap } from "@/hooks/use-keymap";
@@ -82,6 +83,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const centerPane = useRef<HTMLDivElement>(null);
   const responsePane = useRef<HTMLDivElement>(null);
   const filterInput = useRef<HTMLInputElement>(null);
+  // The tree's reveal handle, for the palette's ⇧↵.
+  const treeHandle = useRef<TreeHandle | null>(null);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The last non-zero width of each collapsible pane, so collapsing does not
@@ -239,6 +242,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 activePath={routeDocument?.path ?? ""}
                 environment={environment}
                 diff={onDiff}
+                revealRef={treeHandle}
               />
             </div>
           </ResizablePanel>
@@ -298,7 +302,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
       />
 
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onReveal={(path) => {
+          // ⇧↵ shows where a request lives without opening it: the sidebar
+          // expands to it and the row is marked, and the centre pane is left
+          // alone.
+          sidebarPanel.current?.expand();
+          treeHandle.current?.reveal(path);
+        }}
+      />
     </>
   );
 }

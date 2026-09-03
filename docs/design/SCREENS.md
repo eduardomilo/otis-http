@@ -280,6 +280,35 @@ mode, which is advertised but never displayed; the confirmation `prod`
 triggers before sending; how `⌘P` (filter requests, per the sidebar hint) and
 `⌘K` differ; dismissal.
 
+**Resolved in Increment 16:**
+
+- **Filtering.** The typed query filters the Requests group only; Environment
+  and Recent are a standing list, filtered by their own prefix. That is what
+  the screen shows — `local` and `prod` are listed with `ord cre` typed — and
+  what the asides mean. Sections keep fixed positions with a per-section cap
+  rather than re-ranking, and a standing row never takes the keyboard
+  selection. DESIGN-NOTES §7.4 has the reasoning.
+- **The `>` commands list is ours**, since the design advertises the mode and
+  never draws it. Seven entries, all of which do something that already
+  exists: show changes, open the collection root, edit environments, reveal
+  the collection in Finder, copy the collection path, reload from disk, clear
+  session variables.
+- **`⇧↵` reveals without opening.** It expands the request's ancestors,
+  scrolls it into view and marks the row for two seconds; the centre pane does
+  not change. `↵` opens, `⌘↵` opens and sends.
+- **`prod` confirms on `⌘↵`.** The gate lives in the send context, not in the
+  palette, so the Send button, the shell's `⌘↵` and the palette all hit it.
+  The dialog names the request, the environment file and its description.
+- **`⌘P` and `⌘K` are different things.** `⌘P` focuses the sidebar's filter
+  field, which narrows the tree in place and leaves it narrowed; `⌘K` opens
+  the palette, which is transient and reaches environments, commands and
+  recents as well as requests. Escape or a click outside dismisses the
+  palette; choosing a row dismisses it too.
+- **Recents** carry method, name, status, elapsed time and relative time, one
+  row per request rather than one per attempt, most recent first, capped at
+  20. They are session-scoped and cleared when the collection changes — the
+  empty state says so rather than reporting a failed match.
+
 ---
 
 ## 3a · Folder view
