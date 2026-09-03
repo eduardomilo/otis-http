@@ -1,0 +1,348 @@
+name: Release
+
+# Tag-driven. `git tag v0.2.0 && git push --tags` is the whole release
+# procedure; docs/RELEASING.md is the checklist around it.
+on:
+  push:
+    tags: ["v*"]
+  # A dry run: builds and uploads the artifacts as run artifacts, and creates
+  # no release. Worth doing before a real tag, because the tag is the part
+  # that is awkward to take back.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the artifacts but publish no release"
+        type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "22"
+  WAILS_VERSION: v3.0.0-beta.16
+
+jobs:
+  # The gate. A tag that does not pass its own tests should not become a
+  # release, and finding out after the artifacts are published is too late.
+  check:
+    # Pinned for the same reason the Linux build job is: this installs
+    # libwebkitgtk-6.0-dev by name, and a runner that rolls forward is a
+    # runner whose package names can change under us.
+    name: Vet, test and typecheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - run: npm ci
+        working-directory: frontend
+      - run: go vet ./...
+      - run: npm run typecheck
+        working-directory: frontend
+      - run: go test -race ./...
+
+  build:
+    name: Build and package (${{ matrix.artifact }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Not fail-fast: knowing that two platforms are fine and one is not is
+      # more useful mid-release than knowing that something stopped.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: darwin
+          - os: windows-latest
+            artifact: windows
+          # Pinned, not ubuntu-latest. The build machine's glibc is the
+          # floor for everyone who runs the result, so a runner that rolls
+          # forward would silently raise the minimum a user needs — with
+          # nothing in the artifact to say so. 24.04 is also where
+          # libwebkitgtk-6.0-dev first appears, which is the floor
+          # docs/BUILDING.md §10 documents, so the two agree by construction.
+          - os: ubuntu-24.04
+            artifact: linux
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version stamped into the binary is `git describe`, so the tags
+          # have to be here or every artifact claims to be an untagged build.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libfuse2t64 desktop-file-utils
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis --no-progress -y
+
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - run: npm ci
+        working-directory: frontend
+
+      # Build, sign, package — three steps, and the middle one is empty.
+      # Otis ships unsigned by deliberate deferral; docs/RELEASING.md says
+      # exactly what goes in the sign step for each platform and which secret
+      # it would need. Keeping it here means adding signing later touches one
+      # task and no workflow.
+      - name: Build
+        run: wails3 task build
+
+      - name: Sign
+        run: wails3 task sign:${{ matrix.artifact }}
+
+      - name: Package
+        run: wails3 task release:${{ matrix.artifact }}
+        env:
+          # linuxdeploy is itself an AppImage, so building one needs FUSE to
+          # mount it. Rather than depend on the runner having FUSE 2 — which
+          # Ubuntu 24.04 renamed and may drop — this tells every AppImage it
+          # runs to unpack itself instead. Ignored on the other platforms.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+
+      # Deliberately not run here. The per-platform sums would each cover a
+      # third of the release, and three partial SHA256SUMS files cannot be
+      # merged into one a user can `-c`. The publish job does it once over
+      # everything.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: otis-${{ matrix.artifact }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    # A dry run stops here, having proved the artifacts build.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      # To create the release and upload its assets.
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Collect every platform's artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: staging
+          pattern: otis-*
+          merge-multiple: true
+
+      - name: One set of checksums over the whole release
+        id: checksums
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Flatten, and drop the per-platform SHA256SUMS: each covered only
+          # its own third, and the file users verify against has to cover all
+          # of it.
+          find staging -type f ! -name SHA256SUMS -exec cp {} dist/ \;
+          cd dist
+          find . -maxdepth 1 -type f -exec basename {} \; | sort | xargs sha256sum > SHA256SUMS
+          echo "Artifacts:"
+          ls -lh
+          echo
+          cat SHA256SUMS
+          # Fenced, for the release body.
+          {
+            echo 'block<<SUMS_EOF'
+            cat SHA256SUMS
+            echo 'SUMS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sanity-check what is about to be published
+        run: |
+          set -euo pipefail
+          cd dist
+          missing=0
+          # Named rather than counted: a release that quietly lost its Windows
+          # installer is the failure this catches, and it is invisible in a
+          # file count.
+          for want in \
+            "_darwin_universal.dmg" \
+            "_darwin_universal.tar.gz" \
+            "_windows_amd64_setup.exe" \
+            "_windows_amd64.zip" \
+            "_linux_amd64.AppImage" \
+            "_linux_amd64.deb" \
+            "_linux_amd64.rpm" \
+            "_linux_amd64.tar.gz"
+          do
+            if ! ls *"$want" >/dev/null 2>&1; then
+              echo "::error::the release is missing an artifact matching *$want"
+              missing=1
+            fi
+          done
+          test "$missing" -eq 0
+
+      - name: Create the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          # Generated notes are appended under the body below.
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## Install
+
+            **macOS** — the smoothest path, because Homebrew does not
+            quarantine what it downloads, so there is no Gatekeeper prompt:
+
+            ```bash
+            brew install otis-http/otis/otis
+            ```
+
+            **Windows** — download `*_windows_amd64_setup.exe` below.
+
+            **Linux** — download the `.deb` or `.rpm` below; the `.AppImage`
+            needs no install but cannot register the `.http` file type.
+
+            **The command line only**, any platform, no download:
+
+            ```bash
+            go install -tags otis_cli github.com/otis-http/otis@${{ github.ref_name }}
+            ```
+
+            ## Nothing here is signed
+
+            Otis is not code-signed or notarized on macOS, and not
+            Authenticode-signed on Windows. That is a deliberate deferral, not
+            an oversight — signing arrives when there are enough users to
+            justify the certificates. **The checksums below are therefore the
+            only integrity signal this release carries.** Verify before
+            installing:
+
+            ```bash
+            # macOS / Linux, in your download directory
+            shasum -a 256 -c SHA256SUMS --ignore-missing
+            ```
+
+            ```powershell
+            # Windows
+            Get-FileHash .\otis_*_windows_amd64_setup.exe -Algorithm SHA256
+            ```
+
+            Because it is unsigned, each platform will warn you once:
+
+            - **macOS**, opening the DMG or the app: *"Otis cannot be opened
+              because it is from an unidentified developer."* Right-click (or
+              Control-click) the app and choose **Open**, then **Open** again
+              in the dialog. Double-clicking will not offer that choice — the
+              right-click is what does. Installing with `brew` avoids this
+              entirely.
+            - **Windows**, running the installer: SmartScreen shows *"Windows
+              protected your PC."* Click **More info**, then **Run anyway**.
+            - **Linux**: no warning; there is nothing to sign against.
+
+            ## Checksums
+
+            ```
+            ${{ steps.checksums.outputs.block }}
+            ```
+
+  # The tap is a separate repository, so this needs a token that can write to
+  # it — the workflow's own GITHUB_TOKEN is scoped to this repo only.
+  #
+  # Secret: HOMEBREW_TAP_TOKEN, a fine-grained personal access token with
+  # Contents: read and write on otis-http/homebrew-otis and nothing else.
+  # docs/RELEASING.md has the steps to create it. Absent, this job skips and
+  # the release still publishes — the formula is then a manual edit.
+  homebrew:
+    name: Update the Homebrew tap
+    needs: publish
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Is the tap token available?
+        id: gate
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${TAP_TOKEN:-}" ]; then
+            echo "::warning::HOMEBREW_TAP_TOKEN is not set, so the tap was not updated. See docs/RELEASING.md."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Render the formula from the released tarball
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          TARBALL="otis_${VERSION}_darwin_universal.tar.gz"
+          # The published artifact, not a local rebuild: the formula's sha256
+          # has to be the hash of the file users will actually download.
+          curl -fsSL -o "$TARBALL" "${BASE}/${TARBALL}"
+          SHA=$(sha256sum "$TARBALL" | cut -d' ' -f1)
+          mkdir -p rendered
+          sed -e "s|@@VERSION@@|${VERSION}|g" \
+              -e "s|@@URL@@|${BASE}/${TARBALL}|g" \
+              -e "s|@@SHA256@@|${SHA}|g" \
+              build/homebrew/otis.rb.tmpl > rendered/otis.rb
+          echo "--- rendered formula ---"
+          cat rendered/otis.rb
+
+      - name: Commit it to the tap
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 \
+            "https://x-access-token:${TAP_TOKEN}@github.com/otis-http/homebrew-otis.git" tap
+          mkdir -p tap/Formula
+          cp rendered/otis.rb tap/Formula/otis.rb
+          cd tap
+          git config user.name "otis-release"
+          git config user.email "noreply@github.com"
+          if git diff --quiet -- Formula/otis.rb; then
+            echo "The formula is already at ${TAG}; nothing to do."
+            exit 0
+          fi
+          git add Formula/otis.rb
+          git commit -m "otis ${TAG}"
+          git push

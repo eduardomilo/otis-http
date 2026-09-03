@@ -2,7 +2,14 @@
 .task
 bin
 dist
-frontend/dist
+# The bundle is generated, but the directory has to survive into the published
+# module: main.go's sibling gui.go embeds it with //go:embed, and an embed
+# pattern that matches nothing is a compile error. So the placeholder is
+# tracked and everything else here is not — that is what makes
+# `go install github.com/otis-http/otis@latest` produce a working `otis`
+# command rather than failing to build. See gui.go's assetsPresent.
+frontend/dist/*
+!frontend/dist/.gitkeep
 # `go build .` in the repo root drops the binary here; the real one is bin/otis.
 /otis
 

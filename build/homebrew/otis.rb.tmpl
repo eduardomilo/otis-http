@@ -1,0 +1,60 @@
+# Homebrew formula for Otis, rendered by .github/workflows/release.yml and
+# committed to otis-http/homebrew-otis as Formula/otis.rb.
+#
+# @@VERSION@@, @@URL@@ and @@SHA256@@ are substituted from the published
+# release. The sha256 is taken from the artifact after it is uploaded, not
+# from a local rebuild, so it is the hash of the file a user will actually
+# download.
+#
+# A formula and not a cask, which is unusual for something with a window, and
+# it works because Otis is one binary: `otis` with no arguments opens the app
+# and `otis run` is the CLI. So one `brew install` delivers both, and — the
+# reason to prefer it on macOS — Homebrew does not set the quarantine
+# attribute on what it downloads, so an unsigned Otis installed this way never
+# raises Gatekeeper.
+#
+# What a formula does not give you is a bundle: no Dock icon, no Launchpad
+# entry, and no .http file association, since all three come from Otis.app's
+# Info.plist. The DMG is for that. docs/RELEASING.md keeps the two straight.
+#
+# macOS only, deliberately. The Linux binary is dynamically linked against
+# WebKitGTK 6.0, so the loader needs those libraries present before it will
+# start at all — even to run a CLI command that never opens a window. A Linux
+# Homebrew user is better served by the deb, the rpm, or
+# `go install -tags otis_cli`.
+class Otis < Formula
+  desc "File-based HTTP client: a collection is a directory of .http files"
+  homepage "https://github.com/otis-http/otis"
+  version "@@VERSION@@"
+  url "@@URL@@"
+  sha256 "@@SHA256@@"
+  license "MIT"
+
+  depends_on :macos
+
+  def install
+    bin.install "otis"
+  end
+
+  def caveats
+    <<~EOS
+      This installs the `otis` command, which is also the app: run `otis` with
+      no arguments to open the window, or `otis --help` for the commands.
+
+      Homebrew does not quarantine its downloads, so there is no Gatekeeper
+      prompt even though Otis is unsigned.
+
+      For a Dock icon, a Launchpad entry and the .http file association,
+      install Otis.app from the DMG instead:
+        https://github.com/otis-http/otis/releases
+    EOS
+  end
+
+  test do
+    # The version substring, not "otis #{version}": the stamped version keeps
+    # the tag's leading "v" (`otis v0.2.0`) while the formula's version does
+    # not, so anchoring on the prefix would fail on every release.
+    assert_match version.to_s, shell_output("#{bin}/otis --version")
+    assert_match "Available Commands", shell_output("#{bin}/otis --help")
+  end
+end

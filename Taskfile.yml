@@ -159,18 +159,34 @@ tasks:
       - task: windows:build:cli
         vars: {ARCH: '{{.RELEASE_ARCH}}'}
       - task: sign:windows
-      - |
-        set -eu
-        cp "{{.BIN_DIR}}/Otis-{{.RELEASE_ARCH}}-installer.exe" \
-           "{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}_setup.exe"
-        # The zip holds the *console* build, renamed to otis.exe: it is what
-        # goes on PATH, and windows:build:cli explains why the installer's
-        # binary cannot be the one a shell calls.
-        rm -rf "{{.BIN_DIR}}/ziproot" && mkdir -p "{{.BIN_DIR}}/ziproot"
-        cp "{{.BIN_DIR}}/{{.APP_NAME}}-cli.exe" "{{.BIN_DIR}}/ziproot/{{.APP_NAME}}.exe"
-        (cd "{{.BIN_DIR}}/ziproot" && zip -q -r \
-          "../../{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}.zip" .)
-        rm -rf "{{.BIN_DIR}}/ziproot"
+      # Two versions of one step: the artifacts get staged both on a Windows
+      # runner and on a Mac cross-building for Windows, and neither `zip` nor
+      # `cp` can be relied on to exist on the former. This task owns the
+      # artifact names; the scripts are only the file handling.
+      #
+      # Invoked through powershell explicitly because go-task interprets every
+      # command with an embedded POSIX shell on all platforms, so a PowerShell
+      # block written inline here would be parsed as sh.
+      - cmd: >-
+          powershell -NoProfile -ExecutionPolicy Bypass
+          -File build/windows/stage-release.ps1
+          -BinDir "{{.BIN_DIR}}" -DistDir "{{.DIST_DIR}}" -AppName "{{.APP_NAME}}"
+          -Version "{{.RELEASE_VERSION}}" -Arch "{{.RELEASE_ARCH}}"
+        platforms: [windows]
+      - cmd: |
+          set -eu
+          mkdir -p "{{.DIST_DIR}}"
+          cp "{{.BIN_DIR}}/Otis-{{.RELEASE_ARCH}}-installer.exe" \
+             "{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}_setup.exe"
+          # The zip holds the *console* build, renamed to otis.exe: it is what
+          # goes on PATH, and windows:build:cli explains why the installer's
+          # binary cannot be the one a shell calls.
+          rm -rf "{{.BIN_DIR}}/ziproot" && mkdir -p "{{.BIN_DIR}}/ziproot"
+          cp "{{.BIN_DIR}}/{{.APP_NAME}}-cli.exe" "{{.BIN_DIR}}/ziproot/{{.APP_NAME}}.exe"
+          (cd "{{.BIN_DIR}}/ziproot" && zip -q -r \
+            "../../{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}.zip" .)
+          rm -rf "{{.BIN_DIR}}/ziproot"
+        platforms: [darwin, linux]
       - task: dist:list
 
   release:linux:
@@ -208,19 +224,35 @@ tasks:
       a user gets. It is generated last, over whatever is in dist/, and the
       release workflow publishes it alongside the artifacts.
     cmds:
-      - |
-        set -eu
-        cd "{{.DIST_DIR}}"
-        rm -f SHA256SUMS
-        # Sorted, and with no directory component, so the file is identical
-        # whichever machine produced it and `shasum -c SHA256SUMS` works from
-        # the directory a user downloaded into.
-        if command -v sha256sum >/dev/null 2>&1; then
-          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec basename {} \; | sort | xargs sha256sum > SHA256SUMS
-        else
-          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec basename {} \; | sort | xargs shasum -a 256 > SHA256SUMS
-        fi
-        cat SHA256SUMS
+      # Sorted, and with no directory component, so the file is identical
+      # whichever machine produced it and `shasum -c SHA256SUMS` works from the
+      # directory a user downloaded into. Two spaces between hash and name,
+      # which is the format `sha256sum -c` and `shasum -c` both read.
+      #
+      # Written twice because a Windows runner has neither sha256sum nor
+      # shasum. Note that the release workflow does *not* call this per
+      # platform: three partial files covering a third of the release each
+      # cannot be merged into one a user can verify, so the publish job
+      # generates it once over everything. This task is for a local release
+      # and for checking one platform's output by hand.
+      - cmd: >-
+          powershell -NoProfile -ExecutionPolicy Bypass
+          -File build/windows/checksums.ps1 -DistDir "{{.DIST_DIR}}"
+        platforms: [windows]
+      - cmd: |
+          set -eu
+          cd "{{.DIST_DIR}}"
+          rm -f SHA256SUMS
+          # The tool is named in each branch rather than aliased: xargs runs a
+          # binary, so it cannot see a shell function.
+          names=$(find . -maxdepth 1 -type f ! -name SHA256SUMS -exec basename {} \; | sort)
+          if command -v sha256sum >/dev/null 2>&1; then
+            printf '%s\n' "$names" | xargs sha256sum > SHA256SUMS
+          else
+            printf '%s\n' "$names" | xargs shasum -a 256 > SHA256SUMS
+          fi
+          cat SHA256SUMS
+        platforms: [darwin, linux]
 
   # The signing hooks. Empty on purpose: Otis ships unsigned until there are
   # real users (docs/RELEASING.md names the secrets each one would need). They

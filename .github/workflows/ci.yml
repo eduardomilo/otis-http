@@ -1,0 +1,184 @@
+name: CI
+
+# Every push and every pull request. Otis is one binary that has to build on
+# three platforms with two toolchains (Go and Node), and the packaging is
+# where the platform differences live — so CI packages as well as builds. A
+# green `go test` has never once caught a broken NSIS installer.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to a branch makes the previous run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "22"
+  # Keep in step with go.mod. The wails3 beta moves, and the packaging task
+  # names move with it (docs/BUILDING.md §1).
+  WAILS_VERSION: v3.0.0-beta.16
+
+jobs:
+  # Everything that is the same on every platform, run once. Splitting it out
+  # keeps the matrix about platform differences and gives a fast red.
+  check:
+    # Pinned for the same reason the Linux build job is: this installs
+    # libwebkitgtk-6.0-dev by name, and a runner that rolls forward is a
+    # runner whose package names can change under us.
+    name: Vet, test and typecheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - run: npm ci
+        working-directory: frontend
+
+      # `go vet ./...`, not `go build ./...`: build/ios is a Wails scaffold
+      # whose main package has no main function, so `go build ./...` fails on
+      # it and always has. Vet is clean.
+      - name: go vet
+        run: go vet ./...
+
+      - name: Frontend typecheck
+        run: npm run typecheck
+        working-directory: frontend
+
+      # -race is the point of running this at all: the watcher, the sender and
+      # the session store are all concurrent, and a data race there is exactly
+      # the bug that survives review.
+      - name: go test -race
+        run: go test -race ./...
+
+      # The generated TypeScript event mirror and the Go constants must not
+      # drift (CLAUDE.md). The test above already fails if they have, but this
+      # says so in one line instead of inside a test log.
+      - name: Event names are in step with their TypeScript mirror
+        run: |
+          go generate ./internal/events
+          git diff --exit-code -- frontend/src/lib/events.gen.ts \
+            || { echo "::error::frontend/src/lib/events.gen.ts is stale. Run: go generate ./internal/events"; exit 1; }
+
+      # The layering CLAUDE.md describes, asserted rather than hoped for: with
+      # the GUI tagged out, nothing in the build may need cgo. This is also
+      # the `go install` path users are told to use, so it is the same check as
+      # "does that command still work" (docs/BUILDING.md).
+      - name: The CLI builds for every platform with no cgo
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for pair in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            GOOS=${pair%/*} GOARCH=${pair#*/} go build -tags otis_cli -o /dev/null . \
+              || { echo "::error::the otis_cli build broke for $pair"; exit 1; }
+            echo "ok $pair"
+          done
+
+  # One job per platform: build, then sign, then package, as three separate
+  # steps. The sign step is a no-op today (Otis ships unsigned — see
+  # docs/RELEASING.md) and is here so that adding signing later does not move
+  # anything else.
+  build:
+    name: Build and package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform's packaging failing says nothing about the others', and
+      # finding out about all three in one run beats three pushes.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: darwin
+          - os: windows-latest
+            artifact: windows
+          # Pinned, not ubuntu-latest. The build machine's glibc is the
+          # floor for everyone who runs the result, so a runner that rolls
+          # forward would silently raise the minimum a user needs — with
+          # nothing in the artifact to say so. 24.04 is also where
+          # libwebkitgtk-6.0-dev first appears, which is the floor
+          # docs/BUILDING.md §10 documents, so the two agree by construction.
+          - os: ubuntu-24.04
+            artifact: linux
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The version is `git describe`, so a shallow clone with no tags
+          # would stamp every build "unstamped".
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+
+      # The AppImage tooling shells out to ldd, which is why an AppImage
+      # cannot be built on macOS at all (docs/BUILDING.md §10).
+      - name: Install AppImage tooling
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libfuse2t64 desktop-file-utils
+
+      - name: Install NSIS
+        if: runner.os == 'Windows'
+        run: choco install nsis --no-progress -y
+
+      - name: Install wails3
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - run: npm ci
+        working-directory: frontend
+
+      - name: Build
+        run: wails3 task build
+
+      # No-op. docs/RELEASING.md names the secrets each platform's real
+      # signing step would need, and where it goes.
+      - name: Sign
+        run: wails3 task sign:${{ matrix.artifact }}
+
+      - name: Package
+        run: wails3 task release:${{ matrix.artifact }}
+        env:
+          # linuxdeploy is itself an AppImage, so building one needs FUSE to
+          # mount it. Rather than depend on the runner having FUSE 2 — which
+          # Ubuntu 24.04 renamed and may drop — this tells every AppImage it
+          # runs to unpack itself instead. Ignored on the other platforms.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+
+      # Every artifact the platform produced, so a pull request can be
+      # installed and tried rather than only compiled.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: otis-${{ matrix.artifact }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,13 @@
+This file is tracked on purpose, and it is the only thing in frontend/dist
+that is.
+
+gui.go embeds this directory with `//go:embed all:frontend/dist`, and a Go
+embed pattern that matches no files is a compile error — so without something
+tracked here, `go install github.com/otis-http/otis@latest` would fail to
+build, because the bundle itself is generated and never committed.
+
+With it, that install produces a working `otis` command whose window declines
+to open and says why (gui.go's assetsPresent). The way to install only the
+command line, with no frontend and no cgo, is:
+
+    go install -tags otis_cli github.com/otis-http/otis@latest

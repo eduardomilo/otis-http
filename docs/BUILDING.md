@@ -27,7 +27,39 @@ wails3 build                # the host platform's binary -> bin/otis
 wails3 package              # the host platform's installers
 ```
 
-## 2. The build identity
+## 2. One binary, two builds
+
+`main.go` is the entry point and decides nothing except which half runs. The
+desktop app lives in `gui.go` behind `//go:build !otis_cli`; `gui_disabled.go`
+is the other side of that tag.
+
+The tag exists so the command line can be installed with nothing but a Go
+toolchain:
+
+```bash
+go install -tags otis_cli github.com/otis-http/otis@latest
+```
+
+Without it the build needs two things a CLI user should not have to supply.
+The frontend bundle, which is generated and so absent from a module fetched
+from the proxy — and an embed pattern matching no files is a *compile* error.
+And, on macOS and Linux, cgo plus a platform toolkit: Cocoa, or GTK4 and
+WebKitGTK 6.0 development headers, which a Linux CI runner does not have.
+
+With the tag, `go build` needs neither: the CLI compiles for darwin, linux and
+windows on both architectures with `CGO_ENABLED=0`, and CI asserts exactly
+that on every push. That check is doing double duty — it is also the
+layering constraint from CLAUDE.md, that nothing outside `internal/services`
+and `main.go` may depend on Wails, and the tag is what makes it verifiable
+rather than merely intended.
+
+A tag-*less* `go install` still works, and deliberately: `frontend/dist/.gitkeep`
+is tracked so the embed pattern always matches something. The binary that
+results is a working `otis` command whose window declines to open and says
+why (`assetsPresent` in `gui.go`), which is a far better failure than either
+a compile error about an embed pattern or a window that renders nothing.
+
+## 3. The build identity
 
 `otis --version` and `otis version` print the same block:
 
@@ -71,7 +103,7 @@ panel shows the version as well, from `CFBundleShortVersionString`.
 must not import that package, because it pulls in Wails and the CLI has to
 keep building with `CGO_ENABLED=0`.
 
-## 3. What the version is stamped into
+## 4. What the version is stamped into
 
 Three files carry a version and none of them is `internal/buildinfo`:
 
@@ -93,7 +125,7 @@ Three files carry a version and none of them is `internal/buildinfo`:
 > that should have removed it. If a stale key needs to go, delete the file and
 > re-run. That is how `CFBundleIconName` was removed.
 
-## 4. Icons
+## 5. Icons
 
 `build/appicon.svg` is the source of truth and `build/appicon.png` is its
 1024px render. **Both are committed**, because nothing in the build chain
@@ -124,7 +156,7 @@ The `.http` **document** icon is currently the app icon. A document icon
 proper is the mark on a page rather than a second copy of the app icon sitting
 in Finder; that artwork does not exist yet (`DESIGN-NOTES` §9.18).
 
-## 5. The `.http` file association
+## 6. The `.http` file association
 
 Double-clicking a `.http` file opens the collection around it and shows that
 request. Four things make that work, and they are in four different places:
@@ -172,7 +204,7 @@ AppImage cannot register a file association** — nothing about a single
 executable file is installed system-wide — so `.http` association on Linux
 needs the deb or the rpm.
 
-## 6. Single instance
+## 7. Single instance
 
 A second launch hands its arguments to the running instance and exits, rather
 than starting a second Otis. That is what makes the file association behave:
@@ -201,7 +233,7 @@ LaunchServices, which activates Otis itself and never reaches that code. What
 is left is `otis file.http` typed in a terminal while the app is open: the
 file opens in the window, and the window has to be switched to by hand.
 
-## 7. macOS
+## 8. macOS
 
 ```bash
 wails3 task release:darwin      # universal .app + DMG + tar.gz into dist/
@@ -223,7 +255,7 @@ wails3 task release:darwin      # universal .app + DMG + tar.gz into dist/
 - The CLI works from inside the bundle:
   `Otis.app/Contents/MacOS/otis ls`.
 
-## 8. Windows
+## 9. Windows
 
 ```bash
 wails3 task release:windows     # NSIS installer + CLI zip into dist/
@@ -266,7 +298,7 @@ binary to put on PATH and the one to use in CI; `go install` produces a
 console binary too, for the same reason. The installer's binary is the GUI
 one. `windows:build:cli` is the task.
 
-## 9. Linux and WebKitGTK
+## 10. Linux and WebKitGTK
 
 ```bash
 wails3 task release:linux       # AppImage + deb + rpm + tar.gz into dist/
@@ -289,6 +321,16 @@ That sets the distro floor, and it is a high one:
 | RHEL / Alma / Rocky | 10 and later |
 | Arch | current (`webkitgtk-6.0`) |
 
+Two things set that floor, not one. The **WebKitGTK version** Otis links
+against, above — and the **glibc of the machine that built it**, because a Go
+binary using cgo links glibc dynamically and will not start on a system with
+an older one. Nothing in the artifact announces either. So the release builds
+Linux on a pinned `ubuntu-24.04` runner rather than `ubuntu-latest`: a runner
+that rolls forward would raise the minimum glibc a user needs, silently, in a
+release nobody marked as different. 24.04 is also where
+`libwebkitgtk-6.0-dev` first appears, so the two floors coincide by
+construction rather than by luck.
+
 **Ubuntu 22.04 and Debian 12 cannot install the deb**, and the AppImage will
 not start on them either — an AppImage bundles the app, not the system WebKit.
 Wails can still be built against the older WebKit2GTK 4.1 with `-tags gtk3`,
@@ -302,7 +344,7 @@ of this — `go install`, or the tar.gz.
 
 Note also:
 
-- The **AppImage cannot register the `.http` association** (§5). Use the deb
+- The **AppImage cannot register the `.http` association** (§6). Use the deb
   or the rpm for that.
 - **Arch packaging exists but is not released.** `linux:create:aur` works, but
   a PKGBUILD we generate would go stale the moment somebody maintains one
@@ -310,7 +352,7 @@ Note also:
   AppImage covers Arch.
 - **amd64 by default**, as on Windows.
 
-## 10. Artifacts and checksums
+## 11. Artifacts and checksums
 
 ```bash
 wails3 task release:checksums   # SHA256SUMS over everything in dist/
@@ -343,7 +385,26 @@ without running an installer.
 so that signing later is an edit to one task rather than a rework of the
 release tasks. `docs/RELEASING.md` says exactly what would go in each.
 
-## 11. Verification
+## 12. Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+`go vet ./...`, `go test -race ./...` and the frontend typecheck once on
+Linux, then build **and package** on all three platforms, uploading every
+artifact so a pull request can be installed and tried rather than only
+compiled. A green `go test` has never once caught a broken NSIS installer.
+
+Two checks there are worth knowing about because they guard invariants rather
+than behaviour: the generated TypeScript event mirror must match the Go
+constants (`go generate ./internal/events` leaves no diff), and the `otis_cli`
+build must succeed for every platform with `CGO_ENABLED=0`, which is the
+layering constraint from CLAUDE.md made verifiable.
+
+`.github/workflows/release.yml` runs on a `v*` tag and is documented in
+`docs/RELEASING.md`. Note that it uses `go vet ./...` and never
+`go build ./...`: `build/ios` is a Wails scaffold whose main package has no
+main function, so `go build ./...` fails on it and always has.
+
+## 13. Verification
 
 `go test -race ./...` covers the argv rule (`cli.WindowPath`), the build
 identity (`internal/buildinfo`), root discovery (`collection.FindRoot`) and
