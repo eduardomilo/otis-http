@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The .http file type, for the freedesktop shared MIME database. Installed to
+  /usr/share/mime/packages/otis.xml, after which update-mime-database teaches
+  the system that *.http is text/x-http — which is what makes the MimeType
+  line in otis.desktop match a real file and a double-click reach Otis.
+
+  A subclass of text/plain, deliberately. A .http file *is* text, and saying
+  so means every text editor still offers to open one and `less` still knows
+  what to do with it. Otis does not claim the type: the JetBrains HTTP Client
+  and the VS Code REST Client read the same files, and that they can is the
+  point of the format (docs/FORMAT.md §1).
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/x-http">
+    <comment>HTTP request</comment>
+    <sub-class-of type="text/plain"/>
+    <glob pattern="*.http"/>
+    <icon name="otis"/>
+  </mime-type>
+</mime-info>

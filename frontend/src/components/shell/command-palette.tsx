@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { match, segments, type Segment } from "@/lib/fuzzy";
 import { methodColor, methodGutter } from "@/lib/method";
 import { nodeParentPath, nodeRoute } from "@/lib/paths";
@@ -14,7 +15,7 @@ import { useDiff } from "@/state/diff-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useSends } from "@/state/send-context";
 import { useTabs } from "@/state/tabs-context";
-import { CollectionService } from "@bindings/internal/services";
+import { AppService, CollectionService } from "@bindings/internal/services";
 import type { Node } from "@bindings/internal/services";
 
 /**
@@ -134,6 +135,7 @@ export function CommandPalette({
   const { send, recents, clearSessionVars } = useSends();
   const { openTab } = useTabs();
   const { overview } = useDiff();
+  const build = useBuildInfo();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -176,8 +178,9 @@ export function CommandPalette({
         hasChanges: (overview?.changes?.length ?? 0) > 0,
         firstEnvironment: environments[0]?.name ?? "",
         clearSessionVars,
+        version: buildLabel(build),
       }),
-    [navigate, close, collection?.path, overview?.changes?.length, environments, clearSessionVars],
+    [navigate, close, collection?.path, overview?.changes?.length, environments, clearSessionVars, build],
   );
 
   // The prefix modes of the design's right rail. A mode makes its section the
@@ -781,8 +784,10 @@ function buildCommands(context: {
   hasChanges: boolean;
   firstEnvironment: string;
   clearSessionVars: () => Promise<void>;
+  version: string;
 }): CommandEntry[] {
-  const { navigate, close, collection, hasChanges, firstEnvironment, clearSessionVars } = context;
+  const { navigate, close, collection, hasChanges, firstEnvironment, clearSessionVars, version } =
+    context;
   const go = (run: () => void) => () => {
     run();
     close();
@@ -826,6 +831,20 @@ function buildCommands(context: {
       name: "Clear session variables",
       detail: "the values runs set, on this machine only",
       run: go(() => void clearSessionVars()),
+    },
+    {
+      // The one place the version is reachable with a collection open. Its
+      // detail line shows the version, so ⌘P › ">" both answers "which build
+      // is this" and hands it over for a bug report — which is the whole
+      // mechanism, since Otis ships no updater (DESIGN-NOTES §9.18).
+      //
+      // Go writes the clipboard, and what it writes is longer than what is
+      // shown here: it names the toolchain and platform too. CopyVersion has
+      // the argument.
+      name: "Copy version",
+      detail: version === "" ? "the running build" : version,
+      hidden: version === "",
+      run: go(() => void AppService.CopyVersion()),
     },
   ];
 }

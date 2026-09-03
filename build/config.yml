@@ -7,14 +7,21 @@ version: '3'
 info:
   companyName: "Otis" # The name of the company
   productName: "Otis" # The name of the application
-  productIdentifier: "com.otis-http.otis" # The unique product identifier
+  # Reverse-DNS of the GitHub organisation. Must not change once there are
+  # installs: macOS keys the .http file association and the user's
+  # default-application choice on it. Kept in step with appIdentifier in
+  # main.go, which is also the single-instance lock's ID.
+  productIdentifier: "io.github.otis-http.otis"
   description: "File-based HTTP client" # The application description
-  copyright: "(c) 2026, Otis" # Copyright text
+  copyright: "© 2026 Otis" # Copyright text
   comments: "Otis" # Comments
   version: "0.1.0" # The application version
-  # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
-  #                               # Should match the name of your .icon file without the extension
-  #                               # If not set and Assets.car exists, defaults to "appicon"
+  # Deliberately empty. It names an icon inside a macOS 26 Assets.car asset
+  # catalogue, and Otis ships none — see the note in build/Taskfile.yml's
+  # generate:icons. Left set, Info.plist would claim an asset that is not in
+  # the bundle; macOS would fall back to CFBundleIconFile and draw the right
+  # icon anyway, but the manifest would be describing something absent.
+  cfBundleIconName: ""
 
 # iOS build configuration (uncomment to customise iOS project generation)
 # Note: Keys under `ios` OVERRIDE values under `info` when set.
@@ -60,19 +67,27 @@ dev_mode:
       type: primary
 
 # File Associations
-# More information at: https://v3.wails.io/noit/done/yet
+#
+# The .http file, which is Otis' whole on-disk format (docs/FORMAT.md §1).
+# Double-clicking one opens the collection around it and shows that request;
+# main.go's ApplicationOpenedWithFile handler and CollectionService.OpenPath
+# are the other end.
+#
+# role Editor, not Viewer: Otis writes the file back (docs/FORMAT.md §1.13).
+#
+# The MIME type is text/x-http, the name the format goes by in the editors
+# that already read it, and it is registered as a subclass of text/plain on
+# Linux (build/linux/otis-http.xml) so a .http file stays openable in a text
+# editor. Otis does not claim to be the only thing that reads one — the
+# JetBrains HTTP Client and the VS Code REST Client read the same files, and
+# the point of the format is that they can.
 fileAssociations:
-#  - ext: wails
-#    name: Wails
-#    description: Wails Application File
-#    iconName: wailsFileIcon
-#    role: Editor
-#  - ext: jpg
-#    name: JPEG
-#    description: Image File
-#    iconName: jpegFileIcon
-#    role: Editor
-#    mimeType: image/jpeg  # (optional)
+  - ext: http
+    name: HTTP request
+    description: Otis HTTP request file
+    iconName: httpFileIcon
+    role: Editor
+    mimeType: text/x-http
 
 # Other data
 other:

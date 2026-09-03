@@ -406,3 +406,127 @@ func TestCloseStopsWatchingAndClearsTheCollection(t *testing.T) {
 		t.Error("the watcher outlived Close")
 	}
 }
+
+// OpenPath is the one entry point for a path that came from outside the
+// window: a .http file double-clicked in Finder or Explorer, a path on the
+// command line, a second launch forwarding its arguments, or a file dropped
+// on the window. All four have to agree about which collection a file belongs
+// to, and about what a `_folder.http` means.
+func TestOpenPathFindsTheCollectionAroundAFile(t *testing.T) {
+	s := newService(t)
+	root := t.TempDir()
+	// env/ marks the root, so the walk stops there rather than at the
+	// request's own folder (docs/FORMAT.md §8).
+	write(t, filepath.Join(root, "env", "dev.json"), "{}")
+	write(t, filepath.Join(root, "orders", "_folder.http"), "Accept: application/json\n")
+	write(t, filepath.Join(root, "orders", "create-order.http"), "POST https://example.test/orders\n")
+	write(t, filepath.Join(root, "orders", "nested", "seed.http"), "GET https://example.test/seed\n")
+
+	tests := []struct {
+		name string
+		path string
+		node string
+		kind string
+	}{
+		{
+			name: "a request opens its collection and names itself",
+			path: filepath.Join(root, "orders", "create-order.http"),
+			node: "orders/create-order.http",
+			kind: "request",
+		},
+		{
+			name: "a nested request keeps its whole relative path",
+			path: filepath.Join(root, "orders", "nested", "seed.http"),
+			node: "orders/nested/seed.http",
+			kind: "request",
+		},
+		{
+			// _folder.http is settings, not a row in the tree
+			// (docs/FORMAT.md §2.1), so the thing to show is its folder.
+			name: "a folder settings file resolves to its folder",
+			path: filepath.Join(root, "orders", "_folder.http"),
+			node: "orders",
+			kind: "folder",
+		},
+		{
+			name: "a directory opens as the collection root",
+			path: root,
+			node: "",
+			kind: "folder",
+		},
+		{
+			name: "a subdirectory opens as that folder's collection",
+			path: filepath.Join(root, "orders"),
+			node: "",
+			kind: "folder",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := s.OpenPath(tc.path); err != nil {
+				t.Fatalf("OpenPath(%s): %v", tc.path, err)
+			}
+			// The target is held for the window to collect. That is the
+			// launch case, and holding it is the whole point: the file
+			// association starts the process, so nothing is listening yet.
+			target := s.TakePendingOpen()
+			if target.Kind == "" {
+				t.Fatal("OpenPath held no target for the window")
+			}
+			if target.Node != tc.node || target.Kind != tc.kind {
+				t.Errorf("target = {node: %q, kind: %q}, want {node: %q, kind: %q}",
+					target.Node, target.Kind, tc.node, tc.kind)
+			}
+			// Taking it clears it, so a remount does not navigate again.
+			if again := s.TakePendingOpen(); again.Kind != "" {
+				t.Errorf("TakePendingOpen returned %+v a second time; it must clear as it reads", again)
+			}
+		})
+	}
+}
+
+// A root-level _folder.http belongs to the collection root, whose node path is
+// the empty string rather than ".".
+func TestOpenPathMapsTheRootFolderFileToTheEmptyPath(t *testing.T) {
+	s := newService(t)
+	root := t.TempDir()
+	write(t, filepath.Join(root, "env", "dev.json"), "{}")
+	write(t, filepath.Join(root, "_folder.http"), "Accept: application/json\n")
+
+	if err := s.OpenPath(filepath.Join(root, "_folder.http")); err != nil {
+		t.Fatal(err)
+	}
+	target := s.TakePendingOpen()
+	if target.Kind == "" {
+		t.Fatal("no target held")
+	}
+	if target.Node != "" || target.Kind != "folder" {
+		t.Errorf("target = {node: %q, kind: %q}, want the root as a folder", target.Node, target.Kind)
+	}
+}
+
+// A .http file that is in no collection at all — one sitting in ~/Downloads —
+// still opens. FindRoot answers with its own directory, which becomes a
+// one-file collection. Refusing would be worse: the user pointed at it.
+func TestOpenPathOpensALooseRequestFile(t *testing.T) {
+	s := newService(t)
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "scratch.http"), "GET https://example.test/\n")
+
+	if err := s.OpenPath(filepath.Join(dir, "scratch.http")); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Current().Path; got != dir {
+		t.Errorf("collection = %q, want %q", got, dir)
+	}
+	if target := s.TakePendingOpen(); target.Node != "scratch.http" {
+		t.Errorf("target = %+v, want scratch.http", target)
+	}
+}
+
+func TestOpenPathRejectsAMissingPath(t *testing.T) {
+	s := newService(t)
+	if err := s.OpenPath(filepath.Join(t.TempDir(), "nope.http")); err == nil {
+		t.Error("OpenPath accepted a path that does not exist")
+	}
+}

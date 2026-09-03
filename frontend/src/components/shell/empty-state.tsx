@@ -1,6 +1,7 @@
 
 
 import { Button } from "@/components/ui/button";
+import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { hint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { Recent } from "@bindings/internal/settings";
@@ -17,6 +18,7 @@ import { useRecents } from "@/state/use-recents";
  */
 export function EmptyState() {
   const { openViaDialog, open, error } = useCollection();
+  const build = useBuildInfo();
 
   return (
     <div className="flex min-h-0 flex-1 justify-center overflow-y-auto">
@@ -71,8 +73,20 @@ export function EmptyState() {
 
         <RecentList onOpen={(path) => void open(path).catch(() => {})} />
 
+        {/* The version lives here because this is the screen every launch
+            without a collection lands on, and because there is no updater to
+            ask (DESIGN-NOTES §9.18). ⌘P › "Copy version" is the other half:
+            this one is for reading, that one for pasting into a bug report. */}
         <footer className="flex items-center justify-center gap-3 border-t border-border pt-5 text-meta text-fg-faint">
           <span>Everything stays on this machine and in your repo.</span>
+          {build ? (
+            <>
+              <span>·</span>
+              <span className="font-mono" title={`Otis ${buildLabel(build)} — ${build.platform}`}>
+                {buildLabel(build)}
+              </span>
+            </>
+          ) : null}
         </footer>
       </div>
     </div>

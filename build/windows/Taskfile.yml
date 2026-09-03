@@ -63,6 +63,40 @@ tasks:
       CGO_ENABLED: '{{.CGO_ENABLED | default "0"}}'
       GOARCH: '{{.ARCH | default ARCH}}'
 
+  build:cli:
+    summary: Builds a console-subsystem otis.exe for command-line and CI use
+    desc: |
+      The same source as `build`, linked without -H windowsgui.
+
+      The packaged app must be a GUI-subsystem binary or a console window
+      flashes up behind every launch, including a .http file opened from
+      Explorer. But Windows never *waits* for such a process: cmd.exe returns
+      to the prompt immediately and never sees the exit code, so `otis run`
+      cannot gate a CI step and `otis ls` prints after the prompt comes back.
+      cmd/otis/console_windows.go recovers the output; the exit code cannot be
+      recovered from inside the child.
+
+      So the CLI gets its own link of the same code. This is the binary the
+      release archive and `go install` produce, and the installer's is the GUI
+      one. docs/BUILDING.md, "The Windows CLI", is the whole story.
+    deps:
+      - task: common:go:mod:tidy
+      - task: common:build:frontend
+        vars:
+          BUILD_FLAGS:
+            ref: .BUILD_FLAGS
+    cmds:
+      - '{{if eq OS "windows"}}powershell New-Item -ItemType Directory -Force -Path {{.BIN_DIR}}{{else}}mkdir -p {{.BIN_DIR}}{{end}}'
+      - go build {{.BUILD_FLAGS}} -o "{{.OUTPUT}}"
+    vars:
+      BUILD_FLAGS: '-tags production -trimpath -buildvcs=false -ldflags="-w -s {{.VERSION_LDFLAG}}"'
+      DEFAULT_OUTPUT: '{{.BIN_DIR}}/{{.APP_NAME}}-cli.exe'
+      OUTPUT: '{{ .OUTPUT | default .DEFAULT_OUTPUT }}'
+    env:
+      GOOS: windows
+      CGO_ENABLED: '0'
+      GOARCH: '{{.ARCH | default ARCH}}'
+
   build:docker:
     summary: Cross-compiles for Windows using Docker with Zig (for CGO builds on non-Windows)
     internal: true

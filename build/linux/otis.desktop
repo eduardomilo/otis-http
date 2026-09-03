@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Otis
+GenericName=HTTP client
+Comment=File-based HTTP client
+Exec=/usr/local/bin/otis %f
+Icon=otis
+Terminal=false
+Categories=Development;Utility;
+Keywords=http;rest;api;request;client;
+StartupWMClass=otis
+StartupNotify=true
+MimeType=text/x-http;
+
+# Committed rather than generated. `wails3 generate .desktop` writes MimeType
+# only for custom URL protocols, and Otis' association is a file type, so a
+# generated file would silently drop the one line that makes double-clicking a
+# .http file work. build/linux/otis-http.xml is the other half: the desktop
+# entry says Otis handles text/x-http, and that file is what teaches the
+# system that a .http file *is* text/x-http.
+#
+# %f, not %u: Otis is handed a local path, not a URL. Single, not %F: it is a
+# single-window app and CollectionService.OpenPath shows one node.

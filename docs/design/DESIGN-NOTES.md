@@ -733,6 +733,53 @@ better than a dialog plus a mechanism. This is deliberately unlike Increment
 13's discard, where the confirmation is a *parameter* — that destroys work git
 cannot get back, and this does not.
 
+**9.18 The app icon, and where the version appears — both resolved.** Neither
+was in the design: `docs/design/` carries the nine screens and no icon at all,
+and no screen has a version anywhere on it.
+
+*The icon* is an elevator call button — a ring with an up and a down triangle
+inside it, green on near-black — which is the pun the product name already
+makes, and reads as request-and-response besides. `build/appicon.svg` is the
+source of truth: a rounded rectangle (corner radius 0.221 of its width), a
+stroked circle, and two filleted triangles, all as plain geometry so it stays
+crisp at every size and can be edited by hand.
+
+Its two colours are **not** the tokens in §2. The ground is `#1E2128` where
+`--bg` is `#09090b`, and the mark is `#27BD62` where `--accent` is `#34d399`.
+That is deliberate, not drift: an app icon is brand rather than chrome, it is
+seen next to other applications' icons rather than next to Otis' own
+surfaces, and the more saturated green holds up better in a Dock. Do not
+"fix" these to the tokens — the divergence is the decision.
+
+The one thing the redraw changed from the artwork it came from is the gap
+between the triangles, opened from 51 to 62 on a 1024 grid. At 20px and 32px
+the original merged them into a single diamond; at the wider gap they stay
+two. At 16px they merge regardless, which is where the ring does the work.
+
+There is no `.http` **document** icon yet — the association currently shows
+the app icon, which is honest but wrong: a document icon is the mark on a
+page, not a second copy of the app sitting in Finder. `docs/BUILDING.md` §4
+says where it slots in.
+
+*The version* appears in two places, because Otis ships no auto-updater and
+so "which version am I on" is a question the user has to be able to answer
+without one:
+
+- The **empty state's footer** (screen 2b) reads `version · commit` after the
+  existing line. That screen is where every launch without a collection
+  lands, and it had room.
+- **⌘P › `>` › "Copy version"** is the only route with a collection open. Its
+  detail line shows the version, so the palette both answers the question and
+  hands the answer over — and what it copies is longer than what it shows,
+  naming the toolchain and platform too, because the complete form is for
+  pasting into a bug report. Go writes the clipboard (`AppService.CopyVersion`),
+  for the reason §9.12 gives about `CollectionService.CopyPath`.
+
+Deliberately *not* in the status bar: its three slots are branch, file and
+view context (§8.4), and a version is none of those and never changes. On
+macOS the native About panel carries it as well, for free, from
+`CFBundleShortVersionString`.
+
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and
 Otis' key index deliberately holds nothing but keys — adding a date would be

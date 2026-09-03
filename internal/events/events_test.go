@@ -12,6 +12,7 @@ func TestRegistryCoversEveryConstant(t *testing.T) {
 	want := map[string]string{
 		"AppReady":            AppReady,
 		"CollectionOpened":    CollectionOpened,
+		"OpenNode":            OpenNode,
 		"CollectionChanged":   CollectionChanged,
 		"GitChanged":          GitChanged,
 		"SettingsChanged":     SettingsChanged,

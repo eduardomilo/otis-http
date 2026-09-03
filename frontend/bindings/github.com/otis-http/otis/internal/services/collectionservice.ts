@@ -128,6 +128,35 @@ export function Open(dir: string): $CancellablePromise<$models.Opened> {
 }
 
 /**
+ * OpenPath opens whatever the OS handed Otis and tells the window to show it.
+ * 
+ * It is the one entry point for a path that came from outside the window: a
+ * .http file double-clicked in Finder or Explorer, a path on the command line
+ * (`otis .`), a second launch forwarding its arguments, and a file dropped on
+ * the window. All four mean the same thing — "show me this" — and all four
+ * have to agree about which collection that is, which is why they share this
+ * method rather than each calling Open with a directory they worked out
+ * themselves.
+ * 
+ * A directory opens as a collection, as the dialog and a dropped folder do. A
+ * file opens the collection *around* it, found with collection.FindRoot — the
+ * same walk `otis run` uses (docs/FORMAT.md §8), so a request resolves against
+ * the same root from the desktop as from the terminal.
+ * 
+ * The node is then addressed inside that collection. A `_folder.http` resolves
+ * to its folder rather than to itself, because it is settings and not a tree
+ * row (docs/FORMAT.md §2.1); every other .http file is a request.
+ * 
+ * The window may not exist yet — the file association starts the process — so
+ * the target is held until a window's runtime is ready and emitted then. The
+ * collection is opened either way: events.CollectionOpened is what draws the
+ * tree, and it goes through the same wait.
+ */
+export function OpenPath(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3869136571, path);
+}
+
+/**
  * Refresh re-walks the collection, caches the walk and tells the window.
  * 
  * It is how a write Otis makes itself becomes visible. The watcher cannot do
@@ -143,6 +172,27 @@ export function Refresh(): $CancellablePromise<void> {
  */
 export function Reveal(nodePath: string): $CancellablePromise<void> {
     return $Call.ByID(217242705, nodePath);
+}
+
+/**
+ * TakePendingOpen returns the node an OS-level open asked for, and forgets it.
+ * 
+ * A pull rather than a push, because the push cannot be timed. Wails raises
+ * WindowRuntimeReady when the webview's JS runtime loads, which is before the
+ * React tree has mounted and therefore before anything is listening — so a
+ * target emitted then is simply lost, which is exactly what happened the first
+ * time a .http file was double-clicked: the collection opened and the window
+ * sat on the empty centre pane. The window asking when it is ready has no such
+ * window of failure.
+ * 
+ * It clears as it reads so a remount does not re-navigate somewhere the user
+ * has since navigated away from, and so the events.OpenNode nudge and the
+ * on-mount call cannot both act on one open.
+ * 
+ * Kind is empty when there is nothing pending, which is the normal answer.
+ */
+export function TakePendingOpen(): $CancellablePromise<$models.OpenTarget> {
+    return $Call.ByID(2105506542);
 }
 
 /**

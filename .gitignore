@@ -1,6 +1,7 @@
 # Build outputs
 .task
 bin
+dist
 frontend/dist
 # `go build .` in the repo root drops the binary here; the real one is bin/otis.
 /otis
@@ -10,7 +11,15 @@ frontend/node_modules
 
 # Platform packaging artefacts
 build/linux/appimage/build
+build/linux/appimage/otis
+build/linux/appimage/otis.png
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+# Derived from build/appicon.png by `generate:icons`; the PNG and the SVG it
+# renders from are the committed sources.
+build/darwin/icons.icns
+build/darwin/httpFileIcon.icns
+build/windows/icon.ico
+build/windows/httpFileIcon.ico
 
 # Mobile generated (per-machine; overlays hold absolute paths)
 build/ios/xcode/overlay.json

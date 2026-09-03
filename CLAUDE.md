@@ -15,6 +15,10 @@ follows them, not the other way round.
   visual. `docs/design/SCREENS.md` covers each screen, and
   `docs/design/screens/*.png` is the offline copy of the design, which
   otherwise lives only in Claude Design.
+- `docs/BUILDING.md` — how the binary is built and what each platform's
+  artifacts are: version stamping, icons, the `.http` file association, single
+  instance, the Windows console caveat, and the WebKitGTK floor on Linux.
+  Authoritative for anything in `build/` or the Taskfiles.
 
 If one of these and the code disagree, that is a bug. §9 of DESIGN-NOTES.md
 lists the design decisions that are still open — do not resolve them silently.
@@ -71,8 +75,16 @@ lists the design decisions that are still open — do not resolve them silently.
   (`label.go`), and the four operations a review performs (`apply.go`).
 - `internal/settings/` — the JSON settings file in the OS config dir. The only
   place frontend state persists.
-- `cmd/otis/` — the CLI (package `cli`, cobra). Not a `main` package: `main.go` dispatches
-  to it when the process has arguments and opens the window when it does not.
+- `internal/buildinfo/` — the build identity: `Version`, `Commit` and `Date`,
+  set by the linker, plus the one-line and block renderings `otis --version`
+  and the window both use. Its own package rather than a corner of
+  `internal/services`, because `cmd/otis` needs it and must not import that
+  (Wails, and therefore cgo).
+- `cmd/otis/` — the CLI (package `cli`, cobra). Not a `main` package: `main.go`
+  dispatches to it when the process has arguments and opens the window when it
+  does not. `dispatch.go` owns the rule that decides which — a file
+  association arrives looking exactly like a command line — and
+  `console_windows.go` is why the packaged Windows binary can print at all.
 - `docs/` — the specs listed under Required reading above. Every syntax, semantics or
   visual decision is written there as it is made.
 - `frontend/` — Vite + React + TS. Path aliases `@/*` → `frontend/src/*` and
@@ -263,6 +275,69 @@ lists the design decisions that are still open — do not resolve them silently.
   the shell's ⌘↵, the palette's ⌘↵ and anything added later; a check in one
   caller is a gate the next caller forgets.
 
+- **One binary, and `cli.WindowPath` is the only thing that decides which
+  half of it runs.** With no arguments Otis opens the window; with arguments it
+  is a CLI — except that a `.http` file double-clicked on Windows or Linux
+  arrives as `argv[1]` and so looks exactly like a command line. The rule is
+  one argument, not a flag, not the name of a command, and it exists on disk;
+  every clause is load-bearing and every one has a test
+  (`TestWindowPath`). Never inline a variant of this rule: a wrong answer
+  either breaks the file association or turns `otis run` into a window.
+  `WindowPathIn` is the same rule with an explicit working directory, which
+  the single-instance forwarder needs because a relative path in a forwarded
+  command line means the file beside the *sending* terminal.
+- **`CollectionService.OpenPath` is the one entry point for a path that came
+  from outside the window** — a file opened from the desktop, a path on the
+  command line, a second launch's arguments, a file dropped on the window. All
+  four mean "show me this" and all four must agree about which collection that
+  is, which is why they share the method rather than each working out a
+  directory themselves. It finds the root with `collection.FindRoot`, the same
+  walk `otis run` uses (docs/FORMAT.md §8), so a request resolves against the
+  same root from the desktop as from the terminal.
+- **The window *pulls* the node to open; Go does not push it.**
+  `TakePendingOpen` transfers it and clears as it reads. Wails raises its
+  runtime-ready event before the React tree has mounted, so a target emitted
+  then is silently lost — which is what happened the first time a `.http` file
+  was double-clicked: the collection opened and the centre pane stayed empty.
+  `events.OpenNode` is only a nudge for a window that is already up, and
+  carries no payload for exactly that reason.
+- **`appIdentifier` in `main.go` must not change.** It is both the macOS bundle
+  identifier and the single-instance lock's ID, deliberately one string
+  because both answer "which app is this". macOS keys the `.http` association
+  and the user's default-application choice on it, so changing it reads as a
+  different app and orphans the old registration. Nothing of the *user's* is
+  keyed on it — settings and the key index live under
+  `os.UserConfigDir()/otis`, keychain entries under
+  `<collection>/<env>/<name>` — so the cost is a re-registration, but it is a
+  cost with no upside once there are installs.
+- **`build/appicon.svg` is the icon's source of truth**, `build/appicon.png` is
+  its committed render, and every `.icns`/`.ico` is generated from the PNG and
+  git-ignored. Its two colours are deliberately *not* the DESIGN-NOTES tokens
+  (§9.18): an app icon is brand, not chrome. Do not "fix" them.
+- **`build/linux/otis.desktop` and `build/linux/otis-http.xml` are committed,
+  not generated.** `wails3 generate .desktop` writes a `MimeType` line only
+  for custom URL *protocols*, so regenerating the desktop entry silently drops
+  `MimeType=text/x-http;` — the one line that makes double-clicking a `.http`
+  file reach Otis. `linux:generate:dotdesktop` asserts the line is there
+  instead of producing the file. Note also that
+  `wails3 task common:update:build-assets` **patches** generated files rather
+  than rewriting them, so a stale key survives a config change that should
+  have removed it; delete the file and re-run to clear one.
+- **Build, sign and package are separate steps, and the sign steps are
+  no-ops.** Otis ships unsigned and un-notarized by deliberate deferral
+  (docs/RELEASING.md). `sign:darwin`, `sign:windows` and `sign:linux` exist so
+  that adding signing later is an edit to one task rather than a rework of the
+  release tasks. Do not fold signing into a build or package task.
+- **On Windows the packaged app and the CLI are two links of the same source.**
+  `otis.exe` in the installer is `-H windowsgui`, without which a console
+  flashes behind every launch; such a process is never waited for by cmd.exe,
+  so the exit code is lost and `otis run` cannot gate a CI step. The release
+  therefore also ships a console-subsystem build (`windows:build:cli`), which
+  is what goes on PATH and what `go install` produces.
+  `cmd/otis/console_windows.go` makes the GUI binary print at all, and honours
+  a redirect or a pipe over the console. This is the one place "the CLI is the
+  same binary" needs an asterisk; docs/BUILDING.md §8 carries it.
+
 - **One keyboard handler.** `useKeymap` in `AppShell` owns every shortcut;
   components do not bind their own. A shortcut that needs the platform
   modifier fires wherever focus is; one that does not is suppressed in a text
@@ -319,9 +394,12 @@ lists the design decisions that are still open — do not resolve them silently.
 - `_folder.http` is settings, not a request (docs/FORMAT.md §2.1), so it is not
   a tree row: it hangs off its folder as `Node.Settings`. The tree the sidebar
   draws and the tree `otis ls` prints are the same tree, and a test asserts it.
-- Version string is injected at build time via `-ldflags -X` into
-  `internal/services.Version` (see `VERSION` in `Taskfile.yml`); `main.go` copies it
-  into `cli.Version`.
+- The build identity is injected at build time via `-ldflags -X` into
+  `internal/buildinfo` — `Version`, `Commit` and `Date`, all three, from
+  `VERSION`/`COMMIT`/`BUILD_DATE` in `Taskfile.yml`. Both halves of the binary
+  read that package directly, so `otis --version` and the version the window
+  shows cannot disagree. An unstamped build reports `dev` with
+  `commit unknown`, which is the honest answer and is asserted by a test.
 - The core packages must keep building with `CGO_ENABLED=0` (only `internal/services`
   and `main.go` may depend on Wails, which needs cgo on macOS).
 
@@ -329,9 +407,19 @@ lists the design decisions that are still open — do not resolve them silently.
 
 ```bash
 go test -race ./...     # everything; no test may touch the network
+go vet ./...
+npm --prefix frontend run typecheck        # tsc --noEmit
 otis ls | otis run | otis import postman   # the CLI (see docs/FORMAT.md §8)
 wails3 dev              # dev mode with HMR (Vite on 127.0.0.1:9245)
 wails3 build            # production build → bin/otis
-wails3 package          # .app bundle (macOS)
+wails3 package          # the host platform's installers
 wails3 build VERSION=x  # override the injected version
+
+# Release artifacts, into dist/. See docs/BUILDING.md.
+wails3 task release:darwin      # universal .app + DMG + tar.gz (macOS only)
+wails3 task release:windows     # NSIS installer + console-CLI zip
+wails3 task release:linux       # AppImage + deb + rpm + tar.gz (needs Linux
+                                # for the AppImage; Docker for the binary)
+wails3 task release:checksums   # SHA256SUMS over dist/
+wails3 task setup:docker        # the wails-cross image, for Linux builds
 ```

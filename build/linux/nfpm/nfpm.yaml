@@ -1,18 +1,29 @@
-# Feel free to remove those if you don't want/need to use them.
-# Make sure to check the documentation at https://nfpm.goreleaser.com
+# nFPM configuration for the .deb, .rpm and Arch packages.
+# Reference: https://nfpm.goreleaser.com
 #
-# The lines below are called `modelines`. See `:help modeline`
+# HAND-MAINTAINED. `wails3 update build-assets` regenerates this file from a
+# template and would drop the version expansion, the homepage, the .http file
+# association and the WebKitGTK dependency notes below. It patches rather than
+# rewrites, so it only clobbers keys the template also sets — but check the
+# diff after running it.
 
 name: "otis"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
-section: "default"
-priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "File-based HTTP client"
+# Expanded from the environment by `wails3 tool package`, so the package
+# version matches the binary's own `otis --version` instead of a number that
+# has to be remembered separately. Defaults to 0.0.0 outside a release build.
+version: "${OTIS_VERSION}"
+section: "devel"
+priority: "optional"
+maintainer: "Otis <noreply@github.com>"
+description: |
+  File-based HTTP client.
+  A collection is a directory of .http files in your repository: it versions
+  with git, reviews as a diff, and works without an account. The same binary
+  is the desktop app and the `otis` command line.
 vendor: "Otis"
-homepage: "https://wails.io"
+homepage: "https://github.com/otis-http/otis"
 license: "MIT"
 release: "1"
 
@@ -20,61 +31,51 @@ contents:
   - src: "./bin/otis"
     dst: "/usr/local/bin/otis"
   - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/otis.png"
+    dst: "/usr/share/icons/hicolor/512x512/apps/otis.png"
   - src: "./build/linux/otis.desktop"
     dst: "/usr/share/applications/otis.desktop"
+  # Teaches the system that *.http is text/x-http, which is what makes the
+  # desktop entry's MimeType line match a real file. See otis-http.xml.
+  - src: "./build/linux/otis-http.xml"
+    dst: "/usr/share/mime/packages/otis.xml"
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# The GTK4 + WebKitGTK 6.0 stack, which is what Wails v3 links against.
+#
+# That sets the distro floor, and it is a high one: libwebkitgtk-6.0-4 first
+# appears in Ubuntu 24.04 and Debian 13, so 22.04 and Debian 12 cannot install
+# this package. Wails can still be built against the older WebKit2GTK 4.1 with
+# `-tags gtk3` — supported through v3.0.x and removed in v3.1 — and the
+# commented block at the bottom is the dependency set for that build. Otis
+# does not ship one; docs/BUILDING.md, "Linux and WebKitGTK", says why and
+# what a user on an older distro should do instead.
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4
 
-# Distribution-specific overrides for different package formats
 overrides:
-  # RPM packages for Fedora / RHEL / AlmaLinux / Rocky Linux
+  # Fedora 39+, RHEL 10+, and the AlmaLinux / Rocky rebuilds of those.
   rpm:
     depends:
       - gtk4
       - webkitgtk6.0
-
-  # Arch Linux packages
   archlinux:
     depends:
       - gtk4
       - webkitgtk-6.0
 
-# scripts section to ensure desktop database is updated after install
 scripts:
   postinstall: "./build/linux/nfpm/scripts/postinstall.sh"
-  # You can also add preremove, postremove if needed
-  # preremove: "./build/linux/nfpm/scripts/preremove.sh"
-  # postremove: "./build/linux/nfpm/scripts/postremove.sh"
+  postremove: "./build/linux/nfpm/scripts/postremove.sh"
 
-# If you build your app with -tags gtk3 (legacy WebKit2GTK 4.1 stack — supported through v3.0.x, removed in v3.1),
-# replace the depends/overrides above with these:
+# The WebKit2GTK 4.1 dependency set, for a `-tags gtk3` build on an older
+# distro (Ubuntu 22.04, Debian 12). Not shipped; kept so the option is written
+# down rather than rediscovered.
 #
 # depends:
 #   - libgtk-3-0
 #   - libwebkit2gtk-4.1-0
 # overrides:
 #   rpm:
-#     depends:
-#       - gtk3
-#       - webkit2gtk4.1
+#     depends: [gtk3, webkit2gtk4.1]
 #   archlinux:
-#     depends:
-#       - gtk3
-#       - webkit2gtk-4.1
-#
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"
+#     depends: [gtk3, webkit2gtk-4.1]

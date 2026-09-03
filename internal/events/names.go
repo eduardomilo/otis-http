@@ -26,6 +26,22 @@ const (
 	// Path is empty when no collection is open.
 	CollectionOpened = "collection:opened"
 
+	// OpenNode is emitted when something outside the window asked for a node
+	// to be shown: a .http file double-clicked in Finder or Explorer, a path
+	// on the command line (`otis .`), a second launch forwarding its
+	// arguments, or a file dropped on the window. No payload.
+	//
+	// No payload because this is a nudge, not the delivery. The target is
+	// held in Go and collected with CollectionService.TakePendingOpen, which
+	// the window also calls once on mount — an event is the only way to reach
+	// a window that is already open, and a call is the only way to reach one
+	// that has not mounted yet, and a launch is the second of those. Whichever
+	// arrives first takes it; TakePendingOpen clears as it reads.
+	//
+	// The collection is already open by the time this arrives:
+	// CollectionOpened fired first.
+	OpenNode = "open:node"
+
 	// CollectionChanged is emitted when the collection directory changed on
 	// disk. Payload: services.Tree, the whole tree.
 	//
@@ -137,6 +153,7 @@ type Entry struct {
 var Registry = []Entry{
 	{"AppReady", AppReady, "Emitted once per window when its Wails runtime is ready. Payload: the version string."},
 	{"CollectionOpened", CollectionOpened, "Emitted whenever the current collection changes, including on close. Payload: CollectionInfo, with an empty path when nothing is open."},
+	{"OpenNode", OpenNode, "Emitted when something outside the window asked for a node to be shown \u2014 a .http file opened from the desktop, or a second launch forwarding its arguments. No payload; collect the target with CollectionService.TakePendingOpen."},
 	{"CollectionChanged", CollectionChanged, "Emitted when the collection directory changed on disk. Payload: the whole Tree."},
 	{"GitChanged", GitChanged, "Emitted when the repository's HEAD or index changed. Payload: the git State."},
 	{"SettingsChanged", SettingsChanged, "Emitted when Go changed the persisted settings itself. No payload; re-read the settings."},

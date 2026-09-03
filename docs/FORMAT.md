@@ -754,8 +754,39 @@ the window, with arguments it runs a command.
 otis ls [dir]                                       list a collection as a tree
 otis run <file.http> [-e env] [--json]              resolve and send one request
 otis import postman <file.json> -o <dir> [--env f]  import a Postman export
-otis version
+otis version                                        the build identity
+otis <path>                                         open the window on a path
 ```
+
+`otis version` and `otis --version` print the same block: the version, the
+commit it was built from, the build date, the Go toolchain and the target.
+
+```
+otis v0.2.0
+commit    1a2b3c4
+built     2026-09-03T10:04:00Z
+go        go1.25.5
+platform  darwin/arm64
+```
+
+All five rather than just the version, because Otis ships no auto-updater, so
+"what are you running" has to be answerable by hand and complete enough for a
+bug report. A binary that the release pipeline did not stamp — `go install`,
+or a plain `go build` — reports `dev` with `commit unknown` rather than
+printing blanks.
+
+**A path opens the window.** An argument that is not a flag and not the name
+of a command, and that names a file or directory that exists, is a path to
+show rather than a command line: `otis .` opens the window on the collection
+in the working directory, and `otis orders/create-order.http` opens it on that
+request. Anything else is a command, so a mistyped one still gets the usage
+error it deserves.
+
+This exists because a file association gives Otis no choice. Windows and Linux
+hand a double-clicked file to the app as `argv[1]`, so a `.http` file arrives
+looking exactly like a command line, and the two have to be told apart.
+`otis .` is the same rule read the other way round, and it is what every editor
+does.
 
 Exit codes:
 

@@ -1,21 +1,30 @@
 #!/bin/sh
+# Registers what the package just installed with the desktop environment.
+#
+# Three caches, all of which are stale until told otherwise, and none of which
+# is fatal: the app and the `otis` command work regardless. A missing tool is a
+# warning, never a failed install.
 
-# Update desktop database for .desktop file changes
-# This makes the application appear in application menus and registers its capabilities.
+# The .desktop file: puts Otis in the application menu and records that it
+# handles text/x-http.
 if command -v update-desktop-database >/dev/null 2>&1; then
-  echo "Updating desktop database..."
-  update-desktop-database -q /usr/share/applications
+  update-desktop-database -q /usr/share/applications || true
 else
-  echo "Warning: update-desktop-database command not found. Desktop file may not be immediately recognized." >&2
+  echo "otis: update-desktop-database not found; Otis may not appear in the application menu yet." >&2
 fi
 
-# Update MIME database for custom URL schemes (x-scheme-handler)
-# This ensures the system knows how to handle your custom protocols.
+# The MIME database: makes *.http resolve to text/x-http, which is what makes
+# the .desktop file's MimeType line match a real file (see otis-http.xml).
 if command -v update-mime-database >/dev/null 2>&1; then
-  echo "Updating MIME database..."
-  update-mime-database -n /usr/share/mime
+  update-mime-database -n /usr/share/mime || true
 else
-  echo "Warning: update-mime-database command not found. Custom URL schemes may not be immediately recognized." >&2
+  echo "otis: update-mime-database not found; double-clicking a .http file may not open Otis yet." >&2
+fi
+
+# The icon cache: without this the menu entry and the .http file icon are
+# generic until the next login.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true
 fi
 
 exit 0

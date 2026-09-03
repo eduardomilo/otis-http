@@ -134,12 +134,23 @@ tasks:
     cmds:
       - task: create:dmg
 
+  package:dmg:universal:
+    summary: Packages the universal (arm64 + amd64) app into a styled `.dmg`
+    desc: |
+      What a release ships. `package:dmg` builds for the host architecture
+      only, which on an Apple Silicon machine produces an arm64-only DMG that
+      an Intel Mac cannot run at all — and nothing about the artifact says so.
+    deps:
+      - task: package:universal
+    cmds:
+      - task: create:dmg
+
   create:dmg:
     summary: Creates a configurable `.dmg` from the `.app` bundle
     platforms: [darwin]
     cmds:
       - >-
-        wails3 tool package --format dmg --name "{{.APP_NAME}}" --out "{{.BIN_DIR}}"
+        wails3 tool package --format dmg --name "{{.BUNDLE_NAME}}" --out "{{.BIN_DIR}}"
         --background "{{.DMG_BACKGROUND}}"
         --volume-icon "{{.DMG_VOLUME_ICON}}"
         --file-icon "{{.DMG_FILE_ICON}}"
@@ -158,22 +169,44 @@ tasks:
   create:app:bundle:
     summary: Creates an `.app` bundle
     cmds:
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
-      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources"
+      # The .http document icon, named by CFBundleTypeIconFile in Info.plist.
+      # Without it Finder draws a .http file with the generic document icon.
       - |
-        if [ -f build/darwin/Assets.car ]; then
-          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources"
+        if [ -f build/darwin/httpFileIcon.icns ]; then
+          cp build/darwin/httpFileIcon.icns "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Resources"
         fi
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
-      - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/MacOS"
+      - task: stamp:plist
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
+
+  stamp:plist:
+    summary: Writes Info.plist into the bundle with the build's version
+    internal: true
+    cmds:
+      - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents"
+      # build/darwin/Info.plist carries `info.version` from build/config.yml,
+      # which is the version of the *release*, bumped by hand. VERSION is what
+      # the binary was actually stamped with (`git describe`), and between two
+      # tags those disagree — so the bundle gets the real one and the About
+      # panel cannot be a tag behind `otis --version`.
+      #
+      # PlistBuddy rather than plutil: it edits in place and is on every macOS.
+      # CFBundleShortVersionString is the human version; CFBundleVersion must
+      # be a monotonic dotted number, so a `git describe` like
+      # v0.2.0-3-gabc1234 goes only in the first.
+      - cmd: |
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleShortVersionString {{.VERSION}}' "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app/Contents/Info.plist"
+        platforms: [darwin]
+        ignore_error: true
 
   codesign:adhoc:
     summary: Ad-hoc signs the app bundle (macOS only)
     internal: true
     cmds:
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.app"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app"
 
   codesign:skip:
     summary: Skips codesigning when cross-compiling
@@ -183,17 +216,13 @@ tasks:
 
   run:
     cmds:
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-      - |
-        if [ -f build/darwin/Assets.car ]; then
-          cp build/darwin/Assets.car "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
-        fi
-      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
-      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Info.plist"
-      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
-      - '"{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/MacOS"
+      - mkdir -p "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/Resources"
+      - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/Resources"
+      - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/MacOS"
+      - cp "build/darwin/Info.dev.plist" "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/Info.plist"
+      - codesign --force --deep --sign - "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app"
+      - '"{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dev.app/Contents/MacOS/{{.APP_NAME}}"'
 
   sign:
     summary: Signs the application bundle with Developer ID
@@ -204,7 +233,7 @@ tasks:
     deps:
       - task: package
     cmds:
-      - wails3 tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" {{.CLI_ARGS}}
+      - wails3 tool sign --input "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app" {{.CLI_ARGS}}
 
   sign:notarize:
     summary: Signs and notarizes the application bundle
@@ -217,4 +246,4 @@ tasks:
     deps:
       - task: package
     cmds:
-      - wails3 tool sign --input "{{.BIN_DIR}}/{{.APP_NAME}}.app" --notarize {{.CLI_ARGS}}
+      - wails3 tool sign --input "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.app" --notarize {{.CLI_ARGS}}

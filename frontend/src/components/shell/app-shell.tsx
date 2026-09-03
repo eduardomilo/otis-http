@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Layout, PanelImperativeHandle } from "react-resizable-panels";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { Events } from "@wailsio/runtime";
 
 import {
   ResizableHandle,
@@ -15,6 +16,9 @@ import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
 import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
+import { OtisEvent } from "@/lib/events.gen";
+import { CollectionService } from "@bindings/internal/services";
+import { nodeRoute } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
@@ -51,7 +55,7 @@ const RESPONSE_DEFAULT_FRACTION = 0.4;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
-  const { closeActive, reopenLastClosed } = useTabs();
+  const { closeActive, reopenLastClosed, openTab } = useTabs();
   const { saveActive } = useDocuments();
   const { send } = useSends();
   const { tree } = useCollection();
@@ -122,6 +126,37 @@ export function AppShell({ children }: { children: ReactNode }) {
     filterInput.current?.focus();
     filterInput.current?.select();
   }, []);
+
+  /**
+   * A node the operating system asked for: a .http file double-clicked in
+   * Finder or Explorer, a path on the command line (`otis .`), a second
+   * launch forwarding its arguments, or a file dropped on the window.
+   *
+   * Go has already opened the collection by the time we get here, so all that
+   * is left is to show the node. This lives in the shell because navigation
+   * does; CollectionService owns everything up to the point where a route has
+   * to change.
+   *
+   * Taken on mount *and* on the event, and the two cannot both act because
+   * TakePendingOpen clears as it reads. Both are needed: at launch the target
+   * exists before this component does — Wails raises its runtime-ready event
+   * before React has mounted, so a listener alone silently misses every
+   * double-click that started the app — and with the window already open
+   * nothing is going to mount, so a mount-time call alone would miss every
+   * open after the first.
+   */
+  const showPending = useCallback(async () => {
+    const target = await CollectionService.TakePendingOpen().catch(() => null);
+    if (!target || !target.kind) return;
+    const kind = target.kind === "request" ? "request" : "folder";
+    openTab(target.node, kind, { activate: true });
+    void navigate({ to: nodeRoute(kind), params: { path: target.node } });
+  }, [navigate, openTab]);
+
+  useEffect(() => {
+    void showPending();
+    return Events.On(OtisEvent.OpenNode, () => void showPending());
+  }, [showPending]);
 
   useKeymap([
     { key: "k", mod: true, run: () => setPaletteOpen(true) },

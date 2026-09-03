@@ -845,6 +845,29 @@ export enum NodeKind {
 };
 
 /**
+ * OpenTarget is what the window is told to show when something outside it
+ * asked for a node: a .http file opened from Finder or Explorer, a path on the
+ * command line, or a second launch forwarding its arguments.
+ * 
+ * It carries the collection as well as the node because opening a file can
+ * change which collection is open, and a window that navigated to the node
+ * first would be addressing it inside the wrong tree.
+ */
+export interface OpenTarget {
+    "collection": CollectionInfo;
+
+    /**
+     * Node is the collection-relative node path, "" for the root.
+     */
+    "node": string;
+
+    /**
+     * Kind is "request" or "folder", naming which route addresses the node.
+     */
+    "kind": string;
+}
+
+/**
  * Opened is what the window gets back when a collection is opened: which
  * collection it is, and everything needed to draw it.
  */

@@ -11,6 +11,36 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as buildinfo$0 from "../buildinfo/models.js";
+
+/**
+ * Build returns the whole build identity: version, commit, build date,
+ * toolchain and target.
+ * 
+ * The window needs all of it, not just the version. Otis ships no
+ * auto-updater (docs/RELEASING.md), so "which version am I on" is a question
+ * the user answers by looking — and the answer that is useful in a bug report
+ * names the commit as well, since between two tags there are a hundred builds
+ * that all call themselves the same thing.
+ */
+export function Build(): $CancellablePromise<buildinfo$0.Info> {
+    return $Call.ByID(1955755891);
+}
+
+/**
+ * CopyVersion puts the one-line build identity on the clipboard and returns
+ * what it copied.
+ * 
+ * Through Go rather than navigator.clipboard for the reason
+ * CollectionService.CopyPath gives: the window is served from a custom scheme,
+ * where the browser clipboard API is not reliably available.
+ */
+export function CopyVersion(): $CancellablePromise<string> {
+    return $Call.ByID(3522121384);
+}
+
 /**
  * HomeDir returns the user's home directory, or "" if it cannot be
  * determined. The window uses it to abbreviate paths to the "~/code/..." form

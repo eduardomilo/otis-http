@@ -9,6 +9,8 @@ export const OtisEvent = {
   AppReady: "app:ready",
   /** Emitted whenever the current collection changes, including on close. Payload: CollectionInfo, with an empty path when nothing is open. */
   CollectionOpened: "collection:opened",
+  /** Emitted when something outside the window asked for a node to be shown — a .http file opened from the desktop, or a second launch forwarding its arguments. No payload; collect the target with CollectionService.TakePendingOpen. */
+  OpenNode: "open:node",
   /** Emitted when the collection directory changed on disk. Payload: the whole Tree. */
   CollectionChanged: "collection:changed",
   /** Emitted when the repository's HEAD or index changed. Payload: the git State. */

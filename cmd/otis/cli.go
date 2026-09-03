@@ -14,11 +14,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/otis-http/otis/internal/buildinfo"
 	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/resolve"
 	"github.com/otis-http/otis/internal/secrets"
@@ -68,74 +68,33 @@ func newRootCmd() *cobra.Command {
 			"files in your repository.\n\nRun otis with no arguments to open the desktop app.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// `otis --version` and `otis version` print the same block. Cobra
+		// gives the flag for free once Version is set; the template is
+		// overridden because the default one prefixes "otis version " to it.
+		Version: buildinfo.Version,
 	}
+	root.SetVersionTemplate(buildinfo.Block())
 	root.AddCommand(newLsCmd(), newRunCmd(), newImportCmd(), newVersionCmd())
 	return root
 }
 
+// newVersionCmd prints the build identity: version, commit, build date,
+// toolchain and target.
+//
+// All five, not just the version, because with no auto-updater the answer to
+// "what are you running" has to be complete enough to paste into a bug report
+// (docs/RELEASING.md). A build that was not stamped by the release pipeline
+// says so, rather than printing blanks.
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the Otis version",
+		Short: "Print the Otis version, commit and build date",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), Version)
+			fmt.Fprint(cmd.OutOrStdout(), buildinfo.Block())
 			return nil
 		},
 	}
-}
-
-// Version is the build-time version string, set by main.
-var Version = "dev"
-
-// FindRoot locates the collection root at or above dir.
-//
-// A directory holding an env/ directory is the root. Otherwise the root is
-// the highest ancestor still reachable through directories that carry a
-// collection marker (_folder.http or .order); a directory holding .git is
-// never crossed.
-func FindRoot(dir string) string {
-	dir, err := filepath.Abs(dir)
-	if err != nil {
-		return dir
-	}
-	root := dir
-	for {
-		if isDir(filepath.Join(dir, collection.EnvDirName)) {
-			return dir
-		}
-		if isDir(filepath.Join(dir, ".git")) {
-			return root
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir || !hasMarker(parent) {
-			return root
-		}
-		dir = parent
-		root = dir
-	}
-}
-
-// hasMarker reports whether dir looks like part of a collection, which is
-// what lets the walk in FindRoot cross into it.
-//
-// env/ counts, and has to: a collection root commonly carries nothing but
-// env/ and its folders — the design's own `acme-api/.requests` is exactly
-// that — and without this the walk stops at the request's own folder and the
-// root holding env/ is never even tested. `otis run -e staging` then reports
-// the environment as missing while looking at it from one level down.
-func hasMarker(dir string) bool {
-	for _, name := range []string{collection.FolderFileName, collection.OrderFileName} {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
-			return true
-		}
-	}
-	return isDir(filepath.Join(dir, collection.EnvDirName))
-}
-
-func isDir(path string) bool {
-	st, err := os.Stat(path)
-	return err == nil && st.IsDir()
 }
 
 // loadEnv loads the named environment from the collection and builds the

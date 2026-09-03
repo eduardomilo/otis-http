@@ -13,13 +13,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	wailsevents "github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/otis-http/otis/internal/buildinfo"
 	"github.com/otis-http/otis/internal/events"
 )
-
-// Version is the build-time version string. It is overridden by the linker
-// via -X github.com/otis-http/otis/internal/services.Version=<value>
-// (see the BUILD_FLAGS in build/<platform>/Taskfile.yml).
-var Version = "dev"
 
 // AppService is the root service of Otis. It carries app-level metadata and
 // a health check used to prove the binding channel works.
@@ -49,7 +45,7 @@ func (s *AppService) ServiceStartup(ctx context.Context, options application.Ser
 
 func (s *AppService) emitReadyWhenRuntimeLoads(w application.Window) {
 	w.OnWindowEvent(wailsevents.Common.WindowRuntimeReady, func(*application.WindowEvent) {
-		s.app.Event.Emit(events.AppReady, Version)
+		s.app.Event.Emit(events.AppReady, buildinfo.Version)
 	})
 }
 
@@ -67,7 +63,36 @@ func (s *AppService) HomeDir() string {
 
 // Version returns the build-time version string.
 func (s *AppService) Version() string {
-	return Version
+	return buildinfo.Version
+}
+
+// Build returns the whole build identity: version, commit, build date,
+// toolchain and target.
+//
+// The window needs all of it, not just the version. Otis ships no
+// auto-updater (docs/RELEASING.md), so "which version am I on" is a question
+// the user answers by looking — and the answer that is useful in a bug report
+// names the commit as well, since between two tags there are a hundred builds
+// that all call themselves the same thing.
+func (s *AppService) Build() buildinfo.Info {
+	return buildinfo.Get()
+}
+
+// CopyVersion puts the one-line build identity on the clipboard and returns
+// what it copied.
+//
+// Through Go rather than navigator.clipboard for the reason
+// CollectionService.CopyPath gives: the window is served from a custom scheme,
+// where the browser clipboard API is not reliably available.
+func (s *AppService) CopyVersion() (string, error) {
+	line := buildinfo.Line()
+	if s.app == nil {
+		return line, nil // not running under Wails, as in tests
+	}
+	if !s.app.Clipboard.SetText(line) {
+		return "", errors.New("copying the version: the clipboard refused the text")
+	}
+	return line, nil
 }
 
 // Ping echoes msg back with a timestamp. It returns an error for an empty

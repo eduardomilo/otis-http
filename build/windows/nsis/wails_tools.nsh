@@ -229,10 +229,16 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
 !macro wails.associateFiles
     ; Create file associations
     
+    !insertmacro APP_ASSOCIATE "http" "HTTP request" "Otis HTTP request file" "$INSTDIR\httpFileIcon.ico" "Open with ${INFO_PRODUCTNAME}" "$INSTDIR\${PRODUCT_EXECUTABLE} $\"%1$\""
+    File "..\httpFileIcon.ico"
+    
 !macroend
 
 !macro wails.unassociateFiles
     ; Delete app associations
+    
+    !insertmacro APP_UNASSOCIATE "http" "HTTP request"
+    Delete "$INSTDIR\httpFileIcon.ico"
     
 !macroend
 

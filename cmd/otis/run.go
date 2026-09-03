@@ -82,7 +82,7 @@ func runRequest(cmd *cobra.Command, file string, opts runOptions) error {
 	}
 	root := opts.root
 	if root == "" {
-		root = FindRoot(filepath.Dir(abs))
+		root = collection.FindRoot(filepath.Dir(abs))
 	}
 	c, err := collection.Load(root)
 	if err != nil {

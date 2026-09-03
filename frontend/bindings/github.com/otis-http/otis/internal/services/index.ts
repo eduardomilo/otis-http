@@ -57,6 +57,7 @@ export type {
     FolderVariable,
     KeychainState,
     Node,
+    OpenTarget,
     Opened,
     OrderResult,
     ResponseMeta,

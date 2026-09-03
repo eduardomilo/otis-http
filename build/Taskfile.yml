@@ -191,17 +191,61 @@ tasks:
       - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i
 
   generate:icons:
-    summary: Generates Windows `.ico` and Mac `.icns` from an image; on macOS, `-iconcomposerinput appicon.icon -macassetdir darwin` also produces `Assets.car` from a `.icon` file (skipped on other platforms).
+    summary: Generates the Windows `.ico` and macOS `.icns` from build/appicon.png
     run: once
     dir: build
     sources:
       - "appicon.png"
-      - "appicon.icon"
     generates:
       - "darwin/icons.icns"
       - "windows/icon.ico"
+      - "darwin/httpFileIcon.icns"
+      - "windows/httpFileIcon.ico"
     cmds:
-      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico -iconcomposerinput appicon.icon -macassetdir darwin
+      # build/appicon.svg is the source of truth and build/appicon.png is its
+      # 1024px render; both are committed, because nothing in the build chain
+      # rasterises SVG and CI must not need a rasteriser. Re-render after
+      # editing the SVG:
+      #
+      #   magick -background none build/appicon.svg -resize 1024x1024 \
+      #     -depth 8 -define png:color-type=6 build/appicon.png
+      #
+      # No -iconcomposerinput/-macassetdir, and no build/appicon.icon: that is
+      # the macOS 26 layered-icon format, whose foreground layer is a
+      # monochrome glyph over a background the OS composites itself. Ours is
+      # a finished two-colour icon that already carries its own rounded
+      # rectangle, so it does not decompose into those layers without being
+      # redrawn as one — and a stale bundle is worse than none, because
+      # Assets.car wins on macOS 26 while icons.icns is what every older
+      # release draws, so the app would have two different icons depending on
+      # the OS. macOS renders an .icns app icon as authored on every version
+      # it supports. To add a layered icon later: split appicon.svg into a
+      # solid background and the ring-and-triangles glyph, build the .icon
+      # bundle in Icon Composer, and put the flags back.
+      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico
+      # The .http document icon, named by `fileAssociations[].iconName` in
+      # config.yml. macOS reads it from the bundle's Resources; the NSIS
+      # installer copies build/windows/httpFileIcon.ico into $INSTDIR, and a
+      # missing file there fails the installer build, so this is not optional.
+      #
+      # The app icon itself for now, so a .http file at least carries the Otis
+      # mark. A document icon proper is the mark on a page rather than a
+      # second copy of the app icon sitting in Finder; that artwork does not
+      # exist yet (DESIGN-NOTES §9.18). When it does, point this at it and
+      # nothing else changes.
+      - wails3 generate icons -input appicon.png -macfilename darwin/httpFileIcon.icns -windowsfilename windows/httpFileIcon.ico
+      # The .http document icon, named by `fileAssociations[].iconName` in
+      # config.yml. macOS reads it from the bundle's Resources, and the NSIS
+      # installer copies build/windows/httpFileIcon.ico into $INSTDIR — a
+      # missing file there fails the installer build, so this is not optional.
+      #
+      # Derived from the same source as the app icon, so a .http file shows
+      # the Otis mark. A document icon proper — the mark on a page, the way
+      # every other file type is drawn — is design work that has not been
+      # done: docs/design/ carries the screens and no icon at all, so the app
+      # icon itself is still the Wails default. When the real artwork lands,
+      # point this at it and nothing else changes.
+      - wails3 generate icons -input appicon.png -macfilename darwin/httpFileIcon.icns -windowsfilename windows/httpFileIcon.ico
 
   dev:frontend:
     summary: Runs the frontend in development mode

@@ -2,12 +2,48 @@ version: '3'
 
 vars:
   APP_NAME: "otis"
+  # The macOS bundle and DMG are named for the product, not the binary: an
+  # `otis.app` in /Applications sits among Xcode.app and Safari.app looking
+  # like a mistake. The executable inside it stays APP_NAME, because that is
+  # the name the CLI is invoked by, and Info.plist already carries
+  # CFBundleName=Otis with CFBundleExecutable=otis.
+  BUNDLE_NAME: "Otis"
   BIN_DIR: "bin"
-  # Build-time version string, injected into internal/services.Version via -ldflags -X.
-  # Override with `wails3 build VERSION=1.2.3`.
+  # Where release artifacts and their checksums are collected.
+  DIST_DIR: "dist"
+
+  # The build identity, stamped into internal/buildinfo by -ldflags -X. Otis
+  # ships no auto-updater, so `otis --version` and the window's own version
+  # line are the only way to answer "which build is this" — see docs/BUILDING.md.
+  #
+  # Override any of them: `wails3 build VERSION=1.2.3`.
   VERSION:
     sh: git describe --tags --always --dirty 2>/dev/null || echo "0.1.0-dev"
-  VERSION_LDFLAG: "-X github.com/otis-http/otis/internal/services.Version={{.VERSION}}"
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo ""
+  # UTC, second precision. Pass BUILD_DATE to pin it: two builds of the same
+  # commit are then byte-identical, which is what makes a published checksum
+  # reproducible by someone else.
+  BUILD_DATE:
+    sh: date -u +%Y-%m-%dT%H:%M:%SZ
+  # The version as a package manager will accept it: no leading "v", and no
+  # "-", which rpm forbids in a Version. `git describe` between two tags gives
+  # v0.2.0-3-gabc1234, so that becomes 0.2.0.3.gabc1234 — still ordered, still
+  # traceable to a commit. A describe with no tag at all is prefixed with
+  # 0.0.0 so the result still starts with a digit, which both formats require.
+  PKG_VERSION:
+    sh: |
+      v=$(git describe --tags --always --dirty 2>/dev/null || echo 0.0.0)
+      v=${v#v}
+      v=$(printf '%s' "$v" | tr '-' '.')
+      case "$v" in [0-9]*) printf '%s' "$v" ;; *) printf '0.0.0.%s' "$v" ;; esac
+  # The version as it appears in an artifact's file name: the tag without its
+  # leading "v", which is what a download looks like everywhere else.
+  RELEASE_VERSION: '{{.VERSION | trimPrefix "v"}}'
+  VERSION_LDFLAG: >-
+    -X github.com/otis-http/otis/internal/buildinfo.Version={{.VERSION}}
+    -X github.com/otis-http/otis/internal/buildinfo.Commit={{.COMMIT}}
+    -X github.com/otis-http/otis/internal/buildinfo.Date={{.BUILD_DATE}}
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
   # Target OS for build/package/run. Defaults to the host OS, and is overridden
@@ -68,3 +104,154 @@ tasks:
     summary: Builds and runs the Docker image
     cmds:
       - task: common:run:docker
+
+  # ---------------------------------------------------------------------------
+  # Release artifacts
+  #
+  # One task per platform, each producing its installers plus a plain archive
+  # of the binary, into dist/ with the version in the file name. The archive is
+  # not redundant: it is what `brew install` consumes, what a CI job unpacks,
+  # and the only artifact somebody can use without running an installer.
+  #
+  # Nothing here signs anything. That is deliberate (docs/RELEASING.md) and the
+  # sign step is a separate, currently empty task so it can be filled in
+  # without moving any of this.
+  # ---------------------------------------------------------------------------
+
+  release:darwin:
+    summary: Builds the macOS release artifacts into dist/
+    desc: |
+      A universal (arm64 + amd64) .app, a DMG, and a tar.gz of the binary.
+      Unsigned beyond the ad-hoc signature `package` applies; users will meet
+      Gatekeeper on the DMG. macOS only — the .app has to be built and ad-hoc
+      signed on a Mac.
+    preconditions:
+      - sh: '[ "{{OS}}" = "darwin" ]'
+        msg: "The macOS artifacts must be built on macOS."
+    cmds:
+      - task: dist:dir
+      - task: darwin:package:dmg:universal
+      - task: sign:darwin
+      - |
+        set -eu
+        cp "{{.BIN_DIR}}/{{.BUNDLE_NAME}}.dmg" "{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_darwin_universal.dmg"
+        tar -C "{{.BIN_DIR}}" -czf \
+          "{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_darwin_universal.tar.gz" "{{.APP_NAME}}"
+      - task: dist:list
+
+  release:windows:
+    summary: Builds the Windows release artifacts into dist/
+    desc: |
+      The NSIS installer (GUI binary, WebView2 bootstrapper, .http association)
+      and a zip of the console-subsystem CLI. Both unsigned; users will meet
+      SmartScreen on the installer.
+
+      Defaults to amd64 rather than to the host's architecture, which is what
+      a release wants: built on an arm64 Mac, an inherited ARCH would quietly
+      produce an arm64 installer that almost no Windows user can run. Override
+      with ARCH=arm64.
+    vars:
+      RELEASE_ARCH: '{{.ARCH | default "amd64"}}'
+    cmds:
+      - task: dist:dir
+      - task: windows:package
+        vars: {ARCH: '{{.RELEASE_ARCH}}'}
+      - task: windows:build:cli
+        vars: {ARCH: '{{.RELEASE_ARCH}}'}
+      - task: sign:windows
+      - |
+        set -eu
+        cp "{{.BIN_DIR}}/Otis-{{.RELEASE_ARCH}}-installer.exe" \
+           "{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}_setup.exe"
+        # The zip holds the *console* build, renamed to otis.exe: it is what
+        # goes on PATH, and windows:build:cli explains why the installer's
+        # binary cannot be the one a shell calls.
+        rm -rf "{{.BIN_DIR}}/ziproot" && mkdir -p "{{.BIN_DIR}}/ziproot"
+        cp "{{.BIN_DIR}}/{{.APP_NAME}}-cli.exe" "{{.BIN_DIR}}/ziproot/{{.APP_NAME}}.exe"
+        (cd "{{.BIN_DIR}}/ziproot" && zip -q -r \
+          "../../{{.DIST_DIR}}/{{.APP_NAME}}_{{.RELEASE_VERSION}}_windows_{{.RELEASE_ARCH}}.zip" .)
+        rm -rf "{{.BIN_DIR}}/ziproot"
+      - task: dist:list
+
+  release:linux:
+    summary: Builds the Linux release artifacts into dist/
+    desc: |
+      An AppImage, a .deb, an .rpm and a tar.gz. Built against GTK4 +
+      WebKitGTK 6.0, which sets the distro floor — see docs/BUILDING.md,
+      "Linux and WebKitGTK".
+
+      Defaults to amd64 rather than to the host's architecture, for the reason
+      release:windows gives. Override with ARCH=arm64.
+    vars:
+      RELEASE_ARCH: '{{.ARCH | default "amd64"}}'
+    cmds:
+      - task: dist:dir
+      - task: linux:package
+        vars: {ARCH: '{{.RELEASE_ARCH}}'}
+      - task: sign:linux
+      - |
+        set -eu
+        V="{{.RELEASE_VERSION}}"; A="{{.RELEASE_ARCH}}"; B="{{.BIN_DIR}}"; D="{{.DIST_DIR}}"
+        # Globbed rather than named: the AppImage picks up the machine's
+        # architecture suffix and nfpm names by its own version scheme, so
+        # matching on the extension is the stable way to find them.
+        for f in "$B"/*.AppImage; do [ -e "$f" ] && cp "$f" "$D/{{.APP_NAME}}_${V}_linux_${A}.AppImage"; done
+        for f in "$B"/*.deb;      do [ -e "$f" ] && cp "$f" "$D/{{.APP_NAME}}_${V}_linux_${A}.deb"; done
+        for f in "$B"/*.rpm;      do [ -e "$f" ] && cp "$f" "$D/{{.APP_NAME}}_${V}_linux_${A}.rpm"; done
+        tar -C "$B" -czf "$D/{{.APP_NAME}}_${V}_linux_${A}.tar.gz" "{{.APP_NAME}}"
+      - task: dist:list
+
+  release:checksums:
+    summary: Writes SHA-256 checksums for everything in dist/
+    desc: |
+      Nothing Otis ships is signed, so this file is the only integrity signal
+      a user gets. It is generated last, over whatever is in dist/, and the
+      release workflow publishes it alongside the artifacts.
+    cmds:
+      - |
+        set -eu
+        cd "{{.DIST_DIR}}"
+        rm -f SHA256SUMS
+        # Sorted, and with no directory component, so the file is identical
+        # whichever machine produced it and `shasum -c SHA256SUMS` works from
+        # the directory a user downloaded into.
+        if command -v sha256sum >/dev/null 2>&1; then
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec basename {} \; | sort | xargs sha256sum > SHA256SUMS
+        else
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec basename {} \; | sort | xargs shasum -a 256 > SHA256SUMS
+        fi
+        cat SHA256SUMS
+
+  # The signing hooks. Empty on purpose: Otis ships unsigned until there are
+  # real users (docs/RELEASING.md names the secrets each one would need). They
+  # exist so that filling them in is an edit to one task and not a rework of
+  # the release tasks above.
+  sign:darwin:
+    summary: "Signs and notarizes the macOS artifacts (no-op: Otis ships unsigned)"
+    cmds:
+      - 'echo "sign:darwin — skipped, Otis ships unsigned. See docs/RELEASING.md."'
+
+  sign:windows:
+    summary: "Signs the Windows artifacts (no-op: Otis ships unsigned)"
+    cmds:
+      - 'echo "sign:windows — skipped, Otis ships unsigned. See docs/RELEASING.md."'
+
+  sign:linux:
+    summary: "Signs the Linux packages (no-op: Otis ships unsigned)"
+    cmds:
+      - 'echo "sign:linux — skipped, Otis ships unsigned. See docs/RELEASING.md."'
+
+  dist:dir:
+    internal: true
+    cmds:
+      - mkdir -p "{{.DIST_DIR}}"
+
+  dist:list:
+    internal: true
+    cmds:
+      - 'echo "" && echo "{{.DIST_DIR}}/:" && ls -lh "{{.DIST_DIR}}"'
+
+  dist:clean:
+    summary: Removes dist/ and bin/
+    cmds:
+      - rm -rf "{{.DIST_DIR}}" "{{.BIN_DIR}}"

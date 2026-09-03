@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,6 +67,24 @@ type CollectionService struct {
 	// onDiskChange are the functions told about a change the watcher saw (see
 	// OnDiskChange).
 	onDiskChange []func()
+	// pending is the node an OS-level open asked for, held until the window
+	// takes it. See OpenPath and TakePendingOpen.
+	pending *OpenTarget
+}
+
+// OpenTarget is what the window is told to show when something outside it
+// asked for a node: a .http file opened from Finder or Explorer, a path on the
+// command line, or a second launch forwarding its arguments.
+//
+// It carries the collection as well as the node because opening a file can
+// change which collection is open, and a window that navigated to the node
+// first would be addressing it inside the wrong tree.
+type OpenTarget struct {
+	Collection CollectionInfo `json:"collection"`
+	// Node is the collection-relative node path, "" for the root.
+	Node string `json:"node"`
+	// Kind is "request" or "folder", naming which route addresses the node.
+	Kind string `json:"kind"`
 }
 
 // NewCollectionService constructs the service around the shared settings
@@ -152,14 +171,19 @@ func (s *CollectionService) watchForDroppedDirectories(w application.Window) {
 	w.OnWindowEvent(wailsevents.Common.WindowFilesDropped, func(e *application.WindowEvent) {
 		for _, p := range e.Context().DroppedFiles() {
 			info, err := os.Stat(p)
-			if err != nil || !info.IsDir() {
-				// Only directories are collections. Dropping a file is
-				// ignored rather than guessed at: opening its parent would
-				// silently open something the user did not point at.
+			if err != nil {
 				continue
 			}
-			if _, err := s.Open(p); err != nil {
-				s.logError("opening a dropped directory", err)
+			// A directory is a collection. A .http file is a request, and
+			// dropping one is the same gesture as double-clicking it in
+			// Finder, so it gets the same answer: its collection opens and
+			// the window shows that request. Anything else is ignored rather
+			// than guessed at.
+			if !info.IsDir() && !isRequestFile(p) {
+				continue
+			}
+			if err := s.OpenPath(p); err != nil {
+				s.logError("opening a dropped path", err)
 			}
 			return
 		}
@@ -234,6 +258,111 @@ func (s *CollectionService) Open(dir string) (Opened, error) {
 
 	s.emit(events.CollectionOpened, opened)
 	return Opened{Collection: opened, Tree: tree}, nil
+}
+
+// OpenPath opens whatever the OS handed Otis and tells the window to show it.
+//
+// It is the one entry point for a path that came from outside the window: a
+// .http file double-clicked in Finder or Explorer, a path on the command line
+// (`otis .`), a second launch forwarding its arguments, and a file dropped on
+// the window. All four mean the same thing — "show me this" — and all four
+// have to agree about which collection that is, which is why they share this
+// method rather than each calling Open with a directory they worked out
+// themselves.
+//
+// A directory opens as a collection, as the dialog and a dropped folder do. A
+// file opens the collection *around* it, found with collection.FindRoot — the
+// same walk `otis run` uses (docs/FORMAT.md §8), so a request resolves against
+// the same root from the desktop as from the terminal.
+//
+// The node is then addressed inside that collection. A `_folder.http` resolves
+// to its folder rather than to itself, because it is settings and not a tree
+// row (docs/FORMAT.md §2.1); every other .http file is a request.
+//
+// The window may not exist yet — the file association starts the process — so
+// the target is held until a window's runtime is ready and emitted then. The
+// collection is opened either way: events.CollectionOpened is what draws the
+// tree, and it goes through the same wait.
+func (s *CollectionService) OpenPath(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", path, err)
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", abs, err)
+	}
+
+	root, node, kind := abs, "", "folder"
+	if !info.IsDir() {
+		root = collection.FindRoot(filepath.Dir(abs))
+		rel, err := filepath.Rel(root, abs)
+		if err != nil {
+			return fmt.Errorf("opening %s: %w", abs, err)
+		}
+		node, kind = filepath.ToSlash(rel), "request"
+		// _folder.http is a folder's settings, not a row in the tree, so the
+		// thing to show is the folder it belongs to (docs/FORMAT.md §2.1).
+		if filepath.Base(abs) == collection.FolderFileName {
+			node, kind = filepath.ToSlash(filepath.Dir(rel)), "folder"
+			if node == "." {
+				node = ""
+			}
+		}
+	}
+
+	opened, err := s.Open(root)
+	if err != nil {
+		return err
+	}
+
+	// Held for the window to take, and then nudged. Both, because the two
+	// cases have opposite timing and only this order covers each: at launch
+	// the target exists before the webview does, so it has to wait; with the
+	// app already open nobody is going to ask again, so it has to be told.
+	// TakePendingOpen is what actually transfers it either way, and it clears
+	// as it reads, so exactly one of the two wins.
+	//
+	// Only the most recent target is kept: several files opened at once still
+	// mean one window, and the window shows one node.
+	target := OpenTarget{Collection: opened.Collection, Node: node, Kind: kind}
+	s.mu.Lock()
+	s.pending = &target
+	s.mu.Unlock()
+	s.emit(events.OpenNode, nil)
+	return nil
+}
+
+// TakePendingOpen returns the node an OS-level open asked for, and forgets it.
+//
+// A pull rather than a push, because the push cannot be timed. Wails raises
+// WindowRuntimeReady when the webview's JS runtime loads, which is before the
+// React tree has mounted and therefore before anything is listening — so a
+// target emitted then is simply lost, which is exactly what happened the first
+// time a .http file was double-clicked: the collection opened and the window
+// sat on the empty centre pane. The window asking when it is ready has no such
+// window of failure.
+//
+// It clears as it reads so a remount does not re-navigate somewhere the user
+// has since navigated away from, and so the events.OpenNode nudge and the
+// on-mount call cannot both act on one open.
+//
+// Kind is empty when there is nothing pending, which is the normal answer.
+func (s *CollectionService) TakePendingOpen() OpenTarget {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending == nil {
+		return OpenTarget{}
+	}
+	target := *s.pending
+	s.pending = nil
+	return target
+}
+
+// isRequestFile reports whether path names a .http file, the extension Otis
+// registers as a file association (build/config.yml).
+func isRequestFile(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), collection.RequestExt)
 }
 
 // Close forgets the current collection and emits events.CollectionOpened with

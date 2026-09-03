@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/otis-http/otis/internal/buildinfo"
 )
 
 // run executes the CLI and returns stdout, stderr and the exit code.
@@ -363,38 +365,9 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-func TestFindRoot(t *testing.T) {
-	dir := write(t, map[string]string{
-		"repo/.git/HEAD":              "ref: x\n",
-		"repo/api/env/dev.json":       "{}",
-		"repo/api/_folder.http":       "@a = 1\n",
-		"repo/api/users/_folder.http": "@b = 2\n",
-		"repo/api/users/create.http":  "GET https://x.test\n",
-		"repo/other/loose.http":       "GET https://x.test\n",
-		"standalone/a/b/.order":       "c.http\n",
-		"standalone/a/b/c.http":       "GET https://x.test\n",
-		"standalone/a/_folder.http":   "@x = 1\n",
-		// The design's own layout: a root carrying env/ and folders, with no
-		// _folder.http or .order of its own. The walk has to be able to cross
-		// into it or `otis run -e staging` reports the environment as missing
-		// from one level down.
-		"bare/.requests/env/staging.json":    "{}",
-		"bare/.requests/orders/_folder.http": "Accept: application/json\n",
-		"bare/.requests/orders/o.http":       "GET https://x.test\n",
-	})
-	tests := map[string]string{
-		"repo/api/users":        "repo/api",   // stops at env/
-		"repo/api":              "repo/api",   // env/ here
-		"repo/other":            "repo/other", // no markers above
-		"standalone/a/b":        "standalone/a",
-		"bare/.requests/orders": "bare/.requests", // env/ is a marker too
-	}
-	for start, want := range tests {
-		got := FindRoot(filepath.Join(dir, filepath.FromSlash(start)))
-		if got != filepath.Join(dir, filepath.FromSlash(want)) {
-			t.Errorf("FindRoot(%s) = %s, want %s", start, got, filepath.Join(dir, want))
-		}
-	}
+// The root FindRoot discovers is the one inheritance and env/ resolve
+// against. The lookup itself is internal/collection's; this is the end of it.
+func TestRunFollowsTheDiscoveredRoot(t *testing.T) {
 	// Inheritance really follows the discovered root.
 	srv := echoServer(t)
 	d2 := write(t, map[string]string{
@@ -463,13 +436,27 @@ func TestImportPostman(t *testing.T) {
 	}
 }
 
+// `otis version` and `otis --version` are the same output, and it names the
+// commit and the build date as well as the version (docs/FORMAT.md §8).
 func TestVersionAndHelp(t *testing.T) {
-	Version = "1.2.3"
-	t.Cleanup(func() { Version = "dev" })
+	oldV, oldC, oldD := buildinfo.Version, buildinfo.Commit, buildinfo.Date
+	buildinfo.Version, buildinfo.Commit, buildinfo.Date = "v1.2.3", "1a2b3c4", "2026-09-03T10:04:00Z"
+	t.Cleanup(func() { buildinfo.Version, buildinfo.Commit, buildinfo.Date = oldV, oldC, oldD })
+
 	out, _, code := run("version")
-	if code != ExitOK || out != "1.2.3\n" {
-		t.Errorf("version = %q, code = %d", out, code)
+	if code != ExitOK {
+		t.Fatalf("version: code = %d", code)
 	}
+	for _, want := range []string{"otis v1.2.3", "commit    1a2b3c4", "built     2026-09-03T10:04:00Z"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("version = %q, missing %q", out, want)
+		}
+	}
+	flag, _, code := run("--version")
+	if code != ExitOK || flag != out {
+		t.Errorf("--version = %q, want the same as `version` (%q), code = %d", flag, out, code)
+	}
+
 	out, _, code = run("--help")
 	if code != ExitOK || !strings.Contains(out, "Available Commands:") {
 		t.Errorf("help: code = %d", code)
