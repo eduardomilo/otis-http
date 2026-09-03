@@ -116,8 +116,10 @@ type Scope struct {
 	folders []string
 	envName string
 
-	now     func() time.Time
-	uuid    func() string
+	now  func() time.Time
+	uuid func() string
+	// extra are the request-scope values of §9.4, above every other scope.
+	extra   map[string]string
 	randInt func(max int) int
 }
 
@@ -169,6 +171,18 @@ func (s *Scope) WithSession(session *Session, folders []string) *Scope {
 	return s
 }
 
+// WithExtra layers values above every other scope: the request-scope
+// variables a pre-request script set (docs/FORMAT.md §9.4).
+//
+// Above everything, because they are the nearest scope there is — set during
+// this send, for this send, and in no file. They are literal, like a session
+// value and for the same reason: they are data a run produced, not a template
+// somebody wrote, so "{{" arriving in one cannot reach back into the scope.
+func (s *Scope) WithExtra(values map[string]string) *Scope {
+	s.extra = values
+	return s
+}
+
 // WithClock overrides the clock used by {{$timestamp}} and
 // {{$isoTimestamp}} (for tests).
 func (s *Scope) WithClock(now func() time.Time) *Scope { s.now = now; return s }
@@ -187,10 +201,18 @@ func (s *Scope) WithRandom(uuid func() string, randInt func(max int) int) *Scope
 //
 // The order within the folder scopes is the format's own rule applied to a new
 // layer: nearest definition wins, and at one level a session value beats the
-// committed one. Anything else would make vars.folder.set a no-op whenever the
-// folder already declared the name, which is exactly when it is wanted.
+// committed one. Anything else would make vars.session.set a no-op whenever
+// the folder already declared the name, which is exactly when it is wanted.
 func (s *Scope) lookup(name string) (declared, bool) {
-	// The request file's own declarations come first and have no session
+	// A request-scope value a pre-request script set is above everything: it
+	// was set during this send, for this send (§9.4).
+	if value, ok := s.extra[name]; ok {
+		return declared{
+			name: name, value: value, origin: OriginRequest,
+			source: Source{Path: "a pre-request script"}, literal: true,
+		}, true
+	}
+	// The request file's own declarations come next and have no session
 	// layer: a per-request session value lives only for one execution and is
 	// the script engine's business (§4.5).
 	next := 0
@@ -472,6 +494,11 @@ func (s *Scope) clock() time.Time {
 	}
 	return time.Now()
 }
+
+// NewUUID returns a random (version 4) UUID. It is what {{$uuid}} yields and
+// what the script API's crypto.randomUUID() returns, so the two agree and
+// there is one implementation to be right about.
+func NewUUID() string { return newUUID() }
 
 // newUUID returns a random (version 4) UUID.
 func newUUID() string {

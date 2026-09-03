@@ -23,6 +23,21 @@ type Options struct {
 	// resolves against the files and the environment only, which is the CLI's
 	// case and every case before the first run.
 	Session *Session
+	// Extra are values that sit above every other scope: the request-scope
+	// variables a pre-request script set (docs/FORMAT.md §9.4). They live for
+	// one send and are in no file, so they belong nowhere in the file-based
+	// order — above all of it is the only honest place.
+	Extra map[string]string
+	// Rewrite, when set, is called after inheritance and before resolution
+	// with the entry and its effective headers and auth, so a caller may
+	// change them.
+	//
+	// It exists for exactly one caller: the pre-request scripts of §9.2, which
+	// run before resolution so a folder header can reference a value a script
+	// is about to set. A hook rather than a second entry point, because
+	// everything else about resolution — the scope, the order, the masking —
+	// has to stay identical whether a script ran or not.
+	Rewrite func(*httpfile.Request, *Effective)
 	// Scope hooks for deterministic tests; nil means real clock/randomness.
 	Configure func(*Scope)
 }
@@ -78,6 +93,25 @@ func (r *Resolved) Expand(text string) (string, error) {
 // HasSecrets reports whether any resolved value came from a secret.
 func (r *Resolved) HasSecrets() bool { return len(r.secretValues) > 0 }
 
+// AddSecret registers a value with this request's masker.
+//
+// It exists for the one secret resolution does not see: a value a script put
+// on the request through secrets.ref (docs/FORMAT.md §9.7). The sender
+// substitutes it into the prepared request, and everything Otis shows about
+// that request goes through Mask — so registering it here is what keeps the
+// window's account of the send masked as well as the script's.
+func (r *Resolved) AddSecret(value string) {
+	if value == "" {
+		return
+	}
+	for _, existing := range r.secretValues {
+		if existing == value {
+			return
+		}
+	}
+	r.secretValues = append(r.secretValues, value)
+}
+
 // Mask replaces every secret value used by this request with a
 // placeholder. Anything derived from a Resolved that leaves Go must go
 // through it.
@@ -132,9 +166,15 @@ func CollectionKey(c *collection.Collection) string {
 }
 
 func resolveWith(req *httpfile.Request, levels []Level, eff *Effective, opts Options, requestID string) (*Resolved, error) {
+	if opts.Rewrite != nil {
+		opts.Rewrite(req, eff)
+	}
 	scope := NewScope(levels, opts.Env, opts.Secrets, opts.Collection)
 	if opts.Session != nil {
 		scope.WithSession(opts.Session, FolderChain(requestID))
+	}
+	if len(opts.Extra) > 0 {
+		scope.WithExtra(opts.Extra)
 	}
 	if opts.Configure != nil {
 		opts.Configure(scope)

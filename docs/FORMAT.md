@@ -169,8 +169,8 @@ script API.
 A block may be on one line or span many. The text between `{%` and `%}`
 is captured verbatim, newlines included, together with the line number of
 the opening marker. Nothing but whitespace may follow `%}` on its line.
-Several blocks of each kind may appear and are kept in order. Execution is
-defined in a later increment *(planned)*.
+Several blocks of each kind may appear and are kept in order. What they can do,
+and the order they run in, is section 9.
 
 ### 1.11 Response redirect
 
@@ -298,9 +298,8 @@ exactly what this format exists to avoid. Two kinds, told apart by name:
   reads as the file it is.
 - Scripts are listed in `.order` like any other entry (section 2.2).
 
-Execution — the API, the sandbox, the order hooks run in — is defined in a
-later increment *(planned, Increment 15)*. Until then a script is a file the
-tree shows and the folder view displays; nothing runs it.
+What a script can do, the sandbox it runs in, and the order hooks run in are
+section 9.
 
 ### 2.5 Folder documentation (`README.md`)
 
@@ -559,15 +558,22 @@ A **session variable** is a value a run sets, held in memory for as long as the
 collection is open. It is the only value in Otis that is in no file.
 
 ```
-vars.folder.set("orderId", body.id)     sets it for the request's folder
-vars.env.set("cursor", body.next)       sets it for the active environment
+vars.session.set("orderId", body.id)    sets it for the request's folder
 ```
 
-- **Scope.** A session variable belongs either to one folder — visible to every
-  request in it and below it — or to one environment. Its place in resolution
-  is section 4.2. There is no session variable at request scope: a value that
-  lives for one execution is the script engine's business and never reaches
-  this layer.
+- **Scope.** A session variable belongs to one folder — visible to every
+  request in it and below it. Its place in resolution is section 4.2. There is
+  no session variable at request scope: a value that lives for one execution is
+  `vars.request` (section 9.4) and never reaches this layer.
+- **Not `vars.folder`.** The call that sets one is named for its *lifetime*,
+  not for the thing that keys it. `_folder.http` declares committed variables
+  with `@name = value`, and a call named `vars.folder.set` reads as setting one
+  of those — it does not, it sets a value that is in no file. Section 9.4 has
+  the whole argument.
+- The environment scope of resolution (section 4.2, step 3) has no writer in
+  the script API and is reserved: `vars.env.set` writes the committed
+  environment file instead, which is a different thing with a different
+  lifetime (section 9.4).
 - **Never written.** Not to the collection, not to the settings file, not to a
   log, not to an export. Closing the collection forgets every session
   variable, and so does an explicit clear. A teammate who pulls the branch
@@ -583,9 +589,9 @@ vars.env.set("cursor", body.next)       sets it for the active environment
   scratch state between requests. Anything a teammate needs belongs in
   `_folder.http` or in an environment, where it is reviewable.
 
-Setting one is a script's job, and scripts do not run yet *(planned)*. The
-scope, the store and the read-only surface exist from Increment 11; the writer
-arrives with the script engine.
+Setting one is a script's job: `vars.session.set` (section 9.4). The scope,
+the store and the read-only surface arrived in Increment 11 and the writer in
+Increment 15.
 
 ## 5. Secrets
 
@@ -622,7 +628,7 @@ Rules:
   be passed through masking, which replaces every secret value used by the
   request with `•••••`.
 - Scripts receive an opaque handle to a secret, never the string
-  *(planned)*.
+  (section 9.7).
 
 Only an in-memory store exists today; the OS keychain backend is a later
 increment. Until it lands, the CLI stocks the in-memory store from
@@ -737,3 +743,283 @@ are printed exactly as received, never reformatted; a body that is not valid
 UTF-8 is summarised in text output and base64-encoded under `bodyBase64` in
 `--json`.
 
+## 9. The script API
+
+Scripts are where a collection stops being data and starts being a program,
+so this section is the part of the format that most needs to be right the
+first time: once people write scripts against it, it cannot change.
+
+Syntax is section 1.10 (`< {% %}` and `> {% %}` blocks) and section 2.4
+(`_pre.js`, `_post.js`, `<name>.pre.js`, `<name>.post.js`, and modules). This
+section is what those scripts can do.
+
+Otis is **not** compatible with the JetBrains or Postman script APIs. It uses
+their delimiters so their tools ignore its blocks; the contents are Otis'.
+
+### 9.1 What runs, and in what order
+
+A send runs two phases. **Pre-request**, outermost first:
+
+1. `_pre.js` in the collection root
+2. `_pre.js` in each folder on the way down, root-most first, ending with the
+   request's own folder
+3. `<name>.pre.js` beside `<name>.http`
+4. each `< {% %}` block in the request file, in file order
+
+**Post-response**, the exact reverse:
+
+1. each `> {% %}` block in the request file, in file order
+2. `<name>.post.js`
+3. `_post.js` in the request's own folder
+4. `_post.js` in each folder outwards, ending with the collection root
+
+The order is the one that lets a folder set up what its requests need before
+any of them run and assert on the result after: outermost prepares first and
+concludes last, and the request's own block sits nearest the request. A
+`_pre.js` at the root can mint a token every request will use; a `_post.js` at
+the root can assert something every response must satisfy.
+
+Every script in a phase shares one JavaScript realm for that send, so a value
+one hook puts on `vars` is visible to the next. The realm is created for the
+send and destroyed with it: nothing survives from one send to the next except
+what a script deliberately writes to a scope that outlives it (section 9.4).
+
+### 9.2 Scripts and variable resolution
+
+**Pre-request hooks run before `{{variable}}` resolution.** This is what makes
+a folder header like `Idempotency-Key: {{idemKey}}` work when `_pre.js` is
+what sets `idemKey`.
+
+The consequence is worth stating plainly: in a pre-request hook,
+`request.url`, the header values and the body are the **template**, with their
+`{{...}}` references unresolved. A hook that wants a resolved value asks for
+it — `vars.get("baseUrl")` resolves — rather than reading it off `request`.
+
+The full pipeline of a send:
+
+1. Inheritance is computed (section 3). Structural only; nothing is resolved.
+2. Pre-request scripts run, in the order of 9.1. They may set variables and
+   change the request.
+3. `{{variables}}` are resolved (section 4), now including whatever the
+   scripts set.
+4. The request is prepared and sent (section 6).
+5. Post-response scripts and tests run, in the order of 9.1.
+
+### 9.3 The sandbox
+
+A script gets a plain JavaScript realm and nothing else. There is no
+filesystem, no process, no network, and no clock you can wait on:
+
+| Absent, and never to be added | Why |
+| --- | --- |
+| `require`, dynamic `import()` | modules are static and resolved by Otis (section 9.8) |
+| `fetch`, `XMLHttpRequest`, `WebSocket` | a script may shape the request Otis is about to send, not send one of its own |
+| `process`, `os`, `fs`, `child_process` | no filesystem, no environment, no spawning |
+| `setTimeout`, `setInterval` | a send is synchronous; a script that could wait could hang one forever |
+
+What is there: the JavaScript standard library (`Object`, `Array`, `String`,
+`Number`, `Math`, `JSON`, `Date`, `RegExp`, `Map`, `Set`, `Promise`, `Proxy`,
+`BigInt`, …), plus exactly these:
+
+| Global | What it is |
+| --- | --- |
+| `console` | `log`, `info`, `warn`, `error`, `debug`. Captured, masked (section 9.7) and shown in the window; never written to a file. |
+| `crypto.randomUUID()` | a random version-4 UUID, the one thing a script genuinely cannot do for itself |
+| `request` | the request about to be sent (section 9.5); pre-request only |
+| `response` | what came back (section 9.6); post-response only |
+| `vars` | the variable scopes (section 9.4) |
+| `secrets` | opaque handles to secret values (section 9.7) |
+| `test`, `expect` | assertions (section 9.9) |
+
+**Timeout.** Each phase gets its own budget, five seconds by default,
+overridden per request with `# @script-timeout SECONDS`. Exceeding it is a
+hard kill: the interpreter is interrupted wherever it is, the send fails with
+a timeout naming the phase, and no partial result is kept. An infinite loop is
+therefore an error with a message, not a hung window. The directive takes a
+positive number; a non-positive or non-numeric value is an error, exactly as
+`@timeout` is (section 1.4).
+
+### 9.4 Variables: `vars`
+
+Three scopes, and they are three *lifetimes*. That is the axis that matters,
+so it is the axis the names describe:
+
+| Call | Lifetime | Written where |
+| --- | --- | --- |
+| `vars.request.set(k, v)` | this send only | nowhere |
+| `vars.session.set(k, v)` | until the collection closes | nowhere — memory, this machine |
+| `vars.env.set(k, v)` | until somebody changes it | `env/<active>.json`, **committed** |
+
+- **`vars.request`** is scratch for one execution: a value one hook hands to
+  the next, or to a `{{reference}}` in this request. It never reaches the
+  layer section 4.5 describes and is forgotten the moment the send ends.
+- **`vars.session`** is a session variable (section 4.5), keyed by the
+  request's own folder: visible to every request in that folder and below it.
+  In memory, on this machine, written nowhere.
+- **`vars.env`** writes the active environment file. It is the one call in the
+  API that changes a committed file, and it is deliberately the loudest: the
+  change lands in `env/<name>.json`, shows up in `git diff`, and is reviewed
+  like anything else. With no active environment it is an error, because there
+  is no file to write.
+
+**`vars.session` is not `vars.folder`.** An earlier draft of this section, and
+the design it came from, called the middle scope `folder`, and that was a
+mistake worth being explicit about: `_folder.http` declares committed
+variables with `@name = value`, and a call named `vars.folder.set` reads as
+setting one of *those*. It does not — it sets a value that is in no file at
+all. The scope is still keyed by the folder, and section 4.5 still calls the
+thing a session variable; the API now says the same word.
+
+**Reading.** `vars.get(k)` resolves a name exactly as a `{{reference}}` in
+the file would (section 4.2): request declarations, then each folder from the
+request's own out to the root with its session values interleaved, then the
+active environment, then the builtins. Nothing else in the API takes a
+shortcut around that order, so a value read in a script and a value
+interpolated into a header are always the same value.
+
+`vars.<scope>.get(k)` reads one scope without falling through, which is how a
+script asks "did *I* set this?" rather than "what would resolve here?".
+
+- Keys must be names a `{{reference}}` can use (section 4.1). Anything else is
+  an error naming the key, because a key nothing can reference would be a
+  value nothing can read.
+- Values are converted to strings the way JavaScript would, except that
+  `null`, `undefined` and a function are errors: they are almost always a bug
+  rather than an intention, and a header reading `undefined` is a worse
+  outcome than a message.
+- A secret handle (section 9.7) may **not** be stored in a variable. The
+  handle is the thing that keeps a value out of places it should not be, and a
+  scope is one of those places.
+
+### 9.5 The request: `request`
+
+Available in a pre-request script only. Reading it in a post-response script
+gives the request as it was sent, masked.
+
+| Member | What it does |
+| --- | --- |
+| `request.method` | get or set the method |
+| `request.url` | get or set the URL — **the template**, see section 9.2 |
+| `request.headers.get(name)` | case-insensitive |
+| `request.headers.set(name, value)` | replaces every header of that name |
+| `request.headers.add(name, value)` | appends, keeping any existing |
+| `request.headers.remove(name)` | removes every header of that name |
+| `request.headers.names()` | the names, in send order |
+| `request.body` | get or set the raw body |
+| `request.path` | the request's node path, read-only |
+| `request.name` | the request's display name, read-only |
+
+A header set by a script wins over the file and over inheritance: it is the
+last word before resolution. `{{references}}` in a value a script sets are
+resolved in step 3 like any other, so a script may write a template.
+
+### 9.6 The response: `response`
+
+Available in a post-response script only.
+
+| Member | What it is |
+| --- | --- |
+| `response.status` | the status code, a number |
+| `response.statusText` | `"Created"` |
+| `response.ok` | `status < 400` |
+| `response.headers.get(name)` / `.names()` | case-insensitive |
+| `response.body` | the body as text |
+| `response.json()` | the body parsed; throws with the parse error if it is not JSON |
+| `response.timings` | `{ dns, connect, tls, ttfb, total }`, milliseconds |
+| `response.size` | the body's size in bytes |
+
+### 9.7 Secrets: `secrets`
+
+`secrets.ref("apiKey")` returns an **opaque handle**, never a string. It is
+the only way a script may touch a secret, and the handle's whole purpose is
+that the value cannot get out of the places it belongs.
+
+- Everywhere JavaScript would turn it into text — `String(h)`, `` `${h}` ``,
+  `"" + h`, `console.log(h)`, `JSON.stringify(h)`, a thrown error's message, a
+  test's failure output — it yields `[secret:apiKey]`. The real value is not
+  reachable from JavaScript at all.
+- A handle may be given as **a whole header value or as the whole body**. Otis
+  substitutes the real value when it prepares the request, after every script
+  has run, and masks it again in everything the window is shown (section 5).
+- Composition without stringifying: `secrets.ref("apiKey").prefix("Bearer ")`
+  and `.suffix(s)` return new handles. That is how `Authorization: Bearer
+  <secret>` is expressed from a script — though `@auth bearer {{apiKey}}` in
+  the file is the better way to say it, and needs no script at all.
+- `secrets.has("apiKey")` reports whether a value is stored on this machine,
+  which is a question with a safe answer.
+- A handle cannot be stored in a variable (section 9.4), compared, or
+  inspected. `secrets.ref` on a name the active environment does not declare
+  as a secret is an error naming the key.
+
+### 9.8 Modules
+
+`import` resolves to files **inside the collection** and nowhere else. There
+is no package registry, no node_modules, and no network.
+
+```js
+import { idempotencyKey } from "../lib/idempotency.js";
+import * as assert from "../lib/assert.js";
+import format from "../lib/format.js";
+```
+
+- A specifier is a relative path from the importing file, must end in `.js`,
+  and must resolve inside the collection root. A bare specifier (`"lodash"`),
+  an absolute path, a URL, or anything that escapes the root is an error
+  naming the specifier.
+- A module is evaluated once per send, whatever imports it, and its exports
+  are shared. An import cycle is an error naming the chain.
+- A module gets the same sandbox as a hook, minus `request`, `response`,
+  `test` and `expect`: it is a library, not a step. `vars`, `secrets`,
+  `console` and `crypto` are there.
+- The supported syntax is a **subset**, and a form outside it is an error
+  naming the file and line rather than being silently misread:
+  `import {a, b as c} from "..."`, `import * as ns from "..."`,
+  `import d from "..."`, `export function`, `export const`/`let`/`var`,
+  `export default`, and `export { a, b as c }`. Declarations must start at the
+  beginning of a line.
+
+### 9.9 Tests: `test` and `expect`
+
+```js
+test("201 created", () => expect(response.status).toBe(201));
+test("two line items", () => {
+  expect(response.json().line_items).toHaveLength(2);
+});
+```
+
+`test(name, fn)` runs `fn` immediately and records whether it threw. A test
+that throws is a failure carrying the message; a test that returns is a pass.
+Results reach the window as each one finishes, so a long suite fills in rather
+than appearing at the end. `test` is available in post-response scripts only:
+a test is an assertion about a response.
+
+`expect(actual)` gives:
+
+| Matcher | Passes when |
+| --- | --- |
+| `.toBe(expected)` | strictly equal (`===`) |
+| `.toEqual(expected)` | deeply equal |
+| `.toBeTruthy()` / `.toBeFalsy()` | JavaScript truthiness |
+| `.toBeDefined()` / `.toBeUndefined()` | `!== undefined` / `=== undefined` |
+| `.toBeNull()` | `=== null` |
+| `.toContain(item)` | a string contains a substring, or an array an element |
+| `.toHaveLength(n)` | `.length === n` |
+| `.toMatch(re)` | a string matches a regular expression |
+| `.toBeGreaterThan(n)` / `.toBeLessThan(n)` | numeric comparison |
+| `.not` | inverts any of the above |
+
+A failure message names the matcher, what was expected and what was received,
+with every secret handle masked. Deliberately small: a matcher set that grows
+to cover everything is a second language to learn, and `expect(x).toBe(true)`
+around an ordinary JavaScript expression covers the rest.
+
+### 9.10 Errors
+
+A script that throws fails the send. The failure carries the file, the line
+and the message — `orders/_pre.js:3: idempotencyKey is not a function` — and
+is classified as a script failure rather than a transport one, so the response
+pane can say which phase it was and show the console output that led up to it.
+
+A post-response script that throws does **not** discard the response: the
+response arrived, and hiding it because a script about it failed would lose
+the thing you need in order to fix the script.

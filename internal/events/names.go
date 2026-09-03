@@ -71,6 +71,21 @@ const (
 	// re-reads them; there is no payload.
 	SessionVarsChanged = "session-vars:changed"
 
+	// ScriptTest is emitted as each test a post-response script declared
+	// finishes (docs/FORMAT.md §9.9). Payload: services.ScriptTest, keyed by
+	// send ID and by the test's index in the phase.
+	//
+	// Streamed rather than only summarised, because a suite of thirty
+	// assertions that appears all at once at the end tells you nothing while
+	// it runs. The complete set is on ResponseMeta too, so a tab reopened
+	// later still has them.
+	ScriptTest = "script:test"
+
+	// ScriptConsole is emitted for each console call a script makes. Payload:
+	// services.ScriptConsole, already masked — a secret handle is its mask
+	// here as everywhere.
+	ScriptConsole = "script:console"
+
 	// RunStarted is emitted when a folder run begins, carrying the whole
 	// plan: every request it will send, in the order it will send them.
 	// Payload: services.RunStarted, keyed by run ID.
@@ -130,6 +145,8 @@ var Registry = []Entry{
 	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
 	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
 	{"EnvironmentsChanged", EnvironmentsChanged, "Emitted when the environments or the active one changed. Payload: Environments; never a secret value."},
+	{"ScriptTest", ScriptTest, "Emitted as each test a post-response script declared finishes. Payload: ScriptTest."},
+	{"ScriptConsole", ScriptConsole, "Emitted for each console call a script makes. Payload: ScriptConsole, already masked."},
 	{"RunStarted", RunStarted, "Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order."},
 	{"RunResult", RunResult, "Emitted as each request in a folder run finishes. Payload: RunResult."},
 	{"RunComplete", RunComplete, "Emitted when a folder run ends, however it ended. Payload: RunComplete."},

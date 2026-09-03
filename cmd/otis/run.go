@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,7 +19,11 @@ import (
 
 	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/httpclient"
+	"github.com/otis-http/otis/internal/httpfile"
 	"github.com/otis-http/otis/internal/resolve"
+	"github.com/otis-http/otis/internal/script"
+	"github.com/otis-http/otis/internal/scriptrun"
+	"github.com/otis-http/otis/internal/secrets"
 )
 
 func newRunCmd() *cobra.Command {
@@ -108,7 +113,40 @@ func runRequest(cmd *cobra.Command, file string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
-	res, err := resolve.InCollection(c, node, resolve.Options{Env: env, Secrets: store})
+	// The window and the CLI run scripts the same way, through the same
+	// package: `otis run` in CI and the request editor are the same binary,
+	// and a request whose scripts ran in one and not the other would make
+	// this a different product with the same name.
+	plan := scriptrun.PlanFor(c, node)
+	budget, err := script.TimeoutOf(node.Request)
+	if err != nil {
+		return fmt.Errorf("%s: %w", node.ID, err)
+	}
+	sv := cliVars(c, node, env, store)
+	var preResult script.Result
+	var preErr error
+
+	res, err := resolve.InCollection(c, node, resolve.Options{
+		Env: env, Secrets: store, Session: sv.Session, Extra: sv.Request,
+		Rewrite: func(entry *httpfile.Request, eff *resolve.Effective) {
+			if len(plan.Pre) == 0 {
+				return
+			}
+			view := scriptrun.RequestView(node, entry, eff)
+			preResult, preErr = script.Run(script.Options{
+				Phase: script.Pre, Scripts: plan.Pre, Request: view, Vars: sv,
+				Secrets: store, Env: env, Collection: resolve.CollectionKey(c),
+				Modules: scriptrun.ModuleLoader{Root: c.Dir}, Timeout: budget,
+				OnConsole: func(line script.ConsoleLine) { printConsole(errw, line) },
+			})
+			if preErr == nil && view.Changed() {
+				scriptrun.ApplyView(entry, eff, view)
+			}
+		},
+	})
+	if preErr != nil {
+		return preErr
+	}
 	if err != nil {
 		return secretEnvHint(err, missingSecrets)
 	}
@@ -122,6 +160,7 @@ func runRequest(cmd *cobra.Command, file string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
+	scriptrun.SubstituteHandles(res, req, preResult.Handles)
 	for _, w := range warnings {
 		fmt.Fprintf(errw, "warning: %s\n", w)
 	}
@@ -137,17 +176,134 @@ func runRequest(cmd *cobra.Command, file string, opts runOptions) error {
 	if err != nil {
 		return err
 	}
+	// Post-response scripts and their tests. A script that throws here does
+	// not discard the response (docs/FORMAT.md §9.10), so the body is printed
+	// either way and the failure goes to stderr.
+	var tests []script.TestResult
+	var postErr error
+	if len(plan.Post) > 0 {
+		postResult, err := script.Run(script.Options{
+			Phase: script.Post, Scripts: plan.Post,
+			Request: scriptrun.SentView(node, res, req),
+			Response: &script.ResponseView{
+				Status: resp.StatusCode, StatusText: scriptrun.StatusText(resp.Status),
+				Headers: scriptrun.ResponseHeaders(resp.Headers), Body: string(resp.Body),
+				Size: resp.Size,
+			},
+			Vars: sv, Secrets: store, Env: env, Collection: resolve.CollectionKey(c),
+			Modules: scriptrun.ModuleLoader{Root: c.Dir}, Timeout: budget,
+			OnConsole: func(line script.ConsoleLine) { printConsole(errw, line) },
+		})
+		tests, postErr = postResult.Tests, err
+	}
+
 	if opts.asJSON {
-		if err := printJSON(cmd.OutOrStdout(), res, req, resp); err != nil {
+		if err := printJSON(cmd.OutOrStdout(), res, req, resp, tests); err != nil {
 			return err
 		}
 	} else {
 		printText(cmd.OutOrStdout(), res, req, resp)
+		printTests(cmd.OutOrStdout(), tests)
+	}
+	if postErr != nil {
+		fmt.Fprintf(errw, "script error: %v\n", postErr)
+	}
+	// A failing test fails the run, the same way a 4xx does: the point of an
+	// assertion in CI is that the exit code changes when it does not hold.
+	if failed := failedTests(tests); failed > 0 {
+		return &failedError{status: fmt.Sprintf("%d of %d tests failed", failed, len(tests))}
+	}
+	if postErr != nil {
+		return &failedError{status: "a post-response script failed"}
 	}
 	if resp.IsError() {
 		return &failedError{status: resp.Status}
 	}
 	return nil
+}
+
+// cliVars is the variable store a CLI run's scripts write through.
+//
+// The session store is fresh per invocation and forgotten when the process
+// exits, which is the honest reading of "until the collection closes" for a
+// one-shot command. vars.env.set still writes the file: that is the scope
+// whose whole point is that it persists.
+func cliVars(c *collection.Collection, node *collection.Node, env *resolve.Environment, store secrets.Store) *scriptrun.Vars {
+	sv := &scriptrun.Vars{
+		Request: map[string]string{},
+		Folder:  path.Dir(node.ID),
+		Session: resolve.NewSession(),
+		Origin:  node.ID,
+	}
+	if sv.Folder == "." {
+		sv.Folder = ""
+	}
+	sv.Scope = func() *resolve.Scope {
+		levels := resolve.LevelsOf(node)
+		scope := resolve.NewScope(levels, env, secrets.Placeholder{}, resolve.CollectionKey(c))
+		return scope.WithSession(sv.Session, resolve.FolderChain(node.ID)).WithExtra(sv.Request)
+	}
+	if env != nil {
+		sv.EnvName = env.Name
+		sv.ReadEnv = func(name string) (string, bool) {
+			v, ok := env.Values[name]
+			if !ok || v.Secret {
+				return "", false
+			}
+			return v.Value, true
+		}
+		sv.WriteEnv = func(name, value string) error {
+			current, err := resolve.LoadEnvironment(c.Dir, env.Name)
+			if err != nil {
+				return err
+			}
+			if existing, ok := current.Values[name]; ok && existing.Secret {
+				return fmt.Errorf("%s declares %q as a secret; a script cannot overwrite one with a plain value",
+					current.Path, name)
+			}
+			if _, ok := current.Values[name]; !ok {
+				current.Order = append(current.Order, name)
+			}
+			current.Values[name] = resolve.EnvValue{Value: value, Kind: resolve.EnvString}
+			return os.WriteFile(filepath.Join(c.Dir, filepath.FromSlash(current.Path)), current.Marshal(), 0o644)
+		}
+	}
+	return sv
+}
+
+// printConsole writes a script's console output to stderr, so stdout stays
+// the response and a pipeline is unaffected by a script that logs.
+func printConsole(w io.Writer, line script.ConsoleLine) {
+	fmt.Fprintf(w, "%s: %s\n", line.Level, line.Text)
+}
+
+// printTests writes the assertions, passes and failures alike.
+func printTests(w io.Writer, tests []script.TestResult) {
+	if len(tests) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	for _, test := range tests {
+		mark := "ok  "
+		if !test.Passed {
+			mark = "FAIL"
+		}
+		fmt.Fprintf(w, "%s %s\n", mark, test.Name)
+		if test.Message != "" {
+			fmt.Fprintf(w, "     %s\n", test.Message)
+		}
+	}
+	fmt.Fprintf(w, "\n%d of %d tests passed\n", len(tests)-failedTests(tests), len(tests))
+}
+
+func failedTests(tests []script.TestResult) int {
+	n := 0
+	for _, test := range tests {
+		if !test.Passed {
+			n++
+		}
+	}
+	return n
 }
 
 func printText(w io.Writer, res *resolve.Resolved, req *httpclient.Request, resp *httpclient.Response) {
@@ -187,6 +343,9 @@ func printText(w io.Writer, res *resolve.Resolved, req *httpclient.Request, resp
 type jsonOutput struct {
 	Request  jsonRequest  `json:"request"`
 	Response jsonResponse `json:"response"`
+	// Tests are the assertions the post-response scripts declared
+	// (docs/FORMAT.md §9.9), omitted when there were none.
+	Tests []script.TestResult `json:"tests,omitempty"`
 }
 
 type jsonRequest struct {
@@ -223,8 +382,11 @@ type jsonRedirect struct {
 	Location   string `json:"location"`
 }
 
-func printJSON(w io.Writer, res *resolve.Resolved, req *httpclient.Request, resp *httpclient.Response) error {
+func printJSON(w io.Writer, res *resolve.Resolved, req *httpclient.Request, resp *httpclient.Response, tests []script.TestResult) error {
 	out := jsonOutput{
+		// Tests are in the JSON too: a CI job that wants the verdicts rather
+		// than the exit code alone should not have to parse the text form.
+		Tests: tests,
 		Request: jsonRequest{
 			Method:  req.Method,
 			URL:     res.Mask(req.URL),

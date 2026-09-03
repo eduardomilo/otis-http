@@ -20,6 +20,8 @@ func TestRegistryCoversEveryConstant(t *testing.T) {
 		"SendError":           SendError,
 		"SessionVarsChanged":  SessionVarsChanged,
 		"EnvironmentsChanged": EnvironmentsChanged,
+		"ScriptTest":          ScriptTest,
+		"ScriptConsole":       ScriptConsole,
 		"RunStarted":          RunStarted,
 		"RunResult":           RunResult,
 		"RunComplete":         RunComplete,

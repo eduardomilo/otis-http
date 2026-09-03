@@ -12,7 +12,7 @@
  * is what puts it after the existing ones (§1.13, step 2).
  */
 
-import type { Directive, File, Header, Request, Variable } from "@bindings/internal/httpfile";
+import type { Directive, File, Header, Request, Script, Variable } from "@bindings/internal/httpfile";
 
 /** The value that disables an inherited header (docs/FORMAT.md §3.2). */
 export const INHERIT_MARKER = "!inherit";
@@ -181,4 +181,45 @@ function stableStringify(value: unknown): string {
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   return "{" + entries.map(([k, v]) => JSON.stringify(k) + ":" + stableStringify(v)).join(",") + "}";
+}
+
+// --- Scripts (docs/FORMAT.md §1.10) ----------------------------------------
+
+/** The kind of script block: which phase it belongs to. */
+export type ScriptPhase = "pre" | "post";
+
+/** The blocks of a phase, in file order. */
+export function scriptsOf(entry: Request, phase: ScriptPhase): Script[] {
+  return [...((phase === "pre" ? entry.preScripts : entry.postScripts) ?? [])];
+}
+
+/**
+ * Replaces one block's text.
+ *
+ * The line number is carried through untouched, as everything here is: the
+ * serializer writes the block where it was, and rewriting the line would move
+ * it (§1.13).
+ */
+export function setScriptAt(entry: Request, phase: ScriptPhase, index: number, text: string): Request {
+  const scripts = scriptsOf(entry, phase);
+  if (!scripts[index]) return entry;
+  scripts[index] = { ...scripts[index], text };
+  return withScripts(entry, phase, scripts);
+}
+
+/** Appends a block. It has no line, which is what puts it after the rest. */
+export function addScript(entry: Request, phase: ScriptPhase, text: string): Request {
+  return withScripts(entry, phase, [...scriptsOf(entry, phase), { text }]);
+}
+
+/** Removes one block. */
+export function removeScriptAt(entry: Request, phase: ScriptPhase, index: number): Request {
+  const scripts = scriptsOf(entry, phase);
+  if (!scripts[index]) return entry;
+  scripts.splice(index, 1);
+  return withScripts(entry, phase, scripts);
+}
+
+function withScripts(entry: Request, phase: ScriptPhase, scripts: Script[]): Request {
+  return phase === "pre" ? { ...entry, preScripts: scripts } : { ...entry, postScripts: scripts };
 }

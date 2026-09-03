@@ -25,6 +25,10 @@ export const OtisEvent = {
   SessionVarsChanged: "session-vars:changed",
   /** Emitted when the environments or the active one changed. Payload: Environments; never a secret value. */
   EnvironmentsChanged: "environments:changed",
+  /** Emitted as each test a post-response script declared finishes. Payload: ScriptTest. */
+  ScriptTest: "script:test",
+  /** Emitted for each console call a script makes. Payload: ScriptConsole, already masked. */
+  ScriptConsole: "script:console",
   /** Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order. */
   RunStarted: "run:started",
   /** Emitted as each request in a folder run finishes. Payload: RunResult. */

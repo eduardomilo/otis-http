@@ -143,7 +143,7 @@ export function RequestEditor({ path }: { path: string }) {
           <AuthTab document={document} entry={entry} index={index} onEdit={onEdit} />
         </TabsContent>
         <TabsContent value="scripts" className="flex min-h-0 flex-col">
-          <ScriptsTab entry={entry} />
+          <ScriptsTab entry={entry} onEdit={onEdit} />
         </TabsContent>
       </Tabs>
     </div>

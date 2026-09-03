@@ -47,6 +47,8 @@ func init() {
 	application.RegisterEvent[services.SendFailure](events.SendError)
 	application.RegisterEvent[application.Void](events.SessionVarsChanged)
 	application.RegisterEvent[services.Environments](events.EnvironmentsChanged)
+	application.RegisterEvent[services.ScriptTest](events.ScriptTest)
+	application.RegisterEvent[services.ScriptConsole](events.ScriptConsole)
 	application.RegisterEvent[services.RunStarted](events.RunStarted)
 	application.RegisterEvent[services.RunResult](events.RunResult)
 	application.RegisterEvent[services.RunComplete](events.RunComplete)

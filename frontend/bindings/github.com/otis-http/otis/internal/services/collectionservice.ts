@@ -82,6 +82,18 @@ export function Loaded(): $CancellablePromise<collection$0.Collection | null> {
 }
 
 /**
+ * NotifyDiskChange runs the OnDiskChange functions.
+ * 
+ * It is for a writer that changed a file the *tree* does not cover, and so
+ * cannot rely on Refresh to announce it: a script writing an environment file
+ * through vars.env.set is the case. The guard means the watcher will not
+ * report the write, so the writer has to.
+ */
+export function NotifyDiskChange(): $CancellablePromise<void> {
+    return $Call.ByID(1505448452);
+}
+
+/**
  * OnClose registers a function to run when the current collection is closed or
  * replaced. It is how the state that belongs to a collection rather than to
  * the process — the cookie jar, the AWS credential cache, the session

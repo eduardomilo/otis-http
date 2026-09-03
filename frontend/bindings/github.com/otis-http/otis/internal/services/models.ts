@@ -19,6 +19,9 @@ import * as resolve$0 from "../resolve/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as response$0 from "../response/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as script$0 from "../script/models.js";
 
 /**
  * AuthHeader describes the Authorization header @auth becomes at send time.
@@ -441,6 +444,14 @@ export enum FailureKind {
      * the file is not a sendable request
      */
     FailCollection = "collection",
+
+    /**
+     * FailScript is a script that threw or was killed by its timeout. It is
+     * its own kind because the response pane shows it differently: the phase,
+     * the file and line, and the console output that led up to it
+     * (docs/FORMAT.md §9.10).
+     */
+    FailScript = "script",
 };
 
 /**
@@ -885,6 +896,26 @@ export interface ResponseMeta {
      * Warnings are non-fatal notes from preparing the request.
      */
     "warnings"?: string[] | null;
+
+    /**
+     * Tests are the assertions the post-response scripts declared
+     * (docs/FORMAT.md §9.9). They also arrive one at a time as
+     * events.ScriptTest; these are the complete set, so a tab reopened later
+     * still has them.
+     */
+    "tests": script$0.TestResult[] | null;
+
+    /**
+     * Console is everything the scripts printed, in order, already masked.
+     */
+    "console": script$0.ConsoleLine[] | null;
+
+    /**
+     * ScriptError is a post-response script that threw or was killed. The
+     * response is still here: it arrived, and hiding it because a script
+     * about it failed would lose what you need to fix the script (§9.10).
+     */
+    "scriptError"?: ScriptFailure | null;
 }
 
 /**
@@ -977,6 +1008,51 @@ export enum RunState {
     RunStopped = "stopped",
     RunCancelled = "cancelled",
 };
+
+/**
+ * ScriptConsole is one streamed console line.
+ */
+export interface ScriptConsole {
+    "sendId": string;
+    "path": string;
+    "line": script$0.ConsoleLine;
+}
+
+/**
+ * ScriptFailure is a script that threw or was killed, with where it happened
+ * (docs/FORMAT.md §9.10).
+ */
+export interface ScriptFailure {
+    /**
+     * Phase is "pre-request" or "post-response".
+     */
+    "phase": string;
+
+    /**
+     * Path and Line locate it: "orders/_pre.js", line 3.
+     */
+    "path"?: string;
+    "line"?: number;
+
+    /**
+     * Message is already masked and never names a secret's value.
+     */
+    "message": string;
+
+    /**
+     * Timeout marks a phase killed by its budget rather than a throw.
+     */
+    "timeout"?: boolean;
+}
+
+/**
+ * ScriptTest is one streamed test result.
+ */
+export interface ScriptTest {
+    "sendId": string;
+    "path": string;
+    "result": script$0.TestResult;
+}
 
 /**
  * SendFailure is the events.SendError payload. It never carries a secret: the

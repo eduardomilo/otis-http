@@ -14,7 +14,14 @@ import { OtisEvent } from "@/lib/events.gen";
 import { useCollection } from "@/state/collection-context";
 import { useEnvironments } from "@/state/environment-context";
 import { SendService } from "@bindings/internal/services";
-import type { ResponseMeta, SendFailure, SendStarted } from "@bindings/internal/services";
+import type {
+  ResponseMeta,
+  ScriptConsole,
+  ScriptTest,
+  SendFailure,
+  SendStarted,
+} from "@bindings/internal/services";
+import type { ConsoleLine, TestResult } from "@bindings/internal/script";
 import type { SessionValue } from "@bindings/internal/resolve";
 
 /**
@@ -42,6 +49,16 @@ export interface Send {
   started: SendStarted | null;
   meta: ResponseMeta | null;
   failure: SendFailure | null;
+  /**
+   * Tests and console output as they stream in, before the send completes.
+   *
+   * Separate from `meta`, which carries the complete set: these are the live
+   * view of a suite still running, and once the send completes `meta` is the
+   * record. Sparse by index while it runs, because a result fills in the row
+   * the plan already drew.
+   */
+  tests: TestResult[];
+  console: ConsoleLine[];
 }
 
 interface SendContextValue {
@@ -99,7 +116,11 @@ export function SendProvider({ children }: { children: ReactNode }) {
     const offs = [
       Events.On(OtisEvent.SendStarted, (event) => {
         const started = event.data as SendStarted;
-        apply(started.path, started.sendId, (send) => ({ ...send, started }));
+        // A new send starts with nothing streamed: the last one's tests and
+        // console output belong to the last one.
+        apply(started.path, started.sendId, (send) => ({
+          ...send, started, tests: [], console: [],
+        }));
       }),
       Events.On(OtisEvent.SendComplete, (event) => {
         const meta = event.data as ResponseMeta;
@@ -117,6 +138,25 @@ export function SendProvider({ children }: { children: ReactNode }) {
           phase: failure.kind === "cancelled" ? "cancelled" : "failed",
           failure,
           meta: null,
+        }));
+      }),
+      // Tests and console output stream as they happen (docs/FORMAT.md §9.9),
+      // so a long suite fills in rather than appearing all at once when the
+      // send completes. The complete set arrives on SendComplete too, which
+      // is what a tab reopened later reads — these are for watching it run.
+      Events.On(OtisEvent.ScriptTest, (event) => {
+        const streamed = event.data as ScriptTest;
+        apply(streamed.path, streamed.sendId, (send) => {
+          const tests = [...(send.tests ?? [])];
+          tests[streamed.result.index] = streamed.result;
+          return { ...send, tests };
+        });
+      }),
+      Events.On(OtisEvent.ScriptConsole, (event) => {
+        const streamed = event.data as ScriptConsole;
+        apply(streamed.path, streamed.sendId, (send) => ({
+          ...send,
+          console: [...(send.console ?? []), streamed.line],
         }));
       }),
       Events.On(OtisEvent.SessionVarsChanged, () => {
@@ -147,6 +187,8 @@ export function SendProvider({ children }: { children: ReactNode }) {
           started: null,
           meta: null,
           failure: null,
+          tests: [],
+          console: [],
         },
       }));
       try {

@@ -49,6 +49,14 @@ lists the design decisions that are still open — do not resolve them silently.
 - `internal/response/` — a response body held in Go, formatted and indexed by
   line once, and served to the window a screenful at a time. See the
   binding-boundary constraint below.
+- `internal/script/` — the script runtime (docs/FORMAT.md §9): goja, the
+  sandbox, `vars`, the opaque secret handle, `test`/`expect`, and the module
+  transform. It takes interfaces and touches no disk, which is what keeps the
+  interpreter unable to reach one.
+- `internal/scriptrun/` — the wiring between that runtime and a collection:
+  the hook plan, the module loader, the variable store and the substitution of
+  a secret handle into the prepared request. The window and the CLI both use
+  it, so `otis run` in CI and the request editor run scripts identically.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -156,6 +164,12 @@ lists the design decisions that are still open — do not resolve them silently.
   window it renders in is the one holding the collection. Links are not
   navigable and images are not loaded, for the same reason: neither should be
   a request the collection made without being asked.
+- **A script gets a JavaScript realm and nothing else.** No filesystem, no
+  process, no network, no timers (docs/FORMAT.md §9.3). goja provides none of
+  them, and `internal/script`'s `forbidden` map defines the dangerous names as
+  throwing stubs so a script that reaches for `fetch` gets a message rather
+  than "not defined" — and so wiring one in means deleting a line there first.
+  Each phase has a hard-killed budget: `vm.Interrupt` stops an infinite loop.
 - **A resolved secret value never leaves Go.** Not across a binding, not in a
   log line, not in an error message, not in `settings.json`. Where the window
   has to show that a secret exists it gets a reference and a masked
@@ -170,6 +184,14 @@ lists the design decisions that are still open — do not resolve them silently.
   → keychain — and the design's `Reveal` is `CopySecretValue`, which writes the
   system clipboard from Go (DESIGN-NOTES §9.12). The key index beside
   `settings.json` holds keys and nothing else; a test asserts it.
+  A script sees a `script.Handle`, never a string: all three JavaScript
+  coercion hooks — `toString`, `valueOf`, `Symbol.toPrimitive` — return
+  `[secret:name]`, every property is non-enumerable, and the value lives in a
+  Go map the interpreter cannot reach. `Reveal()` is Go-only and the sender
+  calls it once, after every script has run, registering the value with the
+  masker so what the window is *shown* stays masked.
+  `TestSecretHandleCannotBeExfiltrated` tries twenty-nine paths; add to it
+  rather than trusting the invariant.
 - **Go's serializer is the only writer of a `.http` file.** The editor edits
   the parsed model and hands it back to `RequestService.Save`, which
   serializes it. A second formatter in the frontend would mean two answers to

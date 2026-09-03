@@ -103,6 +103,14 @@ func (s *CollectionService) OnDiskChange(fn func()) {
 	s.onDiskChange = append(s.onDiskChange, fn)
 }
 
+// NotifyDiskChange runs the OnDiskChange functions.
+//
+// It is for a writer that changed a file the *tree* does not cover, and so
+// cannot rely on Refresh to announce it: a script writing an environment file
+// through vars.env.set is the case. The guard means the watcher will not
+// report the write, so the writer has to.
+func (s *CollectionService) NotifyDiskChange() { s.diskChanged() }
+
 // diskChanged runs the OnDiskChange functions.
 func (s *CollectionService) diskChanged() {
 	s.mu.RLock()

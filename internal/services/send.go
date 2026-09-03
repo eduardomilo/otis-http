@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -22,8 +23,11 @@ import (
 	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/events"
 	"github.com/otis-http/otis/internal/httpclient"
+	"github.com/otis-http/otis/internal/httpfile"
 	"github.com/otis-http/otis/internal/resolve"
 	"github.com/otis-http/otis/internal/response"
+	"github.com/otis-http/otis/internal/script"
+	"github.com/otis-http/otis/internal/scriptrun"
 	"github.com/otis-http/otis/internal/secrets"
 )
 
@@ -68,6 +72,11 @@ const (
 	FailRequest    FailureKind = "request"    // the request could not be built
 	FailNetwork    FailureKind = "network"    // any other transport failure
 	FailCollection FailureKind = "collection" // the file is not a sendable request
+	// FailScript is a script that threw or was killed by its timeout. It is
+	// its own kind because the response pane shows it differently: the phase,
+	// the file and line, and the console output that led up to it
+	// (docs/FORMAT.md §9.10).
+	FailScript FailureKind = "script"
 )
 
 // SentHeader is one header as it went on the wire, masked.
@@ -126,6 +135,17 @@ type ResponseMeta struct {
 	Request SentRequest `json:"request"`
 	// Warnings are non-fatal notes from preparing the request.
 	Warnings []string `json:"warnings,omitempty"`
+	// Tests are the assertions the post-response scripts declared
+	// (docs/FORMAT.md §9.9). They also arrive one at a time as
+	// events.ScriptTest; these are the complete set, so a tab reopened later
+	// still has them.
+	Tests []script.TestResult `json:"tests"`
+	// Console is everything the scripts printed, in order, already masked.
+	Console []script.ConsoleLine `json:"console"`
+	// ScriptError is a post-response script that threw or was killed. The
+	// response is still here: it arrived, and hiding it because a script
+	// about it failed would lose what you need to fix the script (§9.10).
+	ScriptError *ScriptFailure `json:"scriptError,omitempty"`
 }
 
 // Timings is the exchange broken down, in milliseconds. Zero means "not
@@ -149,6 +169,20 @@ type Cookie struct {
 	Secure   bool   `json:"secure,omitempty"`
 	HTTPOnly bool   `json:"httpOnly,omitempty"`
 	SameSite string `json:"sameSite,omitempty"`
+}
+
+// ScriptFailure is a script that threw or was killed, with where it happened
+// (docs/FORMAT.md §9.10).
+type ScriptFailure struct {
+	// Phase is "pre-request" or "post-response".
+	Phase string `json:"phase"`
+	// Path and Line locate it: "orders/_pre.js", line 3.
+	Path string `json:"path,omitempty"`
+	Line int    `json:"line,omitempty"`
+	// Message is already masked and never names a secret's value.
+	Message string `json:"message"`
+	// Timeout marks a phase killed by its budget rather than a throw.
+	Timeout bool `json:"timeout,omitempty"`
 }
 
 // BodyInfo says what the body is and how to ask for it.
@@ -543,11 +577,62 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 		}
 	}
 
+	// docs/FORMAT.md §9.2: pre-request scripts run *before* resolution, so a
+	// folder header can reference a value one of them sets. Inheritance is
+	// structural and already computed by the resolver, which hands it to the
+	// Rewrite hook below.
+	plan := scriptrun.PlanFor(loaded, node)
+	budget, err := script.TimeoutOf(node.Request)
+	if err != nil {
+		return outcome{failure: s.fail(id, node.ID, FailRequest,
+			"The script timeout is not a number of seconds.", fmt.Sprintf("%s: %v", node.ID, err), started)}
+	}
+	sv := s.scriptVars(loaded, node, env)
+	var preResult script.Result
+	// The hook's own failure, kept separate: InCollection assigns to its own
+	// error after the hook returns, so sharing one variable would lose this.
+	var preErr error
+
 	res, err := resolve.InCollection(loaded, node, resolve.Options{
 		Env:     env,
 		Secrets: s.secrets,
 		Session: s.vars,
+		// The same map the store writes, so a scratch value a hook sets is
+		// in the scope this resolution is about to build. Extra is read
+		// after Rewrite runs, which is what makes that work.
+		Extra: sv.Request,
+		Rewrite: func(entry *httpfile.Request, eff *resolve.Effective) {
+			if len(plan.Pre) == 0 {
+				return
+			}
+			view := scriptrun.RequestView(node, entry, eff)
+			preResult, preErr = script.Run(script.Options{
+				Phase:      script.Pre,
+				Scripts:    plan.Pre,
+				Request:    view,
+				Vars:       sv,
+				Secrets:    s.secrets,
+				Env:        env,
+				Collection: resolve.CollectionKey(loaded),
+				Modules:    scriptrun.ModuleLoader{Root: loaded.Dir},
+				Timeout:    budget,
+				OnConsole:  func(line script.ConsoleLine) { s.emitConsole(id, node.ID, line) },
+			})
+			if preErr != nil {
+				return
+			}
+			if view.Changed() {
+				scriptrun.ApplyView(entry, eff, view)
+			}
+		},
 	})
+	if scriptErr := asScriptError(preErr); scriptErr != nil {
+		return outcome{failure: s.failScript(id, node.ID, scriptErr, started)}
+	}
+	if preErr != nil {
+		return outcome{failure: s.fail(id, node.ID, FailScript,
+			"A pre-request script failed.", preErr.Error(), started)}
+	}
 	if err != nil {
 		kind, message := classifyResolveError(err)
 		return outcome{failure: s.fail(id, node.ID, kind, message, err.Error(), started)}
@@ -560,6 +645,13 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 		// key is an argument.
 		return outcome{failure: s.fail(id, node.ID, FailRequest, "The request could not be prepared.", res.Mask(err.Error()), started)}
 	}
+
+	// A secret a script placed through secrets.ref is substituted here, after
+	// every script has run and just before the wire: this is the one moment
+	// the real value exists outside the keychain, and it is registered with
+	// the masker so everything Otis *shows* about the send still says
+	// [secret:name] (docs/FORMAT.md §9.7).
+	scriptrun.SubstituteHandles(res, req, preResult.Handles)
 
 	// The window is told what is on the wire before the wire answers, so the
 	// in-flight state can name what it is waiting for.
@@ -606,6 +698,50 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 		},
 		Request:  sentRequest(res, req),
 		Warnings: warningStrings(warnings),
+	}
+
+	// docs/FORMAT.md §9.1: post-response scripts, then the tests they
+	// declared. A script that throws here does *not* discard the response —
+	// the response arrived, and hiding it because a script about it failed
+	// would lose the thing you need to fix the script (§9.10).
+	if len(plan.Post) > 0 {
+		postResult, postErr := script.Run(script.Options{
+			Phase:   script.Post,
+			Scripts: plan.Post,
+			Request: scriptrun.SentView(node, res, req),
+			Response: &script.ResponseView{
+				Status: resp.StatusCode, StatusText: scriptrun.StatusText(resp.Status),
+				Headers: scriptrun.ResponseHeaders(resp.Headers), Body: string(resp.Body),
+				Size: resp.Size,
+				Timings: script.Timings{
+					DNS: ms(resp.Timing.DNS), Connect: ms(resp.Timing.Connect),
+					TLS: ms(resp.Timing.TLS), TTFB: ms(resp.Timing.TTFB),
+					Total: ms(resp.Timing.Total),
+				},
+			},
+			Vars:       sv,
+			Secrets:    s.secrets,
+			Env:        env,
+			Collection: resolve.CollectionKey(loaded),
+			Modules:    scriptrun.ModuleLoader{Root: loaded.Dir},
+			Timeout:    budget,
+			OnTest:     func(result script.TestResult) { s.emitTest(id, node.ID, result) },
+			OnConsole:  func(line script.ConsoleLine) { s.emitConsole(id, node.ID, line) },
+		})
+		meta.Tests = postResult.Tests
+		meta.Console = append(meta.Console, postResult.Console...)
+		if scriptErr := asScriptError(postErr); scriptErr != nil {
+			meta.ScriptError = describeScriptError(scriptErr)
+		} else if postErr != nil {
+			meta.ScriptError = &ScriptFailure{Phase: string(script.Post), Message: postErr.Error()}
+		}
+	}
+	meta.Console = append(preResult.Console, meta.Console...)
+	if meta.Tests == nil {
+		meta.Tests = []script.TestResult{}
+	}
+	if meta.Console == nil {
+		meta.Console = []script.ConsoleLine{}
 	}
 
 	s.keep(id, &stored{meta: meta, doc: doc})
@@ -1090,4 +1226,132 @@ func (s *SendService) runFolder(
 	summary.At = time.Now()
 	s.emit(events.RunComplete, summary)
 	return summary
+}
+
+// scriptVars builds the variable store a send's scripts write through.
+func (s *SendService) scriptVars(loaded *collection.Collection, node *collection.Node, env *resolve.Environment) *scriptrun.Vars {
+	sv := &scriptrun.Vars{
+		Request: map[string]string{},
+		Folder:  path.Dir(node.ID),
+		Session: s.vars,
+		Origin:  node.ID,
+	}
+	if sv.Folder == "." {
+		sv.Folder = ""
+	}
+	// The scope a script reads through is built with secrets.Placeholder, so
+	// vars.get can say a name resolves without ever fetching a value.
+	sv.Scope = func() *resolve.Scope {
+		levels := resolve.LevelsOf(node)
+		scope := resolve.NewScope(levels, env, secrets.Placeholder{}, resolve.CollectionKey(loaded))
+		if s.vars != nil {
+			scope.WithSession(s.vars, resolve.FolderChain(node.ID))
+		}
+		return scope.WithExtra(sv.Request)
+	}
+	if env != nil {
+		sv.EnvName = env.Name
+		sv.ReadEnv = func(name string) (string, bool) {
+			v, ok := env.Values[name]
+			if !ok || v.Secret {
+				return "", false
+			}
+			return v.Value, true
+		}
+		// vars.env.set writes a committed file, which is the loudest thing in
+		// the API and deliberately so (docs/FORMAT.md §9.4). It goes through
+		// the write guard like every write Otis makes, and announces itself.
+		sv.WriteEnv = func(name, value string) error {
+			return s.writeEnvVar(loaded, env, name, value)
+		}
+	}
+	return sv
+}
+
+// writeEnvVar persists vars.env.set to the active environment file.
+func (s *SendService) writeEnvVar(loaded *collection.Collection, env *resolve.Environment, name, value string) error {
+	// Re-read rather than reuse the parsed copy: a script writing during a
+	// folder run must not clobber a change made between requests.
+	current, err := resolve.LoadEnvironment(loaded.Dir, env.Name)
+	if err != nil {
+		return err
+	}
+	if existing, ok := current.Values[name]; ok && existing.Secret {
+		return fmt.Errorf("%s declares %q as a secret; a script cannot overwrite one with a plain value",
+			current.Path, name)
+	}
+	if _, ok := current.Values[name]; !ok {
+		current.Order = append(current.Order, name)
+	}
+	current.Values[name] = resolve.EnvValue{Value: value, Kind: resolve.EnvString}
+
+	target := filepath.Join(loaded.Dir, filepath.FromSlash(current.Path))
+	release := s.collections.Guard().Writing(target)
+	writeErr := writeFileAtomic(target, current.Marshal())
+	release()
+	if writeErr != nil {
+		return fmt.Errorf("writing %s: %w", current.Path, writeErr)
+	}
+	// The guard means the watcher will not announce this, so the write does —
+	// through the hook the environment service registered, rather than by
+	// reaching into it from here.
+	s.collections.NotifyDiskChange()
+	return nil
+}
+
+// asScriptError digs a *script.Error out of an error chain.
+func asScriptError(err error) *script.Error {
+	for err != nil {
+		if e, ok := err.(*script.Error); ok {
+			return e
+		}
+		u, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return nil
+		}
+		err = u.Unwrap()
+	}
+	return nil
+}
+
+// describeScriptError converts a script failure for the window.
+func describeScriptError(err *script.Error) *ScriptFailure {
+	return &ScriptFailure{
+		Phase: string(err.Phase), Path: err.Path, Line: err.Line,
+		Message: err.Msg, Timeout: err.Timeout,
+	}
+}
+
+// failScript reports a script failure as a send failure.
+func (s *SendService) failScript(id, nodePath string, err *script.Error, started time.Time) *SendFailure {
+	message := "A pre-request script failed."
+	if err.Timeout {
+		message = "A script ran longer than its budget and was stopped."
+	}
+	failure := s.fail(id, nodePath, FailScript, message, err.Error(), started)
+	return failure
+}
+
+// emitTest streams one test result as it completes (docs/FORMAT.md §9.9).
+func (s *SendService) emitTest(sendID, nodePath string, result script.TestResult) {
+	s.emit(events.ScriptTest, ScriptTest{SendID: sendID, Path: nodePath, Result: result})
+}
+
+// emitConsole streams one console line.
+func (s *SendService) emitConsole(sendID, nodePath string, line script.ConsoleLine) {
+	s.emit(events.ScriptConsole, ScriptConsole{SendID: sendID, Path: nodePath, Line: line})
+}
+
+// ScriptTest is one streamed test result.
+type ScriptTest struct {
+	SendID string            `json:"sendId"`
+	Path   string            `json:"path"`
+	Result script.TestResult `json:"result"`
+}
+
+// ScriptConsole is one streamed console line.
+type ScriptConsole struct {
+	SendID string             `json:"sendId"`
+	Path   string             `json:"path"`
+	Line   script.ConsoleLine `json:"line"`
 }

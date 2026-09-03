@@ -9,7 +9,13 @@ import { formatBytes, formatClock, formatDuration, statusColor } from "@/lib/for
 import { cn } from "@/lib/utils";
 import { useSends } from "@/state/send-context";
 import { useTabs } from "@/state/tabs-context";
-import type { Cookie, ResponseMeta, SentHeader } from "@bindings/internal/services";
+import type {
+  Cookie,
+  ResponseMeta,
+  ScriptFailure,
+  SentHeader,
+} from "@bindings/internal/services";
+import type { ConsoleLine, TestResult } from "@bindings/internal/script";
 
 /**
  * The response pane (screen 1a): a 34px header row with the status, duration,
@@ -66,6 +72,11 @@ export function ResponsePane() {
 
   const cookies = meta.cookies ?? [];
   const headers = meta.headers ?? [];
+  // The completed set once the send is done; the live stream while it runs.
+  // A result fills in as it arrives, so a long suite is watchable rather than
+  // appearing all at once at the end (docs/FORMAT.md §9.9).
+  const tests = (meta.tests?.length ? meta.tests : send.tests).filter(Boolean);
+  const passed = tests.filter((test) => test.passed).length;
 
   return (
     <Frame header={<StatusRow meta={meta} />}>
@@ -83,10 +94,27 @@ export function ResponsePane() {
             <TabsTrigger value="cookies">
               Cookies <Count value={cookies.length} />
             </TabsTrigger>
-            {/* Tests arrive with the script engine in Phase D. The tab is
-                here because the strip's layout is final. */}
-            <TabsTrigger value="tests" disabled title="Tests run in Phase D">
+            {/* The count takes the accent when everything passed and red
+                when anything did not — DESIGN-NOTES §2.4 gives the accent
+                "good states", and a suite that is 3/4 must not read as one
+                that is 4/4. */}
+            <TabsTrigger value="tests">
               Tests
+              {tests.length > 0 ? (
+                <span
+                  className={cn(
+                    "ml-1 font-mono text-label",
+                    passed === tests.length ? "text-primary" : "text-destructive",
+                  )}
+                >
+                  {passed}/{tests.length}
+                </span>
+              ) : null}
+              {meta.scriptError ? (
+                <span className="ml-1 font-mono text-label text-destructive" title="A script failed">
+                  !
+                </span>
+              ) : null}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -101,9 +129,11 @@ export function ResponsePane() {
           <CookieTable cookies={cookies} />
         </TabsContent>
         <TabsContent value="tests" className="flex min-h-0 flex-col">
-          <p className="px-4 py-3 text-meta text-fg-faint">
-            Tests run in Phase D, from a <code className="font-mono">{"> {% %}"}</code> block.
-          </p>
+          <TestList
+            tests={tests}
+            output={meta.console?.length ? meta.console : send.console}
+            failure={meta.scriptError ?? null}
+          />
         </TabsContent>
       </Tabs>
     </Frame>
@@ -358,4 +388,107 @@ function Group({
 function Count({ value }: { value: number }) {
   if (value === 0) return null;
   return <span className="font-mono text-label font-medium text-fg-dim">{value}</span>;
+}
+
+/**
+ * The Tests tab: per-assertion pass or fail with the failure detail, the
+ * script's console output, and a script error when there was one
+ * (docs/FORMAT.md §9.9, §9.10).
+ *
+ * A script error does not replace the list. A post-response script that threw
+ * after two assertions passed has two results worth reading, and the response
+ * itself is still here — hiding either because a script about it failed would
+ * lose exactly what you need to fix the script.
+ */
+function TestList({
+  tests,
+  output,
+  failure,
+}: {
+  tests: TestResult[];
+  // Not named `console`: shadowing the global inside a component that may one
+  // day want to log is the kind of thing that costs an hour later.
+  output: ConsoleLine[];
+  failure: ScriptFailure | null;
+}) {
+  if (tests.length === 0 && output.length === 0 && !failure) {
+    return (
+      <p className="px-4 py-3 text-meta text-fg-dim">
+        No tests. Declare one in a <code className="font-mono">{"> {% %}"}</code> block or a{" "}
+        <code className="font-mono">_post.js</code>:{" "}
+        <code className="font-mono text-fg-secondary">
+          test("ok", () =&gt; expect(response.ok).toBeTruthy())
+        </code>
+      </p>
+    );
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto py-1">
+      {failure ? (
+        <div className="mx-4 mb-2 rounded-sm border border-border-danger px-2.5 py-2">
+          <p className="text-meta text-destructive">
+            {failure.timeout ? "A script was stopped" : "A script failed"}
+            {failure.phase ? ` in the ${failure.phase} phase` : ""}
+          </p>
+          {failure.path ? (
+            <p className="mt-0.5 font-mono text-meta text-fg-faint">
+              {failure.path}
+              {failure.line ? `:${failure.line}` : ""}
+            </p>
+          ) : null}
+          <p className="mt-1 font-mono text-ui break-words text-fg-secondary">{failure.message}</p>
+        </div>
+      ) : null}
+
+      {tests.map((test) => (
+        <div key={`${test.index}-${test.name}`} className="px-4 py-1">
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "w-3 shrink-0 text-center font-mono text-ui",
+                test.passed ? "text-primary" : "text-destructive",
+              )}
+            >
+              {test.passed ? "✓" : "✕"}
+            </span>
+            <span
+              className={cn("min-w-0 flex-1 text-ui", test.passed ? "text-fg-secondary" : "text-fg")}
+            >
+              {test.name}
+            </span>
+            <span className="shrink-0 font-mono text-meta text-fg-faint">
+              {test.durationMs < 1 ? "<1" : Math.round(test.durationMs)} ms
+            </span>
+          </div>
+          {test.message ? (
+            <p className="mt-0.5 ml-5 font-mono text-meta break-words text-destructive">
+              {test.message}
+            </p>
+          ) : null}
+        </div>
+      ))}
+
+      {output.length > 0 ? (
+        <div className="mt-2 border-t border-border px-4 pt-2">
+          <p className="mb-1 text-label tracking-[.06em] text-fg-dim uppercase">Console</p>
+          {output.map((line, at) => (
+            <p
+              key={at}
+              className={cn(
+                "font-mono text-meta break-words",
+                line.level === "error"
+                  ? "text-destructive"
+                  : line.level === "warn"
+                    ? "text-modified"
+                    : "text-fg-dim",
+              )}
+            >
+              {line.text}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }

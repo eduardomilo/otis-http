@@ -343,10 +343,18 @@ the folder's descendants and reports each one whose nearest `@auth` or header
 is not the folder's. The other four tabs are §9.15. The two request counts
 are §9.6.
 
-This screen introduces the session variable scope and the script API. The
-scope is specified and built (`FORMAT.md` §4.5, DESIGN-NOTES §9.4); the API
-is Increment 15, and §9.8 is the ordering question it has to answer — which
-running this folder now demonstrates rather than merely asserts.
+This screen introduces the session variable scope and the script API, both of
+which now exist: the scope is `FORMAT.md` §4.5 and the API is §9. §9.8's
+ordering question is answered — pre-request hooks run before resolution, which
+is what makes this screen's own `Idempotency-Key: {{idemKey}}` work.
+
+The Script API table shipped one row different from the drawing.
+`vars.folder.set` is **`vars.session.set`**: the middle scope is named for its
+lifetime rather than for the thing that keys it, because `_folder.http`
+declares committed variables and a call named `vars.folder.set` reads as
+setting one of those. DESIGN-NOTES §9.8 and `FORMAT.md` §9.4 carry the
+argument. The other five rows are as drawn, and `vars.env.set` does write the
+committed file the table says it does.
 
 ---
 

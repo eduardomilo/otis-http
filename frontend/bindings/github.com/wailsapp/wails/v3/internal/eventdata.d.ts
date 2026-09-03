@@ -23,6 +23,8 @@ declare module "@wailsio/runtime" {
             "run:complete": services$0.RunComplete;
             "run:result": services$0.RunResult;
             "run:started": services$0.RunStarted;
+            "script:console": services$0.ScriptConsole;
+            "script:test": services$0.ScriptTest;
             "send:complete": services$0.ResponseMeta;
             "send:error": services$0.SendFailure;
             "send:started": services$0.SendStarted;

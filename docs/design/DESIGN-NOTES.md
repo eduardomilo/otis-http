@@ -533,19 +533,29 @@ marker next to `auth` and `orders` is a `+` glyph (`M6 1.5v9M1.5 6h9`), which
 reads as an add-item affordance sitting exactly where an add button would go.
 The intended meaning is "this folder has a `_folder.http`".
 
-**9.8 Ordering of scripts versus resolution is asserted but not specified.**
+**9.8 Ordering of scripts versus resolution — resolved.**
 Screen 4a shows an inherited header `Idempotency-Key: {{idemKey}}` annotated
 "set by `orders/_pre.js`". That requires the pre-request script to run *before*
 header and variable resolution, and to be able to write a variable that a
 folder-level header then references. The current sender resolves variables
 before preparing the request; the hook order needs defining.
 
-Increment 14 made this observable rather than theoretical. Running the
-design's own `orders/` folder fails every request that does *not* override
-`Idempotency-Key`, with "unresolved variables: idemKey" — because the header
-references a value only the pre-request script sets, and nothing runs the
-script yet. It is the correct behaviour for a collection whose scripts do not
-run, and it is exactly the case the hook order has to answer. Increment 15.
+Increment 14 made this observable rather than theoretical: running the
+design's own `orders/` folder failed every request that did not override
+`Idempotency-Key`, because the header referenced a value only the pre-request
+script sets and nothing ran the script.
+
+Increment 15 answers it. **Pre-request hooks run before `{{variable}}`
+resolution** (`FORMAT.md` §9.2), so the design's arrangement works exactly as
+drawn. The consequence, which the spec states plainly, is that a pre-request
+hook sees the *template*: `request.url` and the header values still carry
+their `{{...}}`. A hook that wants a resolved value calls `vars.get`, which
+resolves — so a script and a `{{reference}}` never disagree about a name.
+
+The scope the design called `folder` is `vars.session`, for the reason §9.4
+gives: `_folder.http` declares committed variables, and `vars.folder.set`
+reads as setting one of those. Screen 3a's Script API table is therefore one
+row different from what shipped.
 
 **9.9 Two features in the empty state are not in any phase.** "Clone
 repository" (git clone with credentials) and "Start fresh" (`mkdir` + `git
