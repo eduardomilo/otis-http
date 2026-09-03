@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -69,6 +70,7 @@ func (e dirEntry) orderKey() string {
 // sortResult is the outcome of applying an Order to a directory listing.
 type sortResult struct {
 	entries    []dirEntry   // final order
+	matched    int          // entries placed by .order, before the alphabetical rest
 	missing    []OrderEntry // .order lines that matched nothing
 	duplicates []OrderEntry // .order lines repeating an earlier match
 }
@@ -104,6 +106,7 @@ func applyOrder(entries []dirEntry, o Order) sortResult {
 			res.entries = append(res.entries, entries[idx])
 		}
 	}
+	res.matched = len(res.entries)
 	var rest []dirEntry
 	for i, e := range entries {
 		if !used[i] {
@@ -123,4 +126,56 @@ func lessName(a, b string) bool {
 		return la < lb
 	}
 	return a < b
+}
+
+// FormatOrder renders a .order file listing names in order.
+//
+// One name per line, exact spellings (a directory keeps its trailing slash),
+// and a leading comment naming what wrote it — an .order file that appears in
+// somebody's diff should say where it came from. Nothing else: no timestamp,
+// no version, nothing that would make two reorders of the same order produce
+// two different files.
+func FormatOrder(names []string) []byte {
+	var b strings.Builder
+	b.WriteString("# Order maintained by Otis. Drag rows in the sidebar to change it.\n")
+	b.WriteString("# Unlisted entries sort alphabetically after these.\n")
+	for _, name := range names {
+		b.WriteString(name)
+		b.WriteByte('\n')
+	}
+	return []byte(b.String())
+}
+
+// WriteOrder writes the .order file for dir, listing names in order.
+//
+// The write is atomic-ish: a temporary file in the same directory, renamed
+// into place, so a reader never sees half a list. It is the caller's job to
+// hold the write guard.
+func WriteOrder(dir string, names []string) error {
+	path := filepath.Join(dir, OrderFileName)
+	tmp, err := os.CreateTemp(dir, ".order-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if _, err := tmp.Write(FormatOrder(names)); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
+}
+
+// RemoveOrder deletes dir's .order file, which is how a folder returns to
+// alphabetical order (docs/FORMAT.md §2.2). A missing file is not an error:
+// alphabetical is already what a folder without one does.
+func RemoveOrder(dir string) error {
+	err := os.Remove(filepath.Join(dir, OrderFileName))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }

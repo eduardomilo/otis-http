@@ -20,6 +20,7 @@ import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
 import { useDiff } from "@/state/diff-context";
+import { useOrder } from "@/state/order-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useRuns } from "@/state/run-context";
 import { useSends } from "@/state/send-context";
@@ -56,6 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { tree } = useCollection();
   const { environments } = useEnvironments();
   const { overview } = useDiff();
+  const { undo: undoOrder } = useOrder();
   const { runFor, start } = useRuns();
   const routeDocument = useRouteDocument();
   // Read inside rememberLayout, which is registered once and must not be
@@ -152,6 +154,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     // get into or out of this view; the status bar's branch is the other way
     // in, and pressing it again goes back to the document that was open.
     { key: "g", mod: true, run: toggleDiff },
+    // ⌘Z takes back the last reorder (screen 2a's strip offers the same
+    // thing). It is the shell's, not the tree's, so it works with focus
+    // anywhere; nothing to undo is nothing happening, not a refusal. It does
+    // not undo an edit in the request editor — CodeMirror handles ⌘Z itself
+    // and consumes it before the window sees it, which is exactly the
+    // separation we want: undo in a text field is the field's.
+    { key: "z", mod: true, run: () => void undoOrder() },
     { key: "1", mod: true, run: () => focusPane(sidebarPanel.current, sidebarPane.current) },
     { key: "2", mod: true, run: () => centerPane.current?.focus() },
     { key: "3", mod: true, run: () => focusPane(responsePanel.current, responsePane.current) },

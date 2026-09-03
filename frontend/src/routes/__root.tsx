@@ -9,6 +9,7 @@ import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
 import { DiffProvider } from "@/state/diff-context";
 import { EnvironmentProvider } from "@/state/environment-context";
+import { OrderProvider } from "@/state/order-context";
 import { RunProvider } from "@/state/run-context";
 import { SendProvider } from "@/state/send-context";
 import { SettingsProvider } from "@/state/settings-context";
@@ -38,6 +39,11 @@ function RootLayout() {
             document resolves, so both the editor and the sender read it from
             here. */}
         <EnvironmentProvider>
+          {/* Ordering sits above the documents and beside the diff: a reorder
+              writes a file in the repository, so the tree, the diff and ⌘Z all
+              have to be looking at the same last-change. It needs only the
+              collection. */}
+          <OrderProvider>
           {/* The diff view sits beside the documents rather than inside them:
               it is a view of the whole collection, and a stage or a commit
               changes what every other view says about a file. */}
@@ -64,6 +70,7 @@ function RootLayout() {
               </TabsProvider>
             </RunProvider>
           </DiffProvider>
+          </OrderProvider>
         </EnvironmentProvider>
       </CollectionProvider>
     </SettingsProvider>

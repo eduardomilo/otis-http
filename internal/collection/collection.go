@@ -73,6 +73,10 @@ type Node struct {
 	// HookOf is the node ID of the request a request-level hook belongs to,
 	// or "" for a folder hook and for a module.
 	HookOf string `json:"hookOf,omitempty"`
+	// Ordered is set on a folder whose .order file gives it a manual order
+	// (docs/FORMAT.md §2.2). The sidebar draws a glyph for it and the folder's
+	// menu offers Alphabetical instead of Manual.
+	Ordered bool `json:"ordered,omitempty"`
 	// Broken is set when the file failed to parse. The node still appears.
 	Broken bool   `json:"broken,omitempty"`
 	Error  string `json:"error,omitempty"`
@@ -264,6 +268,10 @@ func (c *Collection) loadFolder(folder *Node) {
 		c.warn(orderRel, WarnUnreadable, "%v", err)
 	}
 	res := applyOrder(listing, order)
+	// A folder with a usable .order is drawn with a list glyph (screen 2a) and
+	// offers Manual rather than Alphabetical in its menu. A file that exists
+	// but lists nothing usable is not a manual order.
+	folder.Ordered = res.matched > 0
 	for _, m := range res.missing {
 		c.warn(orderRel, WarnOrderMissing, "line %d: %q does not exist", m.Line, m.Name)
 	}

@@ -111,6 +111,7 @@ func runGUI() {
 			// variables a run set are half of its Variables panel, and they
 			// live nowhere on disk (docs/FORMAT.md §4.5).
 			application.NewService(services.NewFolderService(collections, sends)),
+			application.NewService(services.NewOrderService(collections)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -209,6 +209,37 @@ both); whether switching to Alphabetical prompts before deleting `.order`.
 The described semantics match `FORMAT.md` §2.2 exactly, including "never
 rewritten on add".
 
+**Resolved in Increment 17:**
+
+- **The whole row is the grab handle.** A dedicated grip would be a 12px
+  target in a 24px row, and the design draws the grip on the ghost — the thing
+  that follows the cursor — not on the row. A press becomes a drag only after
+  4px of travel, so clicking a row still opens it, and Escape abandons a drag
+  in flight.
+- **Auto-scroll** starts within 24px of either edge of the tree, so a row can
+  be dragged out of a folder taller than the sidebar.
+- **Dropping into a different folder** moves the file and rewrites both
+  `.order` files. A folder row's middle 40% means "into this folder, at the
+  end" and shows an accent ring instead of a line; its top and bottom thirds
+  mean "before/after this folder", the same as any other row. The destination
+  expands, so the row is never left somewhere invisible.
+- **Folders and requests interleave.** A folder may sit between two requests,
+  which is what `FORMAT.md` §2.2 already said, and a folder row is draggable
+  like any other.
+- **The ghost sits outside the sidebar**, at the pointer's height. The design
+  review's finding was that a preview under the cursor hides the rows the drop
+  is aimed at; DESIGN-NOTES §7.7 has the detail.
+- **`Undo ⌘Z` reverts the write**, byte for byte, and the tree follows because
+  it is a view of the files. It refuses when the file has changed since.
+  Switching to Alphabetical does not prompt: it is undoable the same way.
+  DESIGN-NOTES §9.17 has the reasoning.
+- **The centre pane of this screen is not built.** Its diff is the diff view,
+  its `--stat` is that view's footer, its Folder options moved to the folder's
+  context menu, and its explanation is `FORMAT.md` §2.2. DESIGN-NOTES §9.16
+  says why.
+- **Dragging is off while the sidebar filter is on**, because a filtered tree
+  is a subset of the order rather than the order.
+
 ---
 
 ## 2b · Empty state

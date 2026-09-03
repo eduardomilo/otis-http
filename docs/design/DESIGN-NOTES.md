@@ -452,6 +452,30 @@ cursor with a 6-dot grip glyph, the method label, and a drop shadow. Rows
 reserve `1px solid transparent` top and bottom borders so the drop indicator
 does not shift layout.
 
+Built in Increment 17. `dnd-kit` was not used: the whole interaction is a
+pointer position resolved against a list of fixed-height rows, the tree is
+virtualized so the rows the library would attach to do not all exist, and the
+ghost has to be ours to place (below). `lib/drag.ts` is the arithmetic —
+"which row is the pointer over, and does that mean above it, below it, or
+inside it" — as pure functions; the component is listeners and styling.
+
+Three things the design leaves open, decided there:
+
+- **The ghost is moved off the tree.** The design draws it under the cursor,
+  where it covers the rows the drop is aimed at — including the insertion
+  line, the only thing saying where the row will land. The design review
+  called that out, so ours is pinned just outside the sidebar at the pointer's
+  height and follows it vertically. HTML5 drag-and-drop could not do this at
+  all: the browser draws its drag image under the cursor and does not offer
+  the choice, which is why the interaction is built on pointer events.
+- **One indicator at a time.** Between two rows it is the accent top border;
+  on a folder row's middle 40% it is an accent ring on that folder and *no*
+  line, because the drop appends into it rather than landing at a position.
+  Never both, and never two lines.
+- **Dragging is off while the sidebar filter is on.** A filtered tree is a
+  subset of the order, not the order, so a drop inside one would write a
+  `.order` listing only what matched.
+
 **7.8 The body and response panes are real editors.** The design renders them
 as static colored spans. Shipping needs syntax highlighting, folding (the
 response shows `▾`/`▸` and a `2 items` collapsed chip), a current-line
@@ -661,6 +685,53 @@ and a status-bar "Last run: 6/6 passed". They render as a fifth panel above
 the others, with every row drawn as soon as the plan arrives and filled in as
 each request finishes: a run that reveals itself one row at a time says
 nothing about how far through it is.
+
+**9.16 Screen 2a's centre pane is documentation, and is not built — resolved.**
+The screen fills its centre with an explanation of the on-disk format ("How
+the order is stored"), the diff of `orders/.order`, a `git diff --stat` block
+("What a reviewer sees"), and a Folder options radio group. Three of those four
+already exist elsewhere and the fourth is prose:
+
+- The **diff** is the diff view (screen 1b). Reordering leaves `.order` in the
+  changes list like any other write, and ⌘G is how you look at it. A second
+  diff renderer that only ever shows one file would be the same view with less
+  in it.
+- **`git diff --stat`** is the same information as 1b's `+1 −1 · 1 hunk`
+  footer, which is already there.
+- **Folder options** is in the folder's own context menu instead. `.order` is
+  not a shared setting: it does not live in `_folder.http`, it does not
+  cascade, and a panel beside Auth and Headers would imply it did. The menu is
+  also where the drag that writes it happens.
+- The **explanation** is `docs/FORMAT.md` §2.2. A centre pane that teaches the
+  format on the one screen where you are least likely to be reading is the
+  wrong home for it; a `.order` that shows up in a diff and reads as a plain
+  list of filenames is the design's actual argument, and that survives without
+  the prose.
+
+What the screen specifies that *is* built: the drag itself, the ghost, the
+insertion line, the manual-order glyph on a folder row, and the confirmation
+strip under the tree with `Undo ⌘Z` — the strip's two-line layout is the
+design's, and it is also the only one that fits a 302px sidebar without
+truncating the file name to `orders/.…`.
+
+**9.17 What `Undo ⌘Z` reverts, and whether Alphabetical prompts — resolved.**
+SCREENS.md flagged both. ⌘Z reverts the *write*: the previous bytes of every
+`.order` the change touched, and the file back to its old folder for a move.
+The previous bytes rather than a re-derivation of the previous order, so a
+hand-written file with comments and a bare `create` line comes back as it was
+written and not as Otis' rendering of the same order. The tree follows because
+it is a view of the files.
+
+It refuses when what it would overwrite is no longer what the reorder left —
+something edited the file since, or a checkout moved it — because ⌘Z means
+"take back what I just did", not "restore this to a state it has since left".
+The stack is twenty deep and belongs to the open collection.
+
+Switching to Alphabetical does **not** prompt. It deletes the file, and it is
+undoable by the same ⌘Z; one mechanism for taking back an ordering change is
+better than a dialog plus a mechanism. This is deliberately unlike Increment
+13's discard, where the confirmation is a *parameter* — that destroys work git
+cannot get back, and this does not.
 
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and

@@ -3,6 +3,7 @@
     "id": "",
     "kind": "folder",
     "name": "basic",
+    "ordered": true,
     "children": [
       {
         "id": "users",

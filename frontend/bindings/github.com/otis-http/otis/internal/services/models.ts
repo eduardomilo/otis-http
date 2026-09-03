@@ -752,6 +752,13 @@ export interface Node {
     "url"?: string;
 
     /**
+     * Ordered is set on a folder that has a `.order` file giving it a manual
+     * order (docs/FORMAT.md §2.2). The sidebar draws a list glyph for it
+     * (screen 2a) and the folder's menu offers Alphabetical rather than Manual.
+     */
+    "ordered"?: boolean;
+
+    /**
      * GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
      * in a repository.
      */
@@ -844,6 +851,34 @@ export enum NodeKind {
 export interface Opened {
     "collection": CollectionInfo;
     "tree": Tree;
+}
+
+/**
+ * OrderResult is what the window shows in the strip under the tree after a
+ * reorder (screen 2a): a sentence naming the file, and whether ⌘Z has
+ * anything left to revert.
+ */
+export interface OrderResult {
+    /**
+     * Summary is the strip's first line: what happened, in words, with no
+     * path in it. The design sets the path on a second line in mono
+     * (screen 2a: "Order saved to" / `orders/.order`), which is also the only
+     * way it fits a 302px sidebar — so the two are separate fields rather
+     * than one sentence the window has to take apart.
+     */
+    "summary": string;
+
+    /**
+     * Files is every .order file written or deleted, collection-relative. It
+     * is the strip's second line, and what the diff view can be pointed at.
+     */
+    "files": string[] | null;
+
+    /**
+     * CanUndo is false once the stack is empty, which hides the Undo control
+     * rather than offering one that would refuse.
+     */
+    "canUndo": boolean;
 }
 
 /**

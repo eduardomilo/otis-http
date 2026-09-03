@@ -2,6 +2,7 @@ import { forwardRef, useMemo, useState } from "react";
 
 import { ChangesList } from "@/components/diff/changes-list";
 import { EnvironmentList } from "@/components/environment/environment-list";
+import { OrderStrip } from "@/components/shell/order-strip";
 import { Tree, type TreeHandle } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
 import { hint } from "@/lib/platform";
@@ -81,6 +82,11 @@ export const Sidebar = forwardRef<
       ) : (
         <p className="px-1 py-2 text-meta text-fg-faint">Reading the collection…</p>
       )}
+
+      {/* Screen 2a's confirmation, below the tree: "Order saved to
+          orders/.order" with Undo. It renders nothing when there is nothing to
+          report, so the tree keeps the full height the rest of the time. */}
+      <OrderStrip />
     </div>
   );
 });

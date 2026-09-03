@@ -259,8 +259,42 @@ Rules:
   A line that repeats an earlier match produces a warning; the first
   occurrence wins.
 - `.order` is **never rewritten** when a request or folder is added. Only an
-  explicit reorder writes it, and it then lists every entry exactly once
-  *(planned)*.
+  explicit reorder writes it, and it then lists every entry exactly once.
+
+A reorder is a drag in the sidebar, or the folder menu's Manual/Alphabetical
+(screen 2a). What Otis writes:
+
+```
+# Order maintained by Otis. Drag rows in the sidebar to change it.
+# Unlisted entries sort alphabetically after these.
+cancel-order.http
+create-order.http
+fixtures/
+```
+
+Exact names, one per line, a trailing slash on a folder, and every entry of
+the directory listed once — a partial list would leave the rest to sort
+alphabetically after it, silently moving rows the drag never touched. The two
+comment lines are the only thing in the file that is not a name, and they are
+fixed: nothing in a `.order` Otis wrote depends on when it wrote it, so two
+reorders producing the same order produce the same bytes.
+
+Everything else leaves the file alone. Adding a request does not touch it; the
+new file is unlisted and therefore sorts alphabetically after the listed ones,
+which is the whole mechanism. Saving a request, running a folder, importing —
+none of them write it. An import into a directory that already holds a
+`.order` is refused rather than merged (`.order` is the one hidden file that
+counts as content for that check); `--force` overwrites it along with
+everything else in the directory, which is what that flag says.
+
+Switching a folder to alphabetical **deletes** its `.order`. Deleting the file
+by hand does the same thing, which is why there is no other representation of
+"this folder is alphabetical" — the absence of the file is it.
+
+Moving an entry between folders rewrites the destination's `.order` (the
+arrival has to have a position) and the source's (the departure has to leave
+the list). A source folder that had no `.order` does not acquire one: its
+remaining entries are alphabetical, which is what they already were.
 
 ### 2.3 Folder settings (`_folder.http`)
 

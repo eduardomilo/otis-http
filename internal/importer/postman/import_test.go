@@ -199,6 +199,31 @@ func TestWriteRefusesNonEmptyDir(t *testing.T) {
 	}
 }
 
+// docs/FORMAT.md §2.2: an import never rewrites somebody's `.order`.
+//
+// An import into a fresh directory writes one, because Postman's arrangement
+// is the only order information there is and there is nothing to preserve. An
+// import into a directory that already holds one is refused — `.order` is the
+// one hidden file that counts as content for exactly this reason — so the only
+// way to overwrite it is --force, which is a wholesale "write over this
+// collection" and says so.
+func TestImportDoesNotRewriteAnExistingOrderFile(t *testing.T) {
+	dir := t.TempDir()
+	mine := []byte("# mine\nb.http\na.http\n")
+	if err := os.WriteFile(filepath.Join(dir, ".order"), mine, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := &Output{Files: map[string]string{".order": "a.http\nb.http\n"}, Report: &Report{}}
+
+	err := Write(out, dir, false)
+	if err == nil || !strings.Contains(err.Error(), "not empty (.order)") {
+		t.Fatalf("err = %v, want a refusal naming .order", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, ".order")); string(got) != string(mine) {
+		t.Errorf(".order changed:\n%s", got)
+	}
+}
+
 func TestPlanErrors(t *testing.T) {
 	tests := []struct{ name, src, want string }{
 		{"not json", `{`, "invalid JSON"},

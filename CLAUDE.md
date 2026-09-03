@@ -28,7 +28,9 @@ lists the design decisions that are still open — do not resolve them silently.
   is the sender: it resolves, prepares and sends a request, holds the response
   and pages it to the window, and runs a folder's requests in sequence.
   `environment.go` is the environment editor's, and the only thing that puts a
-  secret into the keychain or takes one out. `folder.go` is the folder view's:
+  secret into the keychain or takes one out. `order.go` is the sidebar's drag
+  and the folder menu's Manual/Alphabetical, and the only writer of a
+  `.order`. `folder.go` is the folder view's:
   it reads a folder's shared settings with their provenance, its documentation
   and scripts, and which descendants opt out of each setting, and is the only
   thing that writes a `_folder.http`.
@@ -81,7 +83,8 @@ lists the design decisions that are still open — do not resolve them silently.
   - `components/ui/` — shadcn components. Ours to edit; note the deviation in a
     comment when you change one away from the shadcn default.
   - `components/shell/` — the window chrome: title strip, panes, tab bar, status
-    bar, palette, empty state. One component per file, named after it.
+    bar, palette, empty state, and `order-strip` (screen 2a's confirmation
+    under the tree). One component per file, named after it.
   - `components/editor/` — the CodeMirror 6 setup: the theme and syntax
     colours (`otis-theme`), the `{{variable}}` decoration
     (`variable-decoration`), and the React wrapper (`code-editor`). One
@@ -108,7 +111,8 @@ lists the design decisions that are still open — do not resolve them silently.
     and `environment-list` (the sidebar, which replaces the tree on this route).
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
-    `send-context`, `environment-context`, `diff-context`, `run-context`),
+    `send-context`, `environment-context`, `diff-context`, `run-context`,
+    `order-context`),
     each exporting a `useXxx` hook
     that throws outside its provider. Providers are composed in
     `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
@@ -124,7 +128,8 @@ lists the design decisions that are still open — do not resolve them silently.
     (`{{name}}` tokenizing and styling), `query` (the URL's query string as
     table rows), `json` (pretty-printing a body that contains references),
     `format` (durations, byte sizes and status-code colours), `json-tokens`
-    (colouring a line of JSON that Go already indented), `fuzzy` (the palette's
+    (colouring a line of JSON that Go already indented), `drag` (where a
+    dragged row would land, as pure functions), `fuzzy` (the palette's
     matcher, which returns matched character *positions* rather than a boolean,
     because the highlighting is per-character), `tree` (flattening, the expand
     rule and the filter, as pure functions).
@@ -223,6 +228,25 @@ lists the design decisions that are still open — do not resolve them silently.
   (`release := guard.Writing(path); defer release()`), or the watcher reports
   Otis' own save as an external change and the window re-walks on every
   keystroke it just persisted.
+- **`.order` is never rewritten except by an explicit reorder**
+  (docs/FORMAT.md §2.2). Adding a request must not touch it: the new file is
+  unlisted, so it sorts alphabetically after the listed ones, and that is the
+  whole mechanism. `internal/services/order.go` is the only writer and has no
+  other callers, which is what makes that checkable rather than hoped for;
+  `TestAddingARequestDoesNotTouchTheOrderFile` asserts the file is
+  *byte*-identical, not equivalent, because a rewrite that produced the same
+  order would still put the file in somebody's diff and would have lost their
+  comments on the way. Switching a folder to alphabetical deletes the file —
+  the absence of it *is* "this folder is alphabetical", so there is no second
+  representation to keep in step.
+- **An ordering change is undoable, and that is the only safety in front of
+  it.** `OrderService.Undo` restores the previous *bytes* of every `.order`
+  the change touched, so a hand-written file comes back as written rather than
+  as Otis' rendering of the same order, and refuses when the file no longer
+  holds what the reorder left (`ErrChangedOnDisk`). Because ⌘Z is there, none
+  of these operations has a confirmation dialog — unlike `internal/diff`'s
+  discard, which destroys work git cannot get back and takes `confirm bool` as
+  a parameter.
 - **The palette's typed query filters requests only.** Environment, Commands
   and Recent are a standing list that filters under its own prefix (`@`, `>`,
   `:`), which is what screen 2c draws and what the section asides say.

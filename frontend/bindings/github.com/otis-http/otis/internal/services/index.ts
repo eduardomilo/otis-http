@@ -8,6 +8,7 @@ import * as DiffService from "./diffservice.js";
 import * as EnvironmentService from "./environmentservice.js";
 import * as FolderService from "./folderservice.js";
 import * as GitService from "./gitservice.js";
+import * as OrderService from "./orderservice.js";
 import * as RequestService from "./requestservice.js";
 import * as SendService from "./sendservice.js";
 import * as SettingsService from "./settingsservice.js";
@@ -19,6 +20,7 @@ export {
     EnvironmentService,
     FolderService,
     GitService,
+    OrderService,
     RequestService,
     SendService,
     SettingsService
@@ -56,6 +58,7 @@ export type {
     KeychainState,
     Node,
     Opened,
+    OrderResult,
     ResponseMeta,
     RunComplete,
     RunResult,

@@ -1,23 +1,37 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRight, Plus, TriangleAlert } from "lucide-react";
+import { ChevronRight, GripVertical, List, Plus, TriangleAlert } from "lucide-react";
 
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { dropAt, parentOf, reorderedPaths, type Drop } from "@/lib/drag";
 import { methodColor, methodGutter } from "@/lib/method";
 import { nodeRoute } from "@/lib/paths";
 import { fileManagerName } from "@/lib/platform";
-import { expandTo, findNode, flatten, indentOf, isExpanded, type Expansion, type Row } from "@/lib/tree";
+import {
+  expandFolder,
+  expandTo,
+  findNode,
+  flatten,
+  indentOf,
+  isExpanded,
+  type Expansion,
+  type Row,
+} from "@/lib/tree";
 import { cn } from "@/lib/utils";
 import type { Node, Tree as CollectionTree } from "@bindings/internal/services";
 import { CollectionService } from "@bindings/internal/services";
+import { useOrder } from "@/state/order-context";
 import { useTabs } from "@/state/tabs-context";
 
 /**
@@ -33,10 +47,37 @@ import { useTabs } from "@/state/tabs-context";
  * every scroll frame is the difference between smooth and not — and the git
  * dots use a plain `title`, which is what the design specifies for them
  * (DESIGN-NOTES §6) and costs nothing.
+ *
+ * Dragging (screen 2a) is built on pointer events rather than HTML5
+ * drag-and-drop. The design's ghost has to be ours to place: the browser draws
+ * its drag image directly under the cursor, which sits on top of the row the
+ * drop is aimed at, and the design review called that out. Ours is pinned just
+ * outside the sidebar at the pointer's height, so the insertion line and the
+ * row under it stay visible for the whole drag.
  */
 
 const ROW_HEIGHT = 24;
 const NODE_PATH_ATTRIBUTE = "data-node-path";
+/** Pixels the pointer must travel before a press becomes a drag, not a click. */
+const DRAG_THRESHOLD = 4;
+/** How close to an edge starts auto-scrolling, and by how much per frame. */
+const EDGE = 24;
+const SCROLL_STEP = 6;
+
+/** A drag in flight. */
+interface DragState {
+  path: string;
+  node: Node;
+  /** False until the pointer has moved far enough to mean a drag. */
+  armed: boolean;
+  /** The pointer now, in client coordinates, for the ghost. */
+  x: number;
+  y: number;
+  /** Where the press started, for the threshold. */
+  fromX: number;
+  fromY: number;
+  drop: Drop | null;
+}
 
 /** What the shell can ask the tree to do. */
 export interface TreeHandle {
@@ -59,9 +100,16 @@ export function Tree({
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
   const [menuTarget, setMenuTarget] = useState<Node | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const { reorder, move, busy } = useOrder();
 
   const rows = useMemo(() => flatten(tree.root, overrides, filter), [tree, overrides, filter]);
+
+  // A filtered tree is not the order on disk — it is a subset of it — so a
+  // drop inside one would write a `.order` listing only what matched. Dragging
+  // is off while the filter is on, and the row says why.
+  const canDrag = filter === undefined && !busy;
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -124,6 +172,102 @@ export function Tree({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealed, rows.length]);
 
+  // ---- Dragging (screen 2a) --------------------------------------------
+  //
+  // One set of handlers on the scroller rather than per row, for the reason
+  // the context menu is shared: a virtualized tree cannot afford three
+  // listeners and a piece of state on every row.
+
+  const begin = useCallback(
+    (event: React.PointerEvent, node: Node) => {
+      if (!canDrag || event.button !== 0) return;
+      // Only a real drag counts. A click has to keep working, so nothing
+      // happens until the pointer has moved a few pixels (`armed` below).
+      setDrag({
+        path: node.path,
+        node,
+        armed: false,
+        x: event.clientX,
+        y: event.clientY,
+        fromX: event.clientX,
+        fromY: event.clientY,
+        drop: null,
+      });
+    },
+    [canDrag],
+  );
+
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent) => {
+      setDrag((current) => {
+        if (!current) return current;
+        const moved =
+          Math.abs(event.clientX - current.fromX) + Math.abs(event.clientY - current.fromY) > DRAG_THRESHOLD;
+        if (!current.armed && !moved) return current;
+        const box = scroller.current?.getBoundingClientRect();
+        let drop: Drop | null = null;
+        if (box) {
+          const y = event.clientY - box.top + (scroller.current?.scrollTop ?? 0);
+          const index = Math.floor(y / ROW_HEIGHT);
+          const offset = (y % ROW_HEIGHT) / ROW_HEIGHT;
+          // Below the last row is a real target: the end of the root's list,
+          // which is how a row is dragged out of a folder without aiming at
+          // another one.
+          drop = dropAt(tree.root, rows, current.path, index < rows.length ? index : -1, offset);
+        }
+        return { ...current, armed: true, x: event.clientX, y: event.clientY, drop };
+      });
+    },
+    [rows, tree.root],
+  );
+
+  const finish = useCallback(() => {
+    setDrag((current) => {
+      if (current?.armed && current.drop) {
+        const { folder, index } = current.drop;
+        if (folder === parentOf(current.path)) {
+          void reorder(folder, reorderedPaths(tree.root, folder, current.path, index));
+        } else {
+          // The destination has to be open, or the row lands somewhere
+          // invisible and the drag reads as having lost the file.
+          setOverrides((expansion) => expandFolder(expansion, folder));
+          void move(current.path, folder, index);
+        }
+      }
+      return null;
+    });
+  }, [reorder, move, tree.root]);
+
+  // Auto-scroll while a drag is held near an edge, so a row can be dragged
+  // out of a folder taller than the sidebar.
+  useEffect(() => {
+    if (!drag?.armed) return;
+    const element = scroller.current;
+    if (!element) return;
+    const box = element.getBoundingClientRect();
+    const above = drag.y - box.top;
+    const below = box.bottom - drag.y;
+    const by = above < EDGE ? -SCROLL_STEP : below < EDGE ? SCROLL_STEP : 0;
+    if (by === 0) return;
+    const timer = window.setInterval(() => {
+      element.scrollTop += by;
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, [drag?.armed, drag?.y]);
+
+  // Escape abandons a drag. It is bound here rather than in useKeymap because
+  // it only exists while a drag is in flight, which is the one case that map's
+  // "one handler" rule is about avoiding: this is not a shortcut, it is the
+  // gesture's own cancel.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDrag(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
+
   // Right-clicking anywhere in the tree finds the row under the pointer, so
   // one menu serves every row.
   const onContextMenu = useCallback(
@@ -153,6 +297,10 @@ export function Tree({
           role="tree"
           aria-label="Requests"
           onContextMenu={onContextMenu}
+          onPointerMove={onPointerMove}
+          onPointerUp={finish}
+          onPointerCancel={() => setDrag(null)}
+          onLostPointerCapture={finish}
           className="min-h-0 flex-1 overflow-y-auto py-1"
         >
           <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
@@ -169,6 +317,10 @@ export function Tree({
                     selected={row.node.path === activePath}
                     revealed={row.node.path === revealed}
                     onToggle={toggle}
+                    dragging={drag?.armed === true && drag.path === row.node.path}
+                    line={lineFor(drag?.drop ?? null, row.node.path)}
+                    into={drag?.drop?.into === row.node.path}
+                    onGrab={canDrag ? begin : undefined}
                   />
                 </div>
               );
@@ -178,7 +330,62 @@ export function Tree({
       </ContextMenuTrigger>
 
       <RowMenu node={menuTarget} />
+      {drag?.armed ? <DragGhost node={drag.node} x={drag.x} y={drag.y} scroller={scroller} /> : null}
     </ContextMenu>
+  );
+}
+
+/** Which edge of a row the single insertion line sits on, if either. */
+function lineFor(drop: Drop | null, path: string): "above" | "below" | null {
+  if (!drop?.line || drop.line.path !== path) return null;
+  return drop.line.below ? "below" : "above";
+}
+
+/**
+ * The 216×24 ghost of screen 2a: a grip glyph, the method label and the name.
+ *
+ * Pinned just outside the sidebar at the pointer's height rather than under
+ * the cursor. The design review's finding was that a preview under the cursor
+ * hides the rows the drop is aimed at — including the insertion line, which is
+ * the only thing telling you where the row will land — so it is moved clear of
+ * the tree entirely and follows the pointer vertically. `pointer-events-none`
+ * so it can never eat the drop.
+ *
+ * A portal because the scroller has `overflow-y: auto`: a fixed element inside
+ * it is still clipped by it.
+ */
+function DragGhost({
+  node,
+  x,
+  y,
+  scroller,
+}: {
+  node: Node;
+  x: number;
+  y: number;
+  scroller: React.RefObject<HTMLDivElement | null>;
+}) {
+  const box = scroller.current?.getBoundingClientRect();
+  // Just right of the sidebar, unless the sidebar is so wide that would leave
+  // the window — then just left of the pointer, which is the lesser evil.
+  const left = box ? Math.min(box.right + 8, window.innerWidth - 224) : x + 16;
+  return createPortal(
+    <div
+      aria-hidden
+      style={{ left, top: y - 12 }}
+      className="pointer-events-none fixed z-50 flex h-6 w-[216px] items-center gap-1.5 rounded-sm border border-border-control bg-raised px-1.5 shadow-[0_8px_24px_rgba(0,0,0,.5)]"
+    >
+      <GripVertical className="size-3 shrink-0 text-fg-ghost" />
+      {node.kind === "folder" ? (
+        <span className="w-2 shrink-0" />
+      ) : node.kind === "hook" || node.kind === "module" ? (
+        <span className={cn(methodGutter, "text-fg-dim")}>js</span>
+      ) : (
+        <span className={cn(methodGutter, methodColor(node.method))}>{node.method}</span>
+      )}
+      <span className="truncate text-ui text-fg-emphasis">{node.name}</span>
+    </div>,
+    document.body,
   );
 }
 
@@ -187,12 +394,24 @@ const TreeRow = memo(function TreeRow({
   selected,
   revealed,
   onToggle,
+  dragging,
+  line,
+  into,
+  onGrab,
 }: {
   row: Row;
   selected: boolean;
   /** Briefly marked by the palette's ⇧↵, so "it is over there" is visible. */
   revealed: boolean;
   onToggle: (path: string, depth: number) => void;
+  /** This row is the one being dragged: dimmed, per screen 2a. */
+  dragging: boolean;
+  /** The single insertion line, when it belongs on this row's edge. */
+  line: "above" | "below" | null;
+  /** This folder row is the drop destination. */
+  into: boolean;
+  /** Undefined while dragging is off — a filtered tree, or a write in flight. */
+  onGrab?: (event: React.PointerEvent, node: Node) => void;
 }) {
   const navigate = useNavigate();
   const { openTab } = useTabs();
@@ -233,7 +452,11 @@ const TreeRow = memo(function TreeRow({
       aria-expanded={expandable ? expanded : undefined}
       aria-level={depth + 1}
       tabIndex={-1}
-      onClick={() => open(true)}
+      onClick={() => (dragging ? undefined : open(true))}
+      // The whole row is the grab handle. A dedicated grip would be a 12px
+      // target in a 24px row, and the design draws the grip on the ghost —
+      // the thing that follows the cursor — not on the row.
+      onPointerDown={(event) => onGrab?.(event, node)}
       // Middle-click opens a tab without leaving the current document, the way
       // every editor and browser does it.
       onAuxClick={(event) => {
@@ -242,12 +465,21 @@ const TreeRow = memo(function TreeRow({
         open(false);
       }}
       className={cn(
-        "flex h-[var(--row-height)] cursor-default items-center pr-2 select-none",
-        selected
-          ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--accent)]"
-          : revealed
-            ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--border-strong)]"
-            : "text-fg-secondary hover:bg-control",
+        // The transparent borders are reserved, not decorative: the insertion
+        // line replaces one of them, so a row's height never changes when the
+        // line appears and the rows below do not jump mid-drag
+        // (DESIGN-NOTES §7.7).
+        "flex h-[var(--row-height)] cursor-default items-center border-y border-transparent pr-2 select-none",
+        line === "above" && "border-t-primary",
+        line === "below" && "border-b-primary",
+        into && "bg-control ring-1 ring-primary ring-inset",
+        dragging
+          ? "bg-inset text-fg-faint opacity-40"
+          : selected
+            ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--accent)]"
+            : revealed
+              ? "bg-selected text-fg-emphasis shadow-[inset_2px_0_0_var(--border-strong)]"
+              : "text-fg-secondary hover:bg-control",
       )}
     >
       <span className="shrink-0" style={{ width: indentOf(depth) }} />
@@ -311,6 +543,18 @@ const TreeRow = memo(function TreeRow({
         >
           <title>Shared settings in {node.settings.path}</title>
         </Plus>
+      ) : null}
+
+      {/* A folder whose order is manual carries a list glyph (screen 2a), so
+          the arrangement being deliberate is visible without opening a menu.
+          A plain title, like the git dots: this is a virtualized row. */}
+      {node.ordered ? (
+        <List
+          className="ml-1.5 size-2.5 shrink-0 text-fg-ghost"
+          aria-label="Manually ordered"
+        >
+          <title>Manually ordered by {node.path === "" ? ".order" : node.path + "/.order"}</title>
+        </List>
       ) : null}
 
       {node.kind === "broken" ? <BrokenMarker error={node.error} /> : null}
@@ -419,6 +663,8 @@ function report(work: Promise<unknown>, what: string): void {
 }
 
 function RowMenu({ node }: { node: Node | null }) {
+  const { setMode } = useOrder();
+  const folder = node?.kind === "folder" ? node : null;
   return (
     // The design never draws this menu (DESIGN-NOTES §6); it takes the app's
     // 12px default rather than shadcn's 14px.
@@ -435,6 +681,29 @@ function RowMenu({ node }: { node: Node | null }) {
       >
         Copy path
       </ContextMenuItem>
+      {/* Screen 2a's Folder options. It lives in the folder's own menu rather
+          than in the folder view, because `.order` is not a shared setting: it
+          does not live in `_folder.http`, it does not cascade, and a panel
+          beside Auth and Headers would imply it did. This is also where the
+          drag that writes it happens. */}
+      {folder ? (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuRadioGroup
+            value={folder.ordered ? "manual" : "alphabetical"}
+            onValueChange={(value) => {
+              if (value === "manual" || value === "alphabetical") void setMode(folder.path, value);
+            }}
+          >
+            <ContextMenuRadioItem value="manual" className="text-ui">
+              Manual order
+            </ContextMenuRadioItem>
+            <ContextMenuRadioItem value="alphabetical" className="text-ui">
+              Alphabetical
+            </ContextMenuRadioItem>
+          </ContextMenuRadioGroup>
+        </>
+      ) : null}
       <ContextMenuSeparator />
       <ContextMenuItem disabled>Rename…</ContextMenuItem>
       <ContextMenuItem disabled>Duplicate</ContextMenuItem>

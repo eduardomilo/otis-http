@@ -64,6 +64,10 @@ type Node struct {
 	// changed as you switched environments would be a moving target to
 	// search.
 	URL string `json:"url,omitempty"`
+	// Ordered is set on a folder that has a `.order` file giving it a manual
+	// order (docs/FORMAT.md §2.2). The sidebar draws a list glyph for it
+	// (screen 2a) and the folder's menu offers Alphabetical rather than Manual.
+	Ordered bool `json:"ordered,omitempty"`
 	// GitStatus is "M", "U", "A" or "D", empty when the file is clean or not
 	// in a repository.
 	GitStatus string `json:"gitStatus,omitempty"`
@@ -126,6 +130,7 @@ func convert(n *collection.Node, warnings map[string][]string, state git.State) 
 	switch {
 	case n.Kind == collection.KindFolder:
 		out.Kind = KindFolder
+		out.Ordered = n.Ordered
 		if n.SettingsPath != "" {
 			settingsPath := path.Join(n.ID, collection.FolderFileName)
 			out.Settings = &Node{

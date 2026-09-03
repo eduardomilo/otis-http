@@ -69,6 +69,13 @@ export interface Node {
     "hookOf"?: string;
 
     /**
+     * Ordered is set on a folder whose .order file gives it a manual order
+     * (docs/FORMAT.md §2.2). The sidebar draws a glyph for it and the folder's
+     * menu offers Alphabetical instead of Manual.
+     */
+    "ordered"?: boolean;
+
+    /**
      * Broken is set when the file failed to parse. The node still appears.
      */
     "broken"?: boolean;

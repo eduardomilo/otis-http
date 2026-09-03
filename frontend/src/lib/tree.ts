@@ -59,6 +59,23 @@ export function expandTo(overrides: Expansion, path: string): Expansion {
 }
 
 /**
+ * Opens a folder itself, and every ancestor above it.
+ *
+ * `expandTo` opens the ancestors of a path, which is what a selected row
+ * needs; a drop *into* a folder needs that folder open as well, or the row
+ * lands somewhere invisible and the drag reads as having lost the file.
+ */
+export function expandFolder(overrides: Expansion, folder: string): Expansion {
+  if (folder === "") return overrides;
+  const depth = folder.split("/").length - 1;
+  const opened = expandTo(overrides, folder);
+  if (isExpanded(opened, folder, depth)) return opened;
+  const next = new Map(opened);
+  next.set(folder, true);
+  return next;
+}
+
+/**
  * Flattens the tree into the visible rows.
  *
  * When `visible` is given (a filter is active) only nodes in it are rendered,
