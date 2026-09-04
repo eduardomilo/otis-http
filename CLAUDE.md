@@ -602,6 +602,15 @@ lists the design decisions that are still open — do not resolve them silently.
   platforms; without the second, screen 2b's start screen — and the
   recent-collections list on it — was unreachable once anything was open.
   DESIGN-NOTES §9.24.
+- **An entry point that names a document needs a route for "there is not one
+  yet".** Two have been found: the collection root below, and the environment
+  editor — `/env/$name` needs a name, and a collection with no `env/*.json`
+  has none, so "Edit environments" was hidden in the palette and went to `/`
+  from the title strip, leaving no way to create the first one.
+  `routes/env.index.tsx` serves `/env`, replacing itself with the first
+  environment when there is one so callers need not know which case they are
+  in. When adding a command that opens a named thing, check what it does
+  before the first one exists. DESIGN-NOTES §9.27.
 - **The collection root is a folder with an empty node path, and it has its
   own route.** An empty dynamic segment does not match `/f/$path` — the router
   answers Not Found — so `routes/f.index.tsx` serves the root and

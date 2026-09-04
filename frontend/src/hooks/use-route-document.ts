@@ -1,6 +1,6 @@
 import { useRouterState } from "@tanstack/react-router";
 
-import { FOLDER_ROOT_ROUTE_ID, nodeRoute } from "@/lib/paths";
+import { ENV_INDEX_ROUTE_ID, FOLDER_ROOT_ROUTE_ID, nodeRoute } from "@/lib/paths";
 
 /** What the current route is showing, if it addresses a document at all. */
 export interface RouteDocument {
@@ -36,6 +36,11 @@ export function useRouteDocument(): RouteDocument | null {
         const kind = KIND_BY_ROUTE[match.routeId];
         // The root folder route has no path param, and "" is its node path.
         if (kind) return { kind, path: (match.params as { path?: string }).path ?? "" };
+        // The index route names no environment, and "" is what the sidebar
+        // reads as "show the list with nothing open".
+        if (match.routeId === ENV_INDEX_ROUTE_ID) {
+          return { kind: "environment" as const, path: "", name: "" };
+        }
         if (match.routeId === "/env/$name") {
           const { name } = match.params as { name: string };
           return { kind: "environment" as const, path: `env/${name}.json`, name };

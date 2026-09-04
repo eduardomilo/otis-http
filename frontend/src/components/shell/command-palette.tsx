@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { match, segments, type Segment } from "@/lib/fuzzy";
 import { methodColor, methodGutter } from "@/lib/method";
-import { nodeLink, nodeParentPath, nodeRoute } from "@/lib/paths";
+import { ENV_INDEX_ROUTE, nodeLink, nodeParentPath, nodeRoute } from "@/lib/paths";
 import { hint } from "@/lib/platform";
 import { formatDuration } from "@/lib/format";
 import { relativeTime } from "@/lib/time";
@@ -870,9 +870,16 @@ function buildCommands(context: {
     },
     {
       name: "Edit environments",
-      detail: "variables and secrets",
-      hidden: firstEnvironment === "",
-      run: go(() => void navigate({ to: "/env/$name", params: { name: firstEnvironment } })),
+      // Not hidden when there are none: that is exactly when somebody needs
+      // it, and /env now leads to the empty state that makes the first one.
+      detail: firstEnvironment === "" ? "none yet — create the first" : "variables and secrets",
+      run: go(() =>
+        void navigate(
+          firstEnvironment === ""
+            ? { to: ENV_INDEX_ROUTE }
+            : { to: "/env/$name", params: { name: firstEnvironment } },
+        ),
+      ),
     },
     {
       // How you get to another collection at all. macOS has File › Open

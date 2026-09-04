@@ -142,7 +142,15 @@ function Row({
  * Creating an environment writes a file, so it says the file name before it
  * does (DESIGN-NOTES §8.2: every write to disk is announced before it happens).
  */
-function NewEnvironmentDialog({
+/**
+ * Naming a new environment.
+ *
+ * Exported because the environment *index* route needs it too: with no
+ * environments there is nothing for the list to list, and the centre pane has
+ * to carry the same action rather than leaving a `+` in the sidebar as the
+ * only way to make the first one.
+ */
+export function NewEnvironmentDialog({
   open,
   onOpenChange,
 }: {

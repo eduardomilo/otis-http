@@ -48,6 +48,16 @@ export const FOLDER_ROOT_ROUTE = "/f" as const;
 export const FOLDER_ROOT_ROUTE_ID = "/f/" as const;
 
 /**
+ * The environment editor with none named, and its route id.
+ *
+ * Same shape as the folder root above: an index route's id keeps the trailing
+ * slash its navigable path drops. This is where "edit environments" goes when
+ * a collection has none, which is every collection until somebody makes one.
+ */
+export const ENV_INDEX_ROUTE = "/env" as const;
+export const ENV_INDEX_ROUTE_ID = "/env/" as const;
+
+/**
  * Link options for a node. Pass the raw ID; the router encodes it.
  *
  *     <Link {...nodeLink("request", "orders/create-order.http")}>

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DiffIndexRouteImport } from './routes/diff.index'
 import { Route as DiffPathRouteImport } from './routes/diff.$path'
+import { Route as EnvIndexRouteImport } from './routes/env.index'
 import { Route as EnvNameRouteImport } from './routes/env.$name'
 import { Route as FIndexRouteImport } from './routes/f.index'
 import { Route as FPathRouteImport } from './routes/f.$path'
@@ -30,6 +31,11 @@ const DiffIndexRoute = DiffIndexRouteImport.update({
 const DiffPathRoute = DiffPathRouteImport.update({
   id: '/diff/$path',
   path: '/diff/$path',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EnvIndexRoute = EnvIndexRouteImport.update({
+  id: '/env/',
+  path: '/env/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EnvNameRoute = EnvNameRouteImport.update({
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/f/$path': typeof FPathRoute
   '/r/$path': typeof RPathRoute
   '/diff/': typeof DiffIndexRoute
+  '/env/': typeof EnvIndexRoute
   '/f/': typeof FIndexRoute
 }
 export interface FileRoutesByTo {
@@ -69,6 +76,7 @@ export interface FileRoutesByTo {
   '/f/$path': typeof FPathRoute
   '/r/$path': typeof RPathRoute
   '/diff': typeof DiffIndexRoute
+  '/env': typeof EnvIndexRoute
   '/f': typeof FIndexRoute
 }
 export interface FileRoutesById {
@@ -79,6 +87,7 @@ export interface FileRoutesById {
   '/f/$path': typeof FPathRoute
   '/r/$path': typeof RPathRoute
   '/diff/': typeof DiffIndexRoute
+  '/env/': typeof EnvIndexRoute
   '/f/': typeof FIndexRoute
 }
 export interface FileRouteTypes {
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
     | '/f/$path'
     | '/r/$path'
     | '/diff/'
+    | '/env/'
     | '/f/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/f/$path'
     | '/r/$path'
     | '/diff'
+    | '/env'
     | '/f'
   id:
     | '__root__'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/f/$path'
     | '/r/$path'
     | '/diff/'
+    | '/env/'
     | '/f/'
   fileRoutesById: FileRoutesById
 }
@@ -118,6 +130,7 @@ export interface RootRouteChildren {
   FPathRoute: typeof FPathRoute
   RPathRoute: typeof RPathRoute
   DiffIndexRoute: typeof DiffIndexRoute
+  EnvIndexRoute: typeof EnvIndexRoute
   FIndexRoute: typeof FIndexRoute
 }
 
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/diff/$path'
       fullPath: '/diff/$path'
       preLoaderRoute: typeof DiffPathRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/env/': {
+      id: '/env/'
+      path: '/env'
+      fullPath: '/env/'
+      preLoaderRoute: typeof EnvIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/env/$name': {
@@ -182,6 +202,7 @@ const rootRouteChildren: RootRouteChildren = {
   FPathRoute: FPathRoute,
   RPathRoute: RPathRoute,
   DiffIndexRoute: DiffIndexRoute,
+  EnvIndexRoute: EnvIndexRoute,
   FIndexRoute: FIndexRoute,
 }
 export const routeTree = rootRouteImport

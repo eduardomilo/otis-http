@@ -1142,3 +1142,34 @@ default to `""` now, which is the root's real node path.
 The root is still not a tree row, and that stays as the design has it: the
 collection's name is in the title strip, and the palette and the Auth tab are
 the ways in. What was wrong was that neither worked.
+
+**9.27 "Edit environments" led nowhere when there were none.** A collection
+with no `env/*.json` had no way to make its first environment. The command
+palette's "Edit environments" was `hidden` in exactly that case, and the title
+strip's "Edit environments…" navigated to `/` — which reads, from the outside,
+as a menu item that does nothing. The sidebar's `+` was the only affordance,
+and the sidebar only shows the environment list on an `/env/*` route, which
+neither caller could reach.
+
+The shape is §9.26's, one route over: an entry point that assumes a *named*
+document, in a state where there is not one yet. `/env/$name` needs a name, and
+there is no name until somebody makes one.
+
+**`/env` is now a route of its own** and is where both callers go. With
+environments present it replaces itself with the first, so a caller does not
+have to know which case it is in; with none it is the empty state that explains
+what an environment is and offers **New environment**. The palette's command is
+no longer hidden — that is precisely when somebody needs it — and its detail
+line says "none yet — create the first" so the row is honest about what it will
+do.
+
+The reason to spell out what an environment *is* on that screen rather than
+just offering the button: it is the one screen a person reaches while not
+knowing whether they need one. The copy says a collection does not need an
+environment and requests that name no variables work without it, which is true
+and is the answer for most people who land there by curiosity.
+
+`NewEnvironmentDialog` moved from private to exported for this, and that is the
+whole change to the list: the dialog is the same one the `+` opens, so there is
+one way to name an environment rather than two that could disagree about what
+a valid name is.

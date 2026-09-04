@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ENV_INDEX_ROUTE } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 import { useEnvironments } from "@/state/environment-context";
 
@@ -112,7 +113,10 @@ export function EnvironmentChip({ enabled }: { enabled: boolean }) {
                 void navigate(
                   environments.length > 0
                     ? { to: "/env/$name", params: { name: environments[0].name } }
-                    : { to: "/" },
+                    // With none, /env is the empty state that makes the
+                    // first one. It used to go to "/", which looked like the
+                    // menu item doing nothing.
+                    : { to: ENV_INDEX_ROUTE },
                 )
               }
             >
