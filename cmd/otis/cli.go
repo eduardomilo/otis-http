@@ -74,7 +74,7 @@ func newRootCmd() *cobra.Command {
 		Version: buildinfo.Version,
 	}
 	root.SetVersionTemplate(buildinfo.Block())
-	root.AddCommand(newLsCmd(), newRunCmd(), newImportCmd(), newVersionCmd())
+	root.AddCommand(newLsCmd(), newRunCmd(), newImportCmd(), newMCPCmd(), newVersionCmd())
 	return root
 }
 

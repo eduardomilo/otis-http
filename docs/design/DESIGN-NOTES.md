@@ -932,3 +932,50 @@ the first exception to that, and the promise is worth more than the line. The
 panel says whether a value is stored here, which is the half that changes what
 you do next. If the design wants the date, the index is where it would have to
 go, and §9's next reader should know that is the trade.
+
+**9.22 The agent indicator, which the design does not draw.** `docs/MCP.md`
+§11 needs a chip in the title strip saying that Otis' MCP server is on and
+whether something is connected. The design has no such element, so its colour
+and place were left to §9 (`MCP.md` §14.3) and are decided here.
+
+**The title strip, right of the collection name, left of the environment
+selector.** It belongs in the chrome rather than in a pane because it is a
+property of the *window*, not of whatever is open in it — the same reason the
+environment selector lives there. Right of the collection name, because the
+two together read as the sentence that matters: which collection, and who else
+can reach it.
+
+**Amber (`--modified`, `#fbbf24`), and this is deliberately a fifth meaning for
+it.** §9.3 flags amber as already carrying four — POST, git-modified, secret,
+dirty-tab — and adding to that list needs a reason rather than a shrug. The
+reason is that the other four are not colours in the title strip: no method
+label, no git marker, no secret and no dirty dot appears in that region, so the
+fifth meaning does not have to be told apart from the others in the same
+glance. What amber *means* across all five is consistent, which is the part
+that matters: something is in a state you should know about. It is not an error
+and not a success.
+
+Neither of the alternatives works. The accent (emerald) means "good" in this
+design (§2.4), and an agent holding your credentials is not an achievement.
+`#f87171` means destruction and would read as a fault, which an enabled server
+is not — it would also be the fifth meaning of *that* colour, in a region where
+"Discard changes…" already lives.
+
+The states, which were never in doubt:
+
+| | |
+| --- | --- |
+| Off | Nothing at all. A feature that is off should not occupy the chrome |
+| Enabled, nothing connected | `agent · idle` in `--fg-dim`, no dot |
+| Connected | `agent · <client>` with a live amber dot |
+| A confirmation waiting | the chip counts it: `agent · 1 waiting` |
+
+**The count is exact, like every other count in Otis** (§8.5). A chip reading
+"agent · 2 waiting" and a popover listing three confirmations is worse than no
+chip, because the number is the only reason to look.
+
+Clicking it opens the popover: the three capability switches, the connected
+client, the recent audit entries, and *Disconnect agents*. That control is the
+kill switch (`MCP.md` §10), so it takes the destructive treatment — `#f87171`
+text, no fill — and unlike §9.17's ordering operations it has no undo, because
+its whole purpose is that there is no way back to the old token.

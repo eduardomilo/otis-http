@@ -82,9 +82,13 @@ lists the design decisions that are still open — do not resolve them silently.
   MCP: `policy.go` decides what an agent may do (docs/MCP.md §§3–6) as pure
   functions over grants, an environment's `$otis.agents` and git's view of the
   tree; `redact.go` is the single gate every agent-facing result passes
-  through; `audit.go` is the JSONL record (§9). It imports no service and no
-  transport, which is what lets the policy be exhaustively tested and keeps
-  the decision separable from the plumbing that will carry it.
+  through; `audit.go` is the JSONL record (§9); `auth.go` is the token and the
+  `Origin`/`Host` checks (§2); `limit.go` the per-capability token buckets
+  (§10); `intent.go` the two-phase gate and the fingerprint it binds to
+  (§6.2); `endpoint.go` the `mcp.json` a client is configured from. It imports
+  no service and no transport, which is what lets the policy be exhaustively
+  tested and keeps the decision separable from the plumbing that will carry
+  it — and it must keep building under `otis_cli`, since `cmd/otis` imports it.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -102,6 +106,9 @@ lists the design decisions that are still open — do not resolve them silently.
   and the window both use. Its own package rather than a corner of
   `internal/services`, because `cmd/otis` needs it and must not import that
   (Wails, and therefore cgo).
+- `cmd/otis/mcp.go` — `otis mcp config`, and the reason there is no
+  `otis mcp serve`: the listener belongs to the app, because a confirmation
+  needs a window to appear in.
 - `cmd/otis/` — the CLI (package `cli`, cobra). Not a `main` package: `main.go`
   dispatches to it when the process has arguments and opens the window when it
   does not. `dispatch.go` owns the rule that decides which — a file
@@ -265,6 +272,39 @@ lists the design decisions that are still open — do not resolve them silently.
   body marshalled through one call is a 40 MB JSON string built in Go, parsed
   in the webview and handed to the DOM, and all three of those block. For the
   same reason pretty-printing is Go's job, not the window's.
+- **The `Origin` and `Host` checks are the DNS-rebinding defence, and a valid
+  token is not a substitute.** Without them any web page the user visits can
+  drive the MCP server through their browser: an attacking page points its own
+  hostname at `127.0.0.1`, and the browser then sends *that* hostname in both
+  headers — which is the only thing distinguishing it from a real local
+  client, since the page cannot forge either header. So `Auth.Guard` checks
+  them **before** the token, both because they answer "who is calling" without
+  touching the credential and so a probing page cannot tell from a rejection
+  whether its token was looked at. `localhost` counts as loopback *there* while
+  §2 forbids binding to it — not a contradiction: binding to a name that might
+  resolve off-loopback would expose the listener, whereas no rebinding attack
+  can make a browser claim `localhost` for a page served elsewhere. A rejection
+  never echoes what was presented, or the token lands in the caller's log.
+- **Nothing sends on one tool call, and the intent is bound to a fingerprint.**
+  `send_request` and `run_folder` without an intent preview and send nothing;
+  with the intent handed back they go on to ask a person. Being universal is
+  what makes it a property rather than a configuration (docs/MCP.md §6.2). The
+  fingerprint covers method, URL, headers, body, environment and the session
+  values consumed, each length-prefixed so no field's contents can imitate the
+  next — without the body in it, two phases would be a hole: preview something
+  harmless, edit it with `update_request`, spend the intent on what the preview
+  never described. An intent is single-use and is spent **on every outcome
+  including a stale one**, so an agent cannot retry the check to search for a
+  matching request. And redeeming grants nothing: `Redeem` returns an intent
+  and the caller still has to go through `Decide` and then a person. An agent
+  will echo an intent back without a thought.
+- **There is no headless MCP server, and `otis mcp serve` must not be added.**
+  The listener lives in the app because everything that makes it safe is
+  there: the window a confirmation appears in (§6.4), the open collection, the
+  keychain. A CLI server would be this design with its one safety removed.
+  `otis mcp config` prints the client block, which is the whole of the CLI's
+  half; the port is OS-assigned and the token minted per launch, so both
+  change every start (§14.1) and the command is what makes that cost a paste.
 - **Everything an agent is shown goes through `mcp.Redactor.Marshal`, and it
   fails closed.** A secret reaching an agent is the one failure in the MCP
   design that cannot be undone: a bad send can be re-run and a bad write is in

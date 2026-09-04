@@ -75,11 +75,16 @@ the file is deleted when the server stops. That is how a client is configured:
 }
 ```
 
-> **Open decision (§14.1).** A port and token that change every launch mean
-> re-reading that file each time. The alternative is a stable port, which is a
-> worse security posture for a marginal convenience. My recommendation is to
-> keep it unstable and ship a `otis mcp config` command that prints the current
-> block for pasting.
+**Decided (§14.1): both stay unstable.** A port and token that change every
+launch mean re-reading that file each time, and the alternative — a stable port
+with a stored token — is a worse security posture for a marginal convenience.
+`otis mcp config` prints the block above with the current values, which makes
+the cost of an unstable endpoint one paste.
+
+There is no `otis mcp serve`. The listener belongs to the app, because a
+confirmation needs a window to appear in (§6.4); a headless MCP server would be
+this design with its one safety removed. Asked for the endpoint with nothing
+running, `otis mcp config` says the server is off and where to turn it on.
 
 ## 3. Capabilities: READ, RUN and WRITE
 
@@ -630,8 +635,9 @@ the old one back.
 ## 11. The in-app indicator
 
 **When the server is enabled, the title strip carries a chip; when a client is
-actually connected, the chip is live.** The design does not draw one, so this
-is a `DESIGN-NOTES` §9 item (§14.3), but its content is not in doubt:
+actually connected, the chip is live.** The design does not draw one, so the
+visual decision is written up as `DESIGN-NOTES` §9.22 (§14.3, decided: the
+title strip, in amber). Its content was never in doubt:
 
 - Off: nothing at all. A feature that is off should not occupy the chrome.
 - Enabled, nothing connected: `agent · idle`, in `--fg-dim`.
@@ -876,15 +882,28 @@ by `git status` rather than by policy.
 
 ## 14. Decisions
 
-Seven are settled and struck through, with the reasoning kept so a later reader
-sees what was decided and why rather than re-opening it. Five are still yours.
+All twelve are settled and struck through, with the reasoning kept so a later
+reader sees what was decided and why rather than re-opening it.
 
-Three of the seven went against my recommendation, and §14.7 is the one that
-moved the design's safety rather than its shape — it is flagged in §13 as the
-residual risk for that reason.
+Three went against my recommendation, and §14.7 is the one that moved the
+design's safety rather than its shape — it is flagged in §13 as the residual
+risk for that reason. The last five were delegated rather than argued: asked
+to take my own recommendations, I took all five unchanged, so each is marked
+**Decided as recommended** and the reasoning below is the recommendation's,
+now load-bearing.
 
-1. **Port and token stability** (§2). Recommend: unstable, plus
-   `otis mcp config` to print the client block.
+1. ~~Port and token stability?~~ **Decided as recommended: unstable** (§2).
+   An OS-assigned port and a token minted at startup, both changing every
+   launch, with `otis mcp config` printing the block to paste. A fixed port is
+   a worse security posture for a marginal convenience, and the convenience is
+   bought back by one command.
+
+   There is deliberately no `otis mcp serve`. The server runs in the app
+   because everything that makes it safe is there — the window a confirmation
+   appears in (§6.4), the open collection, the keychain — and a headless
+   server would be a listener with no way to ask anyone anything, which is the
+   shape this whole design refuses. `otis mcp config` says so when it finds no
+   endpoint file, rather than reporting a missing file.
 2. ~~Audit log persistence?~~ **Decided: a file** (§9.1), against my
    recommendation. `<config>/otis/mcp-audit.jsonl`, on by default, capped and
    rotated, `0600`, never inside the collection, with a test asserting nothing
@@ -893,17 +912,28 @@ residual risk for that reason.
    and the second is the question an audit log exists for. The cost is a
    durable record of which endpoints you called, which is why the off switch
    is part of the design.
-3. **The indicator's colour and place** (§11). A `DESIGN-NOTES` §9 item;
-   recommend the title strip in amber, and I would add it as §9.22 rather than
-   decide it here.
+3. ~~The indicator's colour and place?~~ **Decided as recommended: the title
+   strip, in amber** (§11), written up as `DESIGN-NOTES` §9.22 rather than
+   settled here, because it is a visual decision and that is where those live.
+   Amber because the design already spends red on destruction and emerald on
+   success, and "something else can drive this window" is neither — it is a
+   state to be aware of, which is what amber is for.
 4. ~~`agents` default?~~ **Decided: `"confirm"`** (§4). `"deny"` is safer but
    makes RUN useless until every environment is annotated, and `"allow"` is
    indefensible. An environment that says nothing gets a person in the loop;
    opting out is the deliberate act.
-5. **Confirmation timeout** (§6). Recommend 60s. Longer leaves dialogs up;
-   shorter makes a person racing a timer.
-6. **Should RUN require READ?** Recommend no — an agent told exactly what to
-   send should not need to enumerate.
+5. ~~Confirmation timeout?~~ **Decided as recommended: 60 seconds** (§6),
+   and the same 60 seconds bounds an intent (§6.2) — one number, because a
+   preview that outlived the dialog it leads to would be a second answer to
+   "how long is this offer good for". Longer leaves dialogs standing on a
+   screen nobody is at; shorter makes a person race a timer they did not
+   start. A timeout is logged as `timed-out` and is a refusal, never a
+   default-yes.
+6. ~~Should RUN require READ?~~ **Decided as recommended: no.** An agent told
+   exactly which request to send should not have to be given the run of the
+   collection to send it. The capabilities are independent, and RUN alone is
+   the tighter grant of the two — it can send what it is named, and cannot
+   enumerate what else is there.
 7. ~~Should an unreviewed send that uses a secret be refused, or confirmed with
    a louder dialog?~~ **Decided: confirmed**, against my recommendation
    (§5.1). The gain is real — an agent can iterate on a request that needs a
@@ -946,9 +976,14 @@ residual risk for that reason.
    added later beside `update_request` without changing it, since the two would
    not conflict. The signal to revisit is agents actually losing comments,
    directives or scripts in practice, which verification step 32 measures.
-9. **Should WRITE be allowed at all in a collection with uncommitted changes
-   already present?** Recommend yes, with no special case: those files are
-   simply unreviewed like any other, and §5 already covers them.
+9. ~~Should WRITE be allowed in a collection with uncommitted changes already
+   present?~~ **Decided as recommended: yes, with no special case.** Those
+   files are unreviewed like any other and §5 already covers them: an
+   unreviewed request cannot be sent to production without the confirmation,
+   whoever left it unreviewed. A special case here would mean an agent's
+   behaviour depended on whether *you* had committed your own work, which is
+   a rule nobody could predict from the outside — and it would push people
+   toward committing to clear it.
 10. ~~Should two-phase apply to every client, or only to ones that cannot be
     asked?~~ **Decided: every client** (§6.2). The deciding argument was the
     one against my own recommendation — with two phases everywhere there is no
