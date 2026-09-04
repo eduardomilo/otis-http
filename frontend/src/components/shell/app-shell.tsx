@@ -27,7 +27,7 @@ import { useRouteDocument } from "@/hooks/use-route-document";
 import { OtisEvent } from "@/lib/events.gen";
 import { isMac } from "@/lib/platform";
 import { CollectionService } from "@bindings/internal/services";
-import { nodeParentPath, nodeRoute } from "@/lib/paths";
+import { nodeLink, nodeParentPath } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
@@ -232,7 +232,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!target || !target.kind) return;
     const kind = target.kind === "request" ? "request" : "folder";
     openTab(target.node, kind, { activate: true });
-    void navigate({ to: nodeRoute(kind), params: { path: target.node } });
+    void navigate(nodeLink(kind, target.node));
   }, [navigate, openTab]);
 
   useEffect(() => {
@@ -490,7 +490,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         // Go rather than the preview.
         onCreated={(nodePath, kind) => {
           openTab(nodePath, kind, { activate: true });
-          void navigate({ to: nodeRoute(kind), params: { path: nodePath } });
+          void navigate(nodeLink(kind, nodePath));
         }}
       />
 

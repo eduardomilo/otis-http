@@ -1098,3 +1098,47 @@ and the CLI's `--env` passes them, but the dialog offers no way to add one, so
 an import through the window converts the collection and not the environments
 beside it. The card's own description mentions "or environment export", so this
 is a gap with a promise in front of it.
+
+**9.26 The collection root's settings were unreachable, on both routes to
+them.** A root `_folder.http` is where auth for a whole collection lives, and
+it is exactly what the Postman importer writes when an export has
+collection-level auth. It was not openable in Otis.
+
+The cause is one line of routing. The root is a folder whose node path is the
+**empty string** — `lib/tree.ts` says so plainly: "The root itself is not a
+row; the collection's name is in the title strip" — and an empty dynamic
+segment does not match `/f/$path`. `navigate({ to: "/f/$path", params: { path:
+"" } })` produces `/f/`, and the router answers **Not Found**. Both documented
+ways in went there:
+
+- the command palette's "Open the collection root", which `SCREENS.md` lists
+  as the way to reach it, and
+- the Auth tab's **"Edit in the collection root"** button, which is the one a
+  person actually finds — it is right there under the inherited directive on
+  every request that inherits it.
+
+So the root has its own route now (`routes/f.index.tsx`), and `nodeLink` is the
+single place that knows the root is a different route rather than an empty
+segment. Every folder navigation goes through it; the hand-built
+`{ to: nodeRoute(kind), params: { path } }` form is gone from the call sites,
+because that form cannot express the root and each site would have had to
+remember.
+
+Two things this turned up that are worth keeping:
+
+**A route's id is not its path.** TanStack gives an index route the trailing
+slash in its id (`/f/`) and drops it from the navigable path (`/f`). Anything
+matching on `routeId` — the tab list, the status bar's document — needs the
+first; anything navigating needs the second. `paths.ts` names both, because
+finding that out costs an afternoon.
+
+**`params.path` was assumed present in two places**, and the root route has no
+path param at all. `use-route-document` and `tabs-context` each read
+`(match.params as { path: string }).path`, which is `undefined` there — and the
+second threw "Cannot read properties of undefined (reading 'lastIndexOf')" from
+a path helper three frames down, which is a long way from the cause. Both
+default to `""` now, which is the root's real node path.
+
+The root is still not a tree row, and that stays as the design has it: the
+collection's name is in the title strip, and the palette and the Auth tab are
+the ways in. What was wrong was that neither worked.

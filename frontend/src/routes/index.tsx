@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { hint } from "@/lib/platform";
-import { nodeRoute } from "@/lib/paths";
+import { nodeLink } from "@/lib/paths";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
 
@@ -27,7 +27,7 @@ function Home() {
     if (!active) return;
     const tab = tabs.find((t) => t.path === active);
     if (!tab) return;
-    void navigate({ to: nodeRoute(tab.kind), params: { path: tab.path }, replace: true });
+    void navigate({ ...nodeLink(tab.kind, tab.path), replace: true });
   }, [settings?.tabs.active, tabs, navigate]);
 
   return (

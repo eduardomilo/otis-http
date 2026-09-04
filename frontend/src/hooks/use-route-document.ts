@@ -1,6 +1,6 @@
 import { useRouterState } from "@tanstack/react-router";
 
-import { nodeRoute } from "@/lib/paths";
+import { FOLDER_ROOT_ROUTE_ID, nodeRoute } from "@/lib/paths";
 
 /** What the current route is showing, if it addresses a document at all. */
 export interface RouteDocument {
@@ -19,6 +19,8 @@ const KIND_BY_ROUTE: Record<string, RouteDocument["kind"]> = {
   [nodeRoute("request")]: "request",
   [nodeRoute("folder")]: "folder",
   [nodeRoute("diff")]: "diff",
+  // The collection root, whose route carries no path param at all.
+  [FOLDER_ROOT_ROUTE_ID]: "folder",
 };
 
 /**
@@ -32,7 +34,8 @@ export function useRouteDocument(): RouteDocument | null {
     select: (state) => {
       for (const match of state.matches) {
         const kind = KIND_BY_ROUTE[match.routeId];
-        if (kind) return { kind, path: (match.params as { path: string }).path };
+        // The root folder route has no path param, and "" is its node path.
+        if (kind) return { kind, path: (match.params as { path?: string }).path ?? "" };
         if (match.routeId === "/env/$name") {
           const { name } = match.params as { name: string };
           return { kind: "environment" as const, path: `env/${name}.json`, name };

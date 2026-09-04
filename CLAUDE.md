@@ -602,6 +602,21 @@ lists the design decisions that are still open — do not resolve them silently.
   platforms; without the second, screen 2b's start screen — and the
   recent-collections list on it — was unreachable once anything was open.
   DESIGN-NOTES §9.24.
+- **The collection root is a folder with an empty node path, and it has its
+  own route.** An empty dynamic segment does not match `/f/$path` — the router
+  answers Not Found — so `routes/f.index.tsx` serves the root and
+  **`nodeLink` is the only place that knows it**. Build folder links with
+  `nodeLink(kind, path)`, never `{ to: nodeRoute(kind), params: { path } }`:
+  that form cannot express the root, and every site using it was a route to a
+  404, including the palette's "Open the collection root" and the Auth tab's
+  "Edit in the collection root". A root `_folder.http` is where a whole
+  collection's auth lives and is what the Postman importer writes, so this was
+  not a corner. Note also that a route's **id is not its path**: an index
+  route's id keeps the trailing slash (`/f/`) and its navigable path does not
+  (`/f`), so `FOLDER_ROOT_ROUTE` and `FOLDER_ROOT_ROUTE_ID` are both named.
+  Anything reading `match.params.path` must default it to `""`, because the
+  root route has no path param — two places assumed otherwise and one of them
+  failed three frames away from the cause. DESIGN-NOTES §9.26.
 - **A sidebar that replaces the request tree carries the way back.** The
   environment list and the changes list each swap the tree out, and neither
   screen in the design draws anything that returns — so with no document tab

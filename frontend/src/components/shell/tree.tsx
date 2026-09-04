@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { dropAt, parentOf, reorderedPaths, type Drop } from "@/lib/drag";
 import { methodColor, methodGutter } from "@/lib/method";
-import { nodeParentPath, nodeRoute } from "@/lib/paths";
+import { nodeLink, nodeParentPath } from "@/lib/paths";
 import { fileManagerName } from "@/lib/platform";
 import {
   expandFolder,
@@ -430,7 +430,7 @@ const TreeRow = memo(function TreeRow({
       if (isScript) {
         const folder = node.path.includes("/") ? node.path.replace(/\/[^/]*$/, "") : "";
         openTab(folder, "folder", { activate });
-        if (activate) void navigate({ to: nodeRoute("folder"), params: { path: folder } });
+        if (activate) void navigate(nodeLink("folder", folder));
         return;
       }
       const kind = isFolder ? "folder" : "request";
@@ -442,7 +442,7 @@ const TreeRow = memo(function TreeRow({
       // rather than toggling: collapsing the folder you just clicked on, while
       // its document opens beside you, reads as the click having gone wrong.
       if (isFolder && expandable && !expanded) onToggle(node.path, depth);
-      void navigate({ to: nodeRoute(kind), params: { path: node.path } });
+      void navigate(nodeLink(kind, node.path));
     },
     [isFolder, isScript, expandable, expanded, node.path, depth, onToggle, navigate, openTab],
   );

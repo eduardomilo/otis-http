@@ -28,11 +28,37 @@ const ROUTE_BY_KIND = {
 } as const;
 
 /**
+ * The collection root's folder route.
+ *
+ * The root is a folder with an empty node path, and an empty dynamic segment
+ * does not match `/f/$path`: the router answers Not Found. So it has its own
+ * route, and everything that links to a folder has to go through nodeLink,
+ * which knows that.
+ */
+export const FOLDER_ROOT_ROUTE = "/f" as const;
+
+/**
+ * The collection-root folder route's *id*, which is not its path.
+ *
+ * TanStack gives an index route the trailing slash in its id (`/f/`) and
+ * drops it from the navigable path (`/f`). Anything matching on `routeId` —
+ * the tab list, the status bar's document — needs this one, and anything
+ * navigating needs the other. Naming both is cheaper than finding out.
+ */
+export const FOLDER_ROOT_ROUTE_ID = "/f/" as const;
+
+/**
  * Link options for a node. Pass the raw ID; the router encodes it.
  *
  *     <Link {...nodeLink("request", "orders/create-order.http")}>
  */
 export function nodeLink(kind: NodeRouteKind, path: string) {
+  // The collection root. See FOLDER_ROOT_ROUTE: an empty dynamic segment is
+  // Not Found, so the root has a route of its own and this is the one place
+  // that has to know it.
+  if (kind === "folder" && path === "") {
+    return { to: FOLDER_ROOT_ROUTE } satisfies LinkOptions;
+  }
   return { to: ROUTE_BY_KIND[kind], params: { path } } satisfies LinkOptions;
 }
 

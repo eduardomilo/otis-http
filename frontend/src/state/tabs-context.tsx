@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
-import { nodeRoute } from "@/lib/paths";
+import { FOLDER_ROOT_ROUTE_ID, nodeLink, nodeRoute } from "@/lib/paths";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useSettings } from "@/state/settings-context";
@@ -73,6 +73,8 @@ const TabsContext = createContext<TabsContextValue | null>(null);
 const KIND_BY_ROUTE: Record<string, TabKind> = {
   [nodeRoute("request")]: "request",
   [nodeRoute("folder")]: "folder",
+  // The collection root's own route, so a tab on it is still a folder tab.
+  [FOLDER_ROOT_ROUTE_ID]: "folder",
 };
 
 export function TabsProvider({ children }: { children: ReactNode }) {
@@ -90,7 +92,10 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     select: (state) => {
       for (const match of state.matches) {
         const kind = KIND_BY_ROUTE[match.routeId];
-        if (kind) return { kind, path: (match.params as { path: string }).path };
+        // The collection root's route carries no path param, and "" is its
+        // node path. Reading `.path` there yields undefined, which every
+        // path helper downstream then trips over.
+        if (kind) return { kind, path: (match.params as { path?: string }).path ?? "" };
       }
       return null;
     },
@@ -165,7 +170,9 @@ export function TabsProvider({ children }: { children: ReactNode }) {
 
   const goTo = useCallback(
     (tab: Tab) => {
-      void navigate({ to: nodeRoute(tab.kind), params: { path: tab.path } });
+      // nodeLink, not nodeRoute: a tab on the collection root has an empty
+      // path, which is a different route rather than an empty segment.
+      void navigate(nodeLink(tab.kind, tab.path));
     },
     [navigate],
   );

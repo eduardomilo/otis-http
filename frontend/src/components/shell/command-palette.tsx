@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { match, segments, type Segment } from "@/lib/fuzzy";
 import { methodColor, methodGutter } from "@/lib/method";
-import { nodeParentPath, nodeRoute } from "@/lib/paths";
+import { nodeLink, nodeParentPath, nodeRoute } from "@/lib/paths";
 import { hint } from "@/lib/platform";
 import { formatDuration } from "@/lib/format";
 import { relativeTime } from "@/lib/time";
@@ -866,7 +866,7 @@ function buildCommands(context: {
     {
       name: "Open the collection root",
       detail: "its shared settings, documentation and scripts",
-      run: go(() => void navigate({ to: nodeRoute("folder"), params: { path: "" } })),
+      run: go(() => void navigate(nodeLink("folder", ""))),
     },
     {
       name: "Edit environments",
