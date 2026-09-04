@@ -86,9 +86,19 @@ lists the design decisions that are still open — do not resolve them silently.
   `Origin`/`Host` checks (§2); `limit.go` the per-capability token buckets
   (§10); `intent.go` the two-phase gate and the fingerprint it binds to
   (§6.2); `endpoint.go` the `mcp.json` a client is configured from. It imports
-  no service and no transport, which is what lets the policy be exhaustively
-  tested and keeps the decision separable from the plumbing that will carry
-  it — and it must keep building under `otis_cli`, since `cmd/otis` imports it.
+  no service and no transport — no MCP library either, which is the point:
+  the part of this feature worth auditing is one package with no protocol in
+  it. It must keep building under `otis_cli`, since `cmd/otis` imports it for
+  `otis mcp config`, and that is also what keeps mcp-go out of the CLI.
+- `internal/mcpserver/` — the MCP protocol surface: `source.go` is the `Source`
+  interface the tools read and write through (and the `Grantor` whose
+  `RevokeAll` is what makes the kill switch final), `tools.go` the framework
+  every tool is registered through, `read.go` the READ tools, `server.go` the
+  loopback listener's lifecycle. It does not import `internal/services`, the
+  same way `internal/script` takes no dependency on a disk: the interface is
+  the boundary, and a tool cannot reach what is not on it — which is how
+  docs/MCP.md §12's "not exposed, on purpose" list is enforced rather than
+  remembered.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -285,6 +295,20 @@ lists the design decisions that are still open — do not resolve them silently.
   resolve off-loopback would expose the listener, whereas no rebinding attack
   can make a browser claim `localhost` for a page served elsewhere. A rejection
   never echoes what was presented, or the token lands in the caller's log.
+- **One place serializes a tool result, and a handler cannot.** A tool's
+  handler returns a *value* and the `*mcp.Redactor` that must mask it;
+  `mcpserver.register` is the only thing that turns either into bytes, and it
+  is also where the capability check, the rate token, the collection check and
+  the audit line live. So "did this tool remember to mask / check / record?"
+  is not a question that can be asked per tool. **Never call mcp-go's
+  `NewToolResultStructured`** (or `…StructuredOnly`): it marshals the value
+  itself and would go straight around the redactor.
+  `TestNoToolBypassesRedaction` walks the package AST for those calls — text
+  matching finds the doc comment warning against them and reports a violation
+  that is not there. A handler returns its redactor **even alongside an
+  error**, because an error can carry a resolved URL and a resolved URL can
+  carry a credential in a query parameter; with no redactor the framework
+  substitutes a fixed message rather than guessing that the error was safe.
 - **Nothing sends on one tool call, and the intent is bound to a fingerprint.**
   `send_request` and `run_folder` without an intent preview and send nothing;
   with the intent handed back they go on to ask a person. Being universal is
