@@ -926,11 +926,18 @@ residual risk for that reason.
    API surface mirroring every part of the model.
 
    Text wins **provided the agent can read the real file first**, which the
-   proposal did not allow for: `get_request` returns *effective* values with
+   proposal did not allow for: `get_request` returned *effective* values with
    provenance, not the source. So `get_request` now returns `source` (§12), and
    the round trip is read-modify-write on the actual bytes rather than a
    reconstruction from a summary. That removes most of the clobbering risk, and
    what remains is visible in the diff like any other change.
+
+   The deciding reason, stated as it was given: **do not complicate the API
+   for now.** One tool taking one string beats a surface that mirrors every
+   part of the model, and the escape hatch is cheap — a patch tool could be
+   added later beside `update_request` without changing it, since the two would
+   not conflict. The signal to revisit is agents actually losing comments,
+   directives or scripts in practice, which verification step 32 measures.
 9. **Should WRITE be allowed at all in a collection with uncommitted changes
    already present?** Recommend yes, with no special case: those files are
    simply unreviewed like any other, and §5 already covers them.
