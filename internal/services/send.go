@@ -24,6 +24,7 @@ import (
 	"github.com/otis-http/otis/internal/events"
 	"github.com/otis-http/otis/internal/httpclient"
 	"github.com/otis-http/otis/internal/httpfile"
+	"github.com/otis-http/otis/internal/mcp"
 	"github.com/otis-http/otis/internal/resolve"
 	"github.com/otis-http/otis/internal/response"
 	"github.com/otis-http/otis/internal/script"
@@ -266,6 +267,18 @@ type SendFailure struct {
 type stored struct {
 	meta ResponseMeta
 	doc  *response.Document
+	// mask hides the secret values this request used.
+	//
+	// The window is shown the body exactly as it came back, because the
+	// person looking at it is the one who owns the credential. An agent is
+	// not, and the response body is the one part of a send Otis cannot mask
+	// in advance: an endpoint that echoes a request header sends the
+	// credential straight back in its own body, and no amount of care taken
+	// over the *request* prevents that. Keeping the masker with the response
+	// is what lets a tool result be redacted where it is built, instead of
+	// the MCP layer re-resolving the request to work out what to hide — and
+	// re-resolving would be a second answer to that question.
+	mask func(string) string
 }
 
 // SendService sends requests and holds what came back.
@@ -744,7 +757,7 @@ func (s *SendService) run(ctx context.Context, id string, loaded *collection.Col
 		meta.Console = []script.ConsoleLine{}
 	}
 
-	s.keep(id, &stored{meta: meta, doc: doc})
+	s.keep(id, &stored{meta: meta, doc: doc, mask: res.Mask})
 	s.emit(events.SendComplete, meta)
 	return outcome{meta: &meta}
 }
@@ -847,6 +860,29 @@ func (s *SendService) stored(sendID string) (*stored, error) {
 		return nil, fmt.Errorf("no response is being held for send %s", sendID)
 	}
 	return entry, nil
+}
+
+// redactor returns the redaction gate for a held response.
+//
+// Every tool result derived from a send goes through the Redactor this
+// returns. It is unexported on purpose: it hands back a value that closes
+// over secret strings, which must never become part of the binding surface
+// the window can call.
+func (s *SendService) redactor(sendID string) (*mcp.Redactor, error) {
+	entry, err := s.stored(sendID)
+	if err != nil {
+		return nil, err
+	}
+	if entry.mask == nil {
+		// Unreachable in correct code: the masker is a method value on the
+		// request's *resolve.Resolved, so it is set for every send that is
+		// held. It is refused rather than defaulted to mcp.NoSecrets()
+		// because that default is permissive — a send whose masker was not
+		// threaded through would redact nothing and say so to nobody, which
+		// is the one failure this whole path exists to prevent.
+		return nil, fmt.Errorf("mcp: send %s is held without a masker, refusing to build a result", sendID)
+	}
+	return mcp.NewRedactor(entry.mask), nil
 }
 
 func (s *SendService) emit(name string, data any) {

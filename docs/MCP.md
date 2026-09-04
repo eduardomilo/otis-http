@@ -531,7 +531,7 @@ Every tool call is recorded, whatever the outcome:
 | `surface` | `client` or `window` — **where the person was asked**, which is the field that shows §6.4 was honoured |
 | `decision` | `allowed` · `confirmed` · `refused` · `denied-by-policy` · `timed-out` · `rate-limited` |
 | `status` | the HTTP status, the failure kind, or `created` / `modified` for a write |
-| `duration` | how long it took |
+| `durationMs` | how long it took, in milliseconds. The unit is in the name because a bare `duration` in a log two years old is a number you have to go and find the code for |
 | `client` | the MCP client's declared name and version |
 
 **What is deliberately not in it:** no request body, no response body, no
@@ -578,6 +578,14 @@ Five things about it that are not incidental:
   gets the same treatment: a test drives every tool, with secrets and bodies
   in play, and fails if any secret value, request body, response body, header
   or file content reaches a line.
+
+**A log that cannot be written does not stop the call.** `Record` returns the
+file error and the entry stays in the in-memory list; the failure surfaces on
+the indicator (§11) rather than failing the tool. A config directory that has
+become unwritable must not stop Otis working, and the alternative — "no audit,
+no action" — trades a tool that works for a guarantee this log does not
+otherwise make, since `persistAuditLog: false` already allows a session with no
+file at all. Anything wanting that guarantee has to build it deliberately.
 
 The privacy trade, stated rather than buried: **turning Otis' MCP server on now
 also starts a durable record of which endpoints you asked an agent to call.**

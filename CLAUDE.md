@@ -78,6 +78,13 @@ lists the design decisions that are still open — do not resolve them silently.
   the hook plan, the module loader, the variable store and the substitution of
   a secret handle into the prepared request. The window and the CLI both use
   it, so `otis run` in CI and the request editor run scripts identically.
+- `internal/mcp/` — the MCP server's security core, and nothing that talks
+  MCP: `policy.go` decides what an agent may do (docs/MCP.md §§3–6) as pure
+  functions over grants, an environment's `$otis.agents` and git's view of the
+  tree; `redact.go` is the single gate every agent-facing result passes
+  through; `audit.go` is the JSONL record (§9). It imports no service and no
+  transport, which is what lets the policy be exhaustively tested and keeps
+  the decision separable from the plumbing that will carry it.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -258,6 +265,43 @@ lists the design decisions that are still open — do not resolve them silently.
   body marshalled through one call is a 40 MB JSON string built in Go, parsed
   in the webview and handed to the DOM, and all three of those block. For the
   same reason pretty-printing is Go's job, not the window's.
+- **Everything an agent is shown goes through `mcp.Redactor.Marshal`, and it
+  fails closed.** A secret reaching an agent is the one failure in the MCP
+  design that cannot be undone: a bad send can be re-run and a bad write is in
+  git, but a transcript is retained, replayed and sent to a model provider. So
+  redaction is not per-field — a tool that masks the three fields it knows
+  about is one new field away from a leak, added by whoever was not thinking
+  about secrets — it walks the whole JSON tree, keys and numbers included
+  (a digits-only secret arrives as a number, which is why `decode` uses
+  `UseNumber`). It then **re-parses the bytes it is about to return and
+  refuses if any secret survived**, returning `ErrSecretSurvived` *instead of*
+  the bytes, so a caller that ignores the error emits nothing. That check does
+  not trust the walk above it; the walk is the thing being checked. It works by
+  masking a second time and treating any change as a survivor, which is how it
+  checks for values this package is not allowed to hold — and
+  `TestMaskingIsIdempotentWhichIsWhatVerifyRelies0n` pins the property it
+  rests on.
+- **The masker travels with the held response, and a missing one is refused.**
+  `stored.mask` is set from the request's `*resolve.Resolved` at send time,
+  because the response body is the one part of a send Otis cannot mask in
+  advance: an endpoint that echoes a request header sends the credential back
+  in its own body, and no care taken over the request prevents it. The window
+  is shown that body verbatim — the person looking at it owns the credential —
+  and an agent is not. `SendService.redactor` therefore **errors** rather than
+  falling back to `mcp.NoSecrets()` when the masker is absent: that fallback is
+  permissive, so forgetting to thread it through would redact nothing and tell
+  nobody. It is unexported because it returns a value closing over secret
+  strings, which must never join the binding surface.
+- **The audit log has nowhere to put a payload, and that is a property of the
+  type.** `mcp.Entry`'s fields are names, codes, times and numbers; there is
+  none for a body, a header, a URL or a file's contents, and `target` is a
+  node path precisely because a URL can carry a credential in a query
+  parameter. `TestTheAuditEntryHasNowhereToPutAPayload` locks the json field
+  set against docs/MCP.md §9's table, so widening what the log records is a
+  decision made in a diff rather than incidentally while building a tool. It
+  is `0600`, in the config directory, **never in the collection** — a log in
+  the repository gets committed, and then everyone on the branch holds a
+  record of which endpoints one person called.
 - **`internal/git` is read-only, and "not a repository" is a normal state**,
   never an error: a collection is a directory of files and works perfectly
   well outside version control. It answers "what does git think" for the tree

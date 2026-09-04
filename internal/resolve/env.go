@@ -57,6 +57,11 @@ type EnvMeta struct {
 	ConfirmBeforeSend bool `json:"confirmBeforeSend,omitempty"`
 	// Description is a one-line note shown beside the environment.
 	Description string `json:"description,omitempty"`
+	// Agents is the MCP agent policy for this environment (docs/MCP.md §4):
+	// AgentDeny, AgentConfirm or AgentAllow. Empty means unset, which reads
+	// as AgentConfirm — an environment that says nothing gets a person in the
+	// loop, and opting out is the deliberate act.
+	Agents AgentPolicy `json:"agents,omitempty"`
 
 	// Extra holds fields of "$otis" this version does not know, so writing
 	// the file back does not drop them.
@@ -71,12 +76,73 @@ type EnvMeta struct {
 
 // known are the "$otis" fields this version owns; everything else goes to
 // Extra.
-var knownMetaFields = map[string]bool{"confirmBeforeSend": true, "description": true}
+var knownMetaFields = map[string]bool{
+	"confirmBeforeSend": true,
+	"description":       true,
+	"agents":            true,
+}
+
+// AgentPolicy is what an environment permits an MCP agent to do
+// (docs/MCP.md §4). It is committed, deliberately: whether an environment is
+// the dangerous one is a fact about the environment and not a per-machine
+// preference, so the whole team gets the same answer, a fresh clone gets it
+// without configuring anything, and weakening it shows up in review.
+type AgentPolicy string
+
+const (
+	// AgentUnset is an environment with no "agents" field. It reads as
+	// AgentConfirm; see EffectiveAgentPolicy.
+	AgentUnset AgentPolicy = ""
+	// AgentDeny refuses every agent send against this environment.
+	AgentDeny AgentPolicy = "deny"
+	// AgentConfirm asks a person before every agent send. The default.
+	AgentConfirm AgentPolicy = "confirm"
+	// AgentAllow lets an agent send without asking. It cannot override
+	// ConfirmBeforeSend, and it cannot override the review gate
+	// (docs/MCP.md §5) or mcp.alwaysConfirmSends.
+	AgentAllow AgentPolicy = "allow"
+)
+
+// EffectiveAgentPolicy is the environment's policy with its default applied.
+//
+// Unset reads as AgentConfirm rather than AgentAllow: an environment that says
+// nothing about agents gets a person in the loop, and opting out is the
+// deliberate act (docs/MCP.md §4 rule 1).
+func (m EnvMeta) EffectiveAgentPolicy() AgentPolicy {
+	if m.Agents == AgentUnset {
+		return AgentConfirm
+	}
+	return m.Agents
+}
+
+// validateAgents rejects a value that is not one of the three.
+//
+// An error rather than a silent fallback, because "alow" must not read as
+// permission (docs/MCP.md §4). And "allow" beside confirmBeforeSend is an
+// error too: that flag is the committed marker of production, and an agent
+// policy able to downgrade it would let a convenience setting cancel a safety
+// one.
+func validateAgents(m EnvMeta, name string) error {
+	switch m.Agents {
+	case AgentUnset, AgentDeny, AgentConfirm:
+	case AgentAllow:
+		if m.ConfirmBeforeSend {
+			return fmt.Errorf(
+				"%s: $otis.agents is \"allow\" but confirmBeforeSend is true; "+
+					"an agent policy cannot downgrade a confirmation the environment asks for", name)
+		}
+	default:
+		return fmt.Errorf(
+			"%s: $otis.agents is %q; it must be \"deny\", \"confirm\" or \"allow\"", name, m.Agents)
+	}
+	return nil
+}
 
 // IsZero reports whether the meta carries nothing, in which case no "$otis"
 // key is written at all.
 func (m EnvMeta) IsZero() bool {
-	return !m.ConfirmBeforeSend && m.Description == "" && len(m.Extra) == 0
+	return !m.ConfirmBeforeSend && m.Description == "" && m.Agents == AgentUnset &&
+		len(m.Extra) == 0
 }
 
 // parseMeta reads the "$otis" object, keeping any field it does not know.
@@ -117,6 +183,11 @@ func marshalMeta(m EnvMeta) ([]byte, error) {
 		fields["description"] = json.RawMessage(quote(m.Description))
 	} else {
 		delete(fields, "description")
+	}
+	if m.Agents != AgentUnset {
+		fields["agents"] = json.RawMessage(quote(string(m.Agents)))
+	} else {
+		delete(fields, "agents")
 	}
 
 	keys := make([]string, 0, len(fields))
@@ -261,6 +332,9 @@ func ParseEnvironment(name string, data []byte) (*Environment, error) {
 			meta, err := parseMeta(msg)
 			if err != nil {
 				return nil, fmt.Errorf("key %q: %w", key, err)
+			}
+			if err := validateAgents(meta, "key "+quote(key)); err != nil {
+				return nil, err
 			}
 			env.Meta = meta
 			continue
