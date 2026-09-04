@@ -1173,3 +1173,44 @@ and is the answer for most people who land there by curiosity.
 whole change to the list: the dialog is the same one the `+` opens, so there is
 one way to name an environment rather than two that could disagree about what
 a valid name is.
+
+**9.28 Sending a request with unsaved edits sent the last saved version.**
+`SendService.Send` resolves the node from `collections.Loaded()` — the
+collection **as parsed from disk** — and a draft lives only in the window until
+⌘S. So a dirty request sent its previous contents, silently: the editor showed
+one request and Send ran another, with nothing on screen saying so. It surfaced
+as a 404 on a URL that was visibly correct in the editor, which is about the
+worst way to find out.
+
+**A send now writes the draft first.** Chosen over the alternatives — a
+"Save & Send" button label, or refusing a dirty send — because the file *is*
+the request in this product, so asking to send one is asking to send what is in
+its file, and the only coherent way to do that is to put the edit there. It is
+also what "Run" does in every editor that has one.
+
+Three things follow, and they are the reason this is not simply an autosave:
+
+- **It lives in `send-context`**, not in the Send button, for the reason the
+  confirm-before-send gate does (`CLAUDE.md`): the button, the shell's ⌘↵, the
+  palette's ⌘↵ and anything added later all have to be covered, and a check in
+  one caller is a gate the next caller forgets.
+- **It happens before the confirmation, not after.** §6's confirm-before-send
+  dialog names the resolved URL, and Go resolves that from disk — so asking
+  first would have described the version being replaced. The person is asked
+  about what will actually go out.
+- **A failed save stops the send.** Sending anyway would be the original bug
+  with an error message in front of it.
+
+A folder run does the same for the drafts **inside that folder**, and no
+others: a run is not a reason to write a request it is not going to send. That
+required moving `RunProvider` inside `DocumentsProvider` — it sat above, where
+the drafts are not reachable. Its results still outlive whichever tab started a
+run, which was the reason given for its old position: `DocumentsProvider` is
+one provider for the collection, not one per tab. Nothing above consumed
+`useRuns`; the folder view is its only reader.
+
+The write is not announced in advance, which §8.2 would normally ask for. The
+justification is that it is not a change to anything — it is the file catching
+up with what is already on screen, and it announces itself the moment it lands:
+the tab's dirty dot clears, the tree gains its git dot, the status bar says `M`
+and `⌘G` shows the diff.

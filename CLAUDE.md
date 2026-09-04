@@ -450,6 +450,16 @@ lists the design decisions that are still open — do not resolve them silently.
   environment", and typing a name that turns out not to exist silently changes
   where every send goes. Clicking one still works — a click is aim, a
   keystroke is not. DESIGN-NOTES §7.4 carries the reasoning.
+- **A send writes the draft first, and that also lives in `send-context`.**
+  Go resolves a send from the collection *on disk*, so a request with unsaved
+  edits used to send its last saved version silently — the editor showing one
+  request and Send running another. `persist` writes the draft before
+  anything leaves, **before the confirmation** (which names a URL Go resolves
+  from disk, so asking first would describe the version being replaced), and a
+  failed save stops the send. A folder run does the same for the drafts under
+  that folder and no others. `RunProvider` is inside `DocumentsProvider` for
+  this reason; it used to sit above, where drafts are unreachable.
+  DESIGN-NOTES §9.28.
 - **The confirm-before-send gate lives in `send-context`, not in a caller.**
   An environment with `$otis.confirmBeforeSend` has to stop the Send button,
   the shell's ⌘↵, the palette's ⌘↵ and anything added later; a check in one

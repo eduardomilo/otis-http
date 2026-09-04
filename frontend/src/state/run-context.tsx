@@ -14,6 +14,8 @@ import { SendService } from "@bindings/internal/services";
 import type { RunComplete, RunResult, RunStarted } from "@bindings/internal/services";
 import { OtisEvent } from "@/lib/events.gen";
 import { useEnvironments } from "@/state/environment-context";
+import { useDocuments } from "@/state/documents-context";
+import { useTabs } from "@/state/tabs-context";
 
 /**
  * A folder run (screen 3a's "Run folder").
@@ -56,6 +58,9 @@ interface RunContextValue {
 const RunContext = createContext<RunContextValue | null>(null);
 
 export function RunProvider({ children }: { children: ReactNode }) {
+  // A draft lives only in the window, and Go runs the files on disk.
+  const { tabs } = useTabs();
+  const { save } = useDocuments();
   const { active: env } = useEnvironments();
   const [runs, setRuns] = useState<Record<string, Run>>({});
   // Which folder a run id belongs to, so a result can be routed without the
@@ -104,8 +109,33 @@ export function RunProvider({ children }: { children: ReactNode }) {
     return () => unsubscribes.forEach((off) => off());
   }, []);
 
+  /**
+   * Writes the drafts of every open request the run is about to send.
+   *
+   * Scoped to the folder deliberately: saving an unrelated dirty request
+   * because you pressed Run on a different folder would be a write nobody
+   * asked for.
+   */
+  const persistUnder = useCallback(
+    async (folder: string) => {
+      const prefix = folder === "" ? "" : folder + "/";
+      for (const tab of tabs) {
+        if (!tab.dirty || !tab.path.startsWith(prefix)) continue;
+        if (!(await save(tab.path))) return false;
+      }
+      return true;
+    },
+    [tabs, save],
+  );
+
   const start = useCallback(
     async (folder: string, stopOnFailure: boolean) => {
+      // The same rule a single send follows: Go runs the files on disk, so a
+      // request with unsaved edits would run its last saved version and the
+      // run would report a result for something other than what is on screen.
+      // Only the drafts inside this folder are written — a run is not a reason
+      // to save a request it is not going to send.
+      if (!(await persistUnder(folder))) return;
       try {
         await SendService.RunFolder(folder, env, stopOnFailure);
       } catch (cause) {

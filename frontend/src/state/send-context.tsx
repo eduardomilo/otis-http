@@ -25,6 +25,7 @@ import { nodeDisplayName } from "@/lib/paths";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useEnvironments } from "@/state/environment-context";
+import { useDocuments } from "@/state/documents-context";
 import { SendService } from "@bindings/internal/services";
 import type {
   ResponseMeta,
@@ -128,6 +129,8 @@ export function SendProvider({ children }: { children: ReactNode }) {
   // then resolves against its file and folder scopes only (docs/FORMAT.md
   // §4.2).
   const { active: env, activeEnvironment } = useEnvironments();
+  // Sends sit inside DocumentsProvider, so the draft is reachable from here.
+  const { get: getDocument, save } = useDocuments();
 
   const latest = useRef(sends);
   latest.current = sends;
@@ -346,15 +349,45 @@ export function SendProvider({ children }: { children: ReactNode }) {
    * with a hole in it is not one — and "this environment is the dangerous one"
    * is a fact about the environment, not about which button you pressed.
    */
+  /**
+   * Writes a request's draft before it is sent.
+   *
+   * Go resolves a send from the collection **on disk** — `SendService.Send`
+   * finds the node in `collections.Loaded()` — so a request with unsaved
+   * edits sent the last saved version, silently. The editor showed one
+   * request and Send ran another, which is how a 404 arrives for a URL you
+   * are looking at and cannot see anything wrong with.
+   *
+   * It lives here rather than in the Send button for the reason the
+   * confirm-before-send gate does: the button, the shell's ⌘↵, the palette's
+   * ⌘↵ and anything added later all have to be covered, and a check in one
+   * caller is a gate the next caller forgets.
+   *
+   * A save that fails stops the send. Sending anyway would be the original
+   * bug with an error message in front of it.
+   */
+  const persist = useCallback(
+    async (path: string) => {
+      const document = getDocument(path);
+      if (!document?.dirty) return true;
+      return save(path);
+    },
+    [getDocument, save],
+  );
+
   const send = useCallback(
     async (path: string) => {
+      // Before the confirmation, not after: the dialog names the resolved URL,
+      // and Go resolves it from disk. Asking first would describe the version
+      // being replaced.
+      if (!(await persist(path))) return;
       if (activeEnvironment?.confirmBeforeSend) {
         setPending(path);
         return;
       }
       await reallySend(path);
     },
-    [activeEnvironment?.confirmBeforeSend, reallySend],
+    [activeEnvironment?.confirmBeforeSend, persist, reallySend],
   );
 
 

@@ -56,14 +56,18 @@ function RootLayout() {
               it is a view of the whole collection, and a stage or a commit
               changes what every other view says about a file. */}
           <DiffProvider>
-            {/* Folder runs sit beside the documents too: a run is a sequence
-                of sends against a folder, and its results outlive whichever
-                tab happened to start it. */}
-            <RunProvider>
               <TabsProvider>
                 {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
                     and the veto on closing a dirty tab is installed from here. */}
                 <DocumentsProvider>
+                  {/* Folder runs sit *inside* the documents, not beside them.
+                      Their results still outlive whichever tab started a run —
+                      DocumentsProvider is one provider for the collection, not
+                      one per tab — and being inside is what lets a run write
+                      the drafts of the requests it is about to send, the same
+                      way a single send does. Nothing above here consumes
+                      useRuns; the folder view is its only reader. */}
+                  <RunProvider>
                   {/* Sends sit inside Tabs too: the response pane shows whatever
                       the active tab is showing. */}
                   <SendProvider>
@@ -74,9 +78,9 @@ function RootLayout() {
                       <Window />
                     </TooltipProvider>
                   </SendProvider>
+                  </RunProvider>
                 </DocumentsProvider>
               </TabsProvider>
-            </RunProvider>
           </DiffProvider>
           </OrderProvider>
         </EnvironmentProvider>
