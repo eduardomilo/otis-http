@@ -84,6 +84,7 @@ func init() {
 	application.RegisterEvent[services.RunStarted](events.RunStarted)
 	application.RegisterEvent[services.RunResult](events.RunResult)
 	application.RegisterEvent[services.RunComplete](events.RunComplete)
+	application.RegisterEvent[application.Void](events.OpenCollectionRequested)
 	application.RegisterEvent[services.MCPConfirmation](events.MCPConfirm)
 	application.RegisterEvent[services.MCPResolved](events.MCPConfirmResolved)
 	application.RegisterEvent[services.MCPStatus](events.MCPChanged)
@@ -186,7 +187,7 @@ func runGUI(openPath string) {
 	})
 
 	if runtime.GOOS == "darwin" {
-		app.Menu.Set(macMenu(app, dialogs, collections))
+		app.Menu.Set(macMenu(app))
 	}
 
 	// A .http file opened from Finder, Explorer or a file manager. On macOS
@@ -363,19 +364,19 @@ func secretStore() secrets.Store {
 // item: Otis is a single-window app, and Cmd+Q closes it.
 //
 // Windows and Linux keep Wails' default menu; neither binds Ctrl+W.
-func macMenu(app *application.App, dialogs *services.DialogService, collections *services.CollectionService) *application.Menu {
+func macMenu(app *application.App) *application.Menu {
 	menu := application.NewMenu()
 	menu.AddRole(application.AppMenu)
 
 	file := menu.AddSubmenu("File")
+	// The menu asks the *window* to open a collection rather than doing it
+	// here. Leaving a collection closes every open tab, and an unsaved draft
+	// lives only in the window — so the window is the only place that knows
+	// whether anything would be lost, and it has to ask before the directory
+	// dialog appears. Opening directly from here bypassed that, which made ⌘O
+	// a quieter way to lose work than the command palette's own entry.
 	file.Add("Open Collection…").SetAccelerator("cmdorctrl+o").OnClick(func(*application.Context) {
-		dir, err := dialogs.OpenDirectory()
-		if err != nil || dir == "" {
-			return
-		}
-		if _, err := collections.Open(dir); err != nil {
-			app.Logger.Error("opening a collection from the menu", "path", dir, "error", err)
-		}
+		app.Event.Emit(events.OpenCollectionRequested)
 	})
 
 	menu.AddRole(application.EditMenu)

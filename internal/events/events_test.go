@@ -26,6 +26,7 @@ func TestRegistryCoversEveryConstant(t *testing.T) {
 		"RunStarted":          RunStarted,
 		"RunResult":           RunResult,
 		"RunComplete":         RunComplete,
+		"OpenCollectionRequested": OpenCollectionRequested,
 		"MCPConfirm":          MCPConfirm,
 		"MCPConfirmResolved":  MCPConfirmResolved,
 		"MCPChanged":          MCPChanged,

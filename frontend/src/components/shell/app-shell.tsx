@@ -10,6 +10,10 @@ import {
 } from "@/components/ui/resizable";
 import { CommandPalette } from "@/components/shell/command-palette";
 import { AgentConfirmDialog } from "@/components/shell/agent-confirm-dialog";
+import {
+  CollectionSwitchDialog,
+  type CollectionAction,
+} from "@/components/shell/collection-switch-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
@@ -19,6 +23,7 @@ import { TabBar } from "@/components/shell/tab-bar";
 import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
 import { OtisEvent } from "@/lib/events.gen";
+import { isMac } from "@/lib/platform";
 import { CollectionService } from "@bindings/internal/services";
 import { nodeParentPath, nodeRoute } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
@@ -68,10 +73,10 @@ const RESPONSE_DEFAULT_FRACTION = 0.4;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
-  const { closeActive, reopenLastClosed, openTab } = useTabs();
+  const { closeActive, reopenLastClosed, openTab, tabs } = useTabs();
   const { saveActive } = useDocuments();
   const { send } = useSends();
-  const { tree } = useCollection();
+  const { tree, openViaDialog, close: closeCollection } = useCollection();
   const { environments } = useEnvironments();
   const { overview } = useDiff();
   const { undo: undoOrder } = useOrder();
@@ -108,6 +113,31 @@ export function AppShell({ children }: { children: ReactNode }) {
   const filterInput = useRef<HTMLInputElement>(null);
   // The tree's reveal handle, for the palette's ⇧↵.
   const treeHandle = useRef<TreeHandle | null>(null);
+  // Leaving a collection closes every tab, and a draft lives only in the
+  // window, so both ways out ask first when anything is unsaved.
+  const [leaving, setLeaving] = useState<CollectionAction | null>(null);
+  const dirtyCount = tabs.filter((tab) => tab.dirty).length;
+
+  const runLeave = useCallback(
+    async (action: CollectionAction) => {
+      if (action === "open") await openViaDialog();
+      else await closeCollection();
+    },
+    [openViaDialog, closeCollection],
+  );
+
+  // The gate, in one place rather than in each caller: an unsaved draft has
+  // to be as safe from the palette as it is from the ⌘O menu item.
+  const leaveCollection = useCallback(
+    (action: CollectionAction) => {
+      if (dirtyCount === 0) {
+        void runLeave(action);
+        return;
+      }
+      setLeaving(action);
+    },
+    [dirtyCount, runLeave],
+  );
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   // What the create dialog is making, and where. Null when it is closed.
@@ -205,8 +235,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     return Events.On(OtisEvent.OpenNode, () => void showPending());
   }, [showPending]);
 
+  // The macOS File menu emits this rather than opening a collection itself,
+  // so the confirmation in front of unsaved drafts is the same one the palette
+  // gets. Menu key equivalents are handled before the webview sees them, which
+  // is also why ⌘O is not in the keymap below on macOS.
+  useEffect(() => {
+    const off = Events.On(OtisEvent.OpenCollectionRequested, () => leaveCollection("open"));
+    return () => off();
+  }, [leaveCollection]);
+
   useKeymap([
     { key: "k", mod: true, run: () => setPaletteOpen(true) },
+    // ⌘O / Ctrl+O. Bound here only where nothing else claims it: on macOS the
+    // File menu's accelerator wins before the key reaches the window, and
+    // binding it in both places would open two directory dialogs.
+    ...(isMac() ? [] : [{ key: "o", mod: true, run: () => leaveCollection("open") }]),
     { key: "p", mod: true, run: focusFilter },
     { key: "b", mod: true, run: () => togglePanel(sidebarPanel.current) },
     { key: "j", mod: true, run: () => togglePanel(responsePanel.current) },
@@ -444,6 +487,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       />
 
+      <CollectionSwitchDialog
+        action={leaving}
+        dirtyCount={dirtyCount}
+        onAnswer={(proceed) => {
+          const action = leaving;
+          setLeaving(null);
+          if (proceed && action) void runLeave(action);
+        }}
+      />
+
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
@@ -455,6 +508,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           treeHandle.current?.reveal(path);
         }}
         onCreate={(kind) => openCreate(kind, folderForNew())}
+        onLeaveCollection={leaveCollection}
       />
     </>
   );

@@ -125,6 +125,7 @@ export function CommandPalette({
   onOpenChange,
   onReveal,
   onCreate,
+  onLeaveCollection,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -132,6 +133,8 @@ export function CommandPalette({
   onReveal: (path: string) => void;
   /** Opens the create dialog, in the folder the shell decides is current. */
   onCreate: (kind: "request" | "folder") => void;
+  /** Opens another collection, or closes this one. Asks first if anything is unsaved. */
+  onLeaveCollection: (action: "open" | "close") => void;
 }) {
   const navigate = useNavigate();
   const { tree, collection } = useCollection();
@@ -185,6 +188,7 @@ export function CommandPalette({
         clearSessionVars,
         version: buildLabel(build),
         onCreate,
+        onLeaveCollection,
         agentsEnabled: agents?.enabled ?? false,
         setAgentsEnabled,
         disconnectAgents,
@@ -198,6 +202,7 @@ export function CommandPalette({
       clearSessionVars,
       build,
       onCreate,
+      onLeaveCollection,
       agents?.enabled,
       setAgentsEnabled,
       disconnectAgents,
@@ -807,6 +812,7 @@ function buildCommands(context: {
   clearSessionVars: () => Promise<void>;
   version: string;
   onCreate: (kind: "request" | "folder") => void;
+  onLeaveCollection: (action: "open" | "close") => void;
   agentsEnabled: boolean;
   setAgentsEnabled: (on: boolean) => Promise<void>;
   disconnectAgents: () => Promise<void>;
@@ -820,6 +826,7 @@ function buildCommands(context: {
     clearSessionVars,
     version,
     onCreate,
+    onLeaveCollection,
     agentsEnabled,
     setAgentsEnabled,
     disconnectAgents,
@@ -859,6 +866,30 @@ function buildCommands(context: {
       detail: "variables and secrets",
       hidden: firstEnvironment === "",
       run: go(() => void navigate({ to: "/env/$name", params: { name: firstEnvironment } })),
+    },
+    {
+      // How you get to another collection at all. macOS has File › Open
+      // Collection… and Windows and Linux have no menu item for it, so
+      // without this there is no way to switch on two of three platforms.
+      name: "Open a collection…",
+      detail: "choose a folder of .http files",
+      shortcut: hint("O"),
+      run: () => {
+        close();
+        onLeaveCollection("open");
+      },
+    },
+    {
+      // The only way to reach the empty state once something is open — and
+      // the empty state is where the recent-collections list lives, so this
+      // is also how you get back to one you had open before.
+      name: "Close this collection",
+      detail: "returns to the start screen, with your recent collections",
+      hidden: collection === "",
+      run: () => {
+        close();
+        onLeaveCollection("close");
+      },
     },
     {
       name: "Reveal the collection in Finder",

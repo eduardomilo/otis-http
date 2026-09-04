@@ -17,6 +17,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "app:ready": string;
             "collection:changed": services$0.Tree;
+            "collection:open-requested": void;
             "collection:opened": services$0.CollectionInfo;
             "environments:changed": services$0.Environments;
             "git:changed": git$0.State;

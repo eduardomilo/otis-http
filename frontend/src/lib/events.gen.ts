@@ -27,6 +27,8 @@ export const OtisEvent = {
   SessionVarsChanged: "session-vars:changed",
   /** Emitted when the environments or the active one changed. Payload: Environments; never a secret value. */
   EnvironmentsChanged: "environments:changed",
+  /** Emitted when something outside the window asked to open another collection — the macOS File menu. No payload; the window runs its own guarded flow, which asks before discarding unsaved drafts. */
+  OpenCollectionRequested: "collection:open-requested",
   /** Emitted when an agent's operation needs a person's confirmation in Otis' own window. Payload: MCPConfirmation, with a masked URL and secret names only. A tool call is blocked on the answer; reply with MCPService.Answer. */
   MCPConfirm: "mcp:confirm",
   /** Emitted when a confirmation no longer needs an answer — it timed out, or the kill switch was thrown — so the dialog closes itself. Payload: MCPResolved. */

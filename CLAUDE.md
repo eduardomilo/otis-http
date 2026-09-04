@@ -567,6 +567,20 @@ lists the design decisions that are still open — do not resolve them silently.
   primitives in `components/ui/` may use `sm:`/`md:`/`lg:`, and only because a
   dialog is positioned against the viewport rather than inside a pane.
 
+- **Leaving a collection goes through one guarded path.** Opening another
+  collection or closing this one drops every open tab, and a draft lives only
+  in the window, so both ask first when anything is unsaved
+  (`collection-switch-dialog`). The macOS File menu therefore emits
+  `events.OpenCollectionRequested` rather than calling `CollectionService.Open`
+  itself — Go cannot know whether a draft would be lost, and opening from there
+  made ⌘O a quieter way to lose work than the command palette's own entry. ⌘O
+  is bound in `useKeymap` **only off macOS**, because a menu accelerator is
+  handled before the key reaches the window and binding both would open two
+  directory dialogs. The command palette carries "Open a collection…" and
+  "Close this collection" because it is the one surface identical on all three
+  platforms; without the second, screen 2b's start screen — and the
+  recent-collections list on it — was unreachable once anything was open.
+  DESIGN-NOTES §9.24.
 - **A sidebar that replaces the request tree carries the way back.** The
   environment list and the changes list each swap the tree out, and neither
   screen in the design draws anything that returns — so with no document tab

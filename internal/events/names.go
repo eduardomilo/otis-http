@@ -136,6 +136,17 @@ const (
 	// It never carries a secret value.
 	EnvironmentsChanged = "environments:changed"
 
+	// OpenCollectionRequested asks the window to run its "open another
+	// collection" flow. No payload.
+	//
+	// The macOS File menu emits it rather than opening a collection itself,
+	// because leaving a collection closes every open tab and a draft lives
+	// only in the window — so the window is the only place that knows
+	// whether anything would be lost, and the confirmation has to be in
+	// front of the person before the directory dialog appears. One guarded
+	// path, whether the gesture was ⌘O, the menu, or the command palette.
+	OpenCollectionRequested = "collection:open-requested"
+
 	// MCPConfirm asks the window to put an agent's operation in front of the
 	// person (docs/MCP.md §6.4). Payload: services.MCPConfirmation.
 	//
@@ -194,6 +205,7 @@ var Registry = []Entry{
 	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
 	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
 	{"EnvironmentsChanged", EnvironmentsChanged, "Emitted when the environments or the active one changed. Payload: Environments; never a secret value."},
+	{"OpenCollectionRequested", OpenCollectionRequested, "Emitted when something outside the window asked to open another collection \u2014 the macOS File menu. No payload; the window runs its own guarded flow, which asks before discarding unsaved drafts."},
 	{"MCPConfirm", MCPConfirm, "Emitted when an agent's operation needs a person's confirmation in Otis' own window. Payload: MCPConfirmation, with a masked URL and secret names only. A tool call is blocked on the answer; reply with MCPService.Answer."},
 	{"MCPConfirmResolved", MCPConfirmResolved, "Emitted when a confirmation no longer needs an answer \u2014 it timed out, or the kill switch was thrown \u2014 so the dialog closes itself. Payload: MCPResolved."},
 	{"MCPChanged", MCPChanged, "Emitted when the agent server's state changed: enabled, disabled, a capability flipped, or a call recorded. Payload: MCPStatus."},

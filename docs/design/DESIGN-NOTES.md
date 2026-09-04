@@ -1009,3 +1009,48 @@ from outside would have meant either a second stacked header or plumbing an
 element through both components. If a third navigator is ever added, it needs
 this in its header too; there is no structural check for that, which is the
 cost of the choice.
+
+**9.24 Nothing reached the empty state, and two platforms could not switch
+collections at all.** Screen 2b is the start screen — Open folder, the three
+`soon` cards, and the recent-collections list — and `SCREENS.md` describes it
+as the state with no collection open. It was reachable on first launch and
+never again: `CollectionService.Close()` existed, `collection-context` exposed
+`close()`, and **nothing in the window called it**. So the recents list, which
+is the natural way to hop between two repositories, could not be got to once
+anything was open.
+
+Switching was worse. macOS had File › Open Collection… with ⌘O; Windows and
+Linux keep Wails' default menu, which has no such item, and nothing in the
+window offered one — so on two of three platforms there was no way to open a
+different collection at all. The report was "how do I get to the empty screen?
+or how do I switch to a different repo or folder with my collections?", which
+is both halves of this.
+
+**The command palette carries both**, because it is the one surface that exists
+identically on all three platforms and already holds the other
+collection-scoped commands — Reveal in Finder, Copy the collection path, Reload
+from disk. "Open a collection…" and "Close this collection", the second hidden
+when nothing is open. ⌘O is bound in `useKeymap` only off macOS, where the File
+menu's accelerator wins before the key reaches the window; binding it in both
+places would open two directory dialogs.
+
+**The macOS menu item now emits `events.OpenCollectionRequested` instead of
+opening a collection itself.** That is the part worth keeping: leaving a
+collection closes every tab, and a draft lives only in the window, so the
+window is the only place that knows whether anything would be lost. Opening
+directly from Go bypassed the confirmation, which made ⌘O a quieter way to lose
+work than the palette entry beside it. One guarded path now, whichever gesture
+started it.
+
+**The confirmation is `collection-switch-dialog`, styled as
+`unsaved-changes-dialog` is**, because it is the same question about the same
+kind of loss — a draft that is in no file yet. It has no **Save** option, which
+that dialog does have: "save all" is not an operation Otis has, each document
+is written against its own file, and a bulk write is not a thing to invent
+behind a confirmation. Cancel is how you keep them.
+
+Not built, and worth stating: the palette has no recent-*collections* section,
+so hopping between two repositories is close → pick from the start screen
+rather than one step. The recents are one keystroke further away than they
+could be, and adding a fourth palette section is a bigger decision than this
+fix.
