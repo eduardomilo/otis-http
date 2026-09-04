@@ -114,7 +114,7 @@ committed switch would be one person deciding it for the whole team.
   "run": false,
   "write": false,
   // §4 rule 4: tightens the committed per-environment policy, never loosens it.
-  "alwaysConfirmSends": false,
+  "alwaysConfirmSends": true,
   // §9.1. On by default; false keeps the session's calls in memory only.
   "persistAuditLog": true
 }
@@ -166,8 +166,13 @@ Three rules make the defaults safe:
    carry a literal URL.
 
 4. **A per-machine setting can tighten this, never loosen it.** `settings.json`
-   carries `mcp.alwaysConfirmSends`, off by default. Turned on, **every** agent
-   send asks, including against an environment marked `"allow"`.
+   carries `mcp.alwaysConfirmSends`, **on by default** (§14.12). **Every** agent
+   send asks, including against an environment marked `"allow"`, until somebody
+   turns it off.
+
+   It decides *whether* a person is asked, not *where*: the surface is §6.3 and
+   §6.4's business. That separation matters now that it defaults on — see the
+   note under §6.4.
 
    It exists because `agents` is *committed*: somebody on the team decided that
    `local` is safe for agents, and you may not agree on your machine — or may
@@ -201,9 +206,9 @@ anything: that an agent can only send what somebody reviewed.
 So the boundary is not "an agent cannot compose a request". It is:
 
 > **A request file that git does not report as clean is unreviewed.** Sending
-> an unreviewed request always requires confirmation, whatever the environment
-> policy says — and **is refused outright if resolving it would consume a
-> secret.**
+> an unreviewed request always requires confirmation in Otis' own window,
+> whatever the environment policy says. When it would also consume a secret,
+> that confirmation is the **danger** variant described below.
 
 Clean means git reports no difference from `HEAD` for that path. Untracked
 counts as unreviewed. **Staged-but-uncommitted also counts as unreviewed**,
@@ -216,12 +221,13 @@ Why this is better than anything policy-based:
   what draws the tree's dots — so this is enforced by the same fact the UI
   already shows, not by a flag an agent or a setting could relax.
 - **`"allow"` cannot override it.** An environment marked `"allow"` still
-  confirms an unreviewed send, and still refuses an unreviewed send that uses a
-  secret. The two gates are independent and both must pass.
-- **It closes exfiltration completely.** To send a secret, a request must be
-  clean. To be clean, its URL must be committed. To be committed, a person put
-  it there. The refusal is flat rather than a dialog, because a dialog is a
-  thing a tired person clicks.
+  confirms an unreviewed send. The two gates are independent and both must
+  pass.
+- **It puts a person in front of exfiltration**, which is the most it does.
+  An agent that writes `Authorization: Bearer {{apiKey}}` pointed at a host it
+  chose gets a dialog, not a send. It does *not* close the path: see §5.1 and
+  §13, and understand this as the residual risk of the design rather than a
+  solved problem.
 - **It applies to your own edits too**, which is the right answer rather than a
   side effect: a request you have half-rewritten is not one an agent should
   send without asking.
@@ -230,7 +236,39 @@ Why this is better than anything policy-based:
   because a write by an agent is a change to the working tree like any other,
   and `⌘G` shows exactly what it did.
 
-The last point is why the audit log (§9) does not record file contents: git
+### 5.1 The danger confirmation
+
+An unreviewed send that would consume a secret is the one case where a mistaken
+click cannot be taken back — the credential is on the wire and gone. It is
+confirmed rather than refused (§14.7), so the confirmation has to carry the
+weight the refusal would have:
+
+- **In Otis' window, always** (§6.4). Never answerable through the client.
+- **The destructive treatment.** `--border-danger`, which `DESIGN-NOTES` §2.2
+  reserves for the "Discard changes…" button *only* — the one other action in
+  Otis that destroys something git cannot get back. This dialog is the second,
+  and giving it the same border is the design's existing way of saying so. The
+  text and the button take `#f87171`, the destructive colour of §2.6, with the
+  caveat §9.3 records about that hex carrying four meanings.
+- **The diff is in the dialog.** The request is unreviewed, so there *is* a
+  diff, and showing it is the whole point: what the agent wrote is the thing
+  being approved. This is what the window can do and a client prompt cannot,
+  and it is why case 2 of §6.4 exists.
+- **The button names the destination.** *"Send to `evil.test`"*, not *"Send"*.
+  Muscle memory cannot approve a host it has to read, and the host is the one
+  fact that distinguishes an exfiltration attempt from ordinary work.
+- **It names the secret.** "Sends `apiKey` from the keychain."
+- **Refuse is focused**, and the timeout refuses. Nothing here proceeds by
+  inattention.
+
+Honestly: this is a dialog, and §13 says plainly that a dialog is only as good
+as its reading. The design has moved a flat refusal to an informed decision,
+which is a real reduction in safety bought for a real gain in usefulness — an
+agent can now iterate on a request that needs a credential. Decision §14.7 is
+where that trade was made, and it is the one to revisit first if this ever
+goes wrong.
+
+The `⌘G` point above is why the audit log (§9) does not record file contents: git
 already has them, in more detail and with a diff.
 
 ## 6. The consent model
@@ -349,8 +387,8 @@ one of them means they saw it.
 
 ### 6.4 Asking in the window — the authority
 
-**Three cases must be answered in Otis' own window, and elicitation only
-points at it:**
+**Two cases must be answered in Otis' own window, and elicitation only points
+at it:**
 
 1. The environment sets `confirmBeforeSend: true` — production. The brief this
    was written from asks for an "explicit in-app confirmation" here, and it is
@@ -358,11 +396,17 @@ points at it:**
    is catastrophic rather than annoying.
 2. The send is **unreviewed** (§5) — an untracked or modified file. Otis' own
    dialog is where the diff is, one keystroke away.
-3. `mcp.alwaysConfirmSends` is on (§4 rule 4). Turning it on is a statement
-   that you want to be asked *by Otis*, and honouring it through the client
-   would miss the point.
+Note what is **not** on this list. An earlier draft had a third case —
+`mcp.alwaysConfirmSends` — justified on the grounds that turning it on was a
+deliberate statement that you wanted to be asked *by Otis*. Deciding to default
+it on (§14.12) removed that justification: a setting nobody chose is not a
+statement anybody made, and keeping the case would have meant every send was
+window-only out of the box, which would leave §6.3's elicitation unreachable
+unless a person went and *weakened* a safety setting to get a better prompt.
+That is an incoherent shape for a default, so the setting now decides whether a
+person is asked and these two cases decide where.
 
-For these the elicitation message is a notification — "Otis is waiting for your
+For the two cases above the elicitation message is a notification — "Otis is waiting for your
 confirmation" — and the answer is only taken from the window. It costs a
 context switch exactly where a context switch is cheap relative to the mistake.
 
@@ -609,14 +653,25 @@ annotations §6.1 lists.
 `{ requests: [{ path, name, method, folder }], folders: [...] }`
 The same tree the sidebar draws and `otis ls` prints.
 
-**`get_request`** — one request, as it would be sent.
+**`get_request`** — one request, as it would be sent *and* as it is written.
 `{ path: string, environment?: string }` →
 `{ path, name, method, url, headers: [{ name, value, source, inherited }],
    auth: { kind, source, secret }, body: { kind, contentType, preview },
-   variables: [{ name, resolved, origin, secret }], warnings: [] }`
-Effective values with provenance, not the raw file: the agent should see what
-will happen, which is the same thing the editor shows a person. `body.preview`
-is capped at 4 KB; `resolvedUrl` is masked.
+   variables: [{ name, resolved, origin, secret }], warnings: [],
+   source: string, gitStatus: "clean" | "modified" | "untracked" }`
+Effective values with provenance, because the agent should see what will happen
+— the same thing the editor shows a person. `body.preview` is capped at 4 KB
+and `resolvedUrl` is masked.
+
+`source` is the file's own text, unresolved, and it exists so that
+`update_request` can be a read-modify-write on the real bytes rather than a
+reconstruction from a summary (§14.8). It is masked like everything else, which
+matters here: a `.http` file can contain a literal credential somebody
+committed, and this tool must not be the way an agent reads one.
+
+`gitStatus` is included because it is what decides how a send will be gated
+(§5), and an agent that can see it can tell a person "this will need your
+confirmation" before spending a turn finding out.
 
 **`list_environments`** —
 `{ environments: [{ name, description, active, confirmBeforeSend, agents,
@@ -696,11 +751,15 @@ track the directory.
 
 **`update_request`** — replace a request's text.
 `{ path: string, text: string }` → `{ path, status: "modified" }`
-`RequestService.SaveText`, which refuses text that does not parse. Whole-file
-replacement rather than a structured patch: the file *is* the format, an agent
-reading `get_request` and writing `update_request` round-trips through the same
-thing a person edits, and a patch API would be a second answer to what a
-request is.
+`RequestService.SaveText`, which refuses text that does not parse.
+
+Whole-file replacement rather than a structured patch (§14.8): the file *is*
+the format, so an agent that reads `get_request.source` and writes
+`update_request.text` round-trips through exactly what a person edits, and a
+patch API would be a second answer to what a request is. The risk that comes
+with it — an agent rewriting a file can drop a comment or a script it did not
+understand — is why `source` exists, and what survives shows up in the diff
+like any other change.
 
 A script an agent writes is worth a sentence, since `update_request` can carry
 one: it runs in the same sandbox as any other (`FORMAT.md` §9.3 — no
@@ -756,9 +815,9 @@ by `git status` rather than by policy.
 - An agent sending to production without a person seeing it (§4, §6).
 - Another process or user on the machine driving it — token, loopback bind.
 - A web page driving it through your browser — `Origin` and `Host` checks.
-- An agent sending a secret anywhere a person did not put in a committed file
-  (§5) — including a request the agent wrote itself, which is refused outright
-  rather than confirmed.
+- An agent sending a secret without a person seeing the request that carries it
+  (§5.1) — in the window, with the diff, the destination in the button and the
+  secret named.
 - An agent making its own writes look reviewed: it cannot commit, stage or
   discard (§12).
 - Runaway loops — rate limits, and a kill switch that means it.
@@ -784,11 +843,20 @@ by `git status` rather than by policy.
 - **A client configured to auto-approve tools.** Real clients offer "always
   allow this tool", and a person may click it while approving something
   harmless. That is precisely why the tool annotations of §6.1 are not treated
-  as the gate, and why the three cases in §6.4 are answered in Otis' own
-  window, which no client preference can reach. If you want *every* send to
-  land there, `mcp.alwaysConfirmSends` (§4 rule 4) is the switch.
+  as the gate, and why the two cases in §6.4 are answered in Otis' own window,
+  which no client preference can reach. And because
+  `mcp.alwaysConfirmSends` defaults on (§4 rule 4), a client that
+  auto-approves every tool still cannot make a send happen without somebody
+  answering somewhere.
 - **Anything a request itself does.** Otis sends what the collection says. A
   reviewed request that deletes a production table will delete it.
+- **A person approving §5.1's dialog without reading it.** This is the
+  design's sharpest residual risk and it is a deliberate trade (§14.7): an
+  unreviewed send that uses a secret is *confirmed*, not refused, so an agent
+  that writes `Authorization: Bearer {{apiKey}}` pointed at a host it chose is
+  one careless click from succeeding. Everything §5.1 does — the destructive
+  treatment, the diff, the host in the button, Refuse focused — is spent making
+  that click hard to make by accident. None of it makes it impossible.
 - **Another local process reading `mcp.json`.** It is mode `0600`, which stops
   other *users*, not other processes running as you. A local attacker with your
   uid has your keychain anyway.
@@ -800,8 +868,12 @@ by `git status` rather than by policy.
 
 ## 14. Decisions
 
-Four are settled and struck through, with the reasoning kept so a later reader
-sees what was decided and why rather than re-opening it. Eight are still yours.
+Seven are settled and struck through, with the reasoning kept so a later reader
+sees what was decided and why rather than re-opening it. Five are still yours.
+
+Three of the seven went against my recommendation, and §14.7 is the one that
+moved the design's safety rather than its shape — it is flagged in §13 as the
+residual risk for that reason.
 
 1. **Port and token stability** (§2). Recommend: unstable, plus
    `otis mcp config` to print the client block.
@@ -824,14 +896,41 @@ sees what was decided and why rather than re-opening it. Eight are still yours.
    shorter makes a person racing a timer.
 6. **Should RUN require READ?** Recommend no — an agent told exactly what to
    send should not need to enumerate.
-7. **Should an unreviewed send that uses a secret be refused, or confirmed with
-   a louder dialog?** (§5) Recommend refused. A dialog is a thing a tired
-   person clicks, and this is the one case where the failure is
-   unrecoverable — the credential is gone the moment it is sent.
-8. **Should `update_request` take whole text or a structured patch?** (§12)
-   Recommend text, through the existing validated `SaveText`. A patch API would
-   be a second answer to what a request is, which is the mistake
-   `FORMAT.md` §1.13 exists to prevent.
+7. ~~Should an unreviewed send that uses a secret be refused, or confirmed with
+   a louder dialog?~~ **Decided: confirmed**, against my recommendation
+   (§5.1). The gain is real — an agent can iterate on a request that needs a
+   credential, which a flat refusal made impossible. The cost is equally real
+   and is now the design's residual risk (§13): a flat refusal became an
+   informed decision, and a decision can be got wrong. §5.1 spends the
+   difference on the dialog — destructive treatment, the diff of what the agent
+   wrote, the destination in the button text, the secret named, Refuse
+   focused — but it is a dialog. **This is the first thing to revisit if this
+   ever goes wrong.**
+8. ~~Should `update_request` take whole text or a structured patch?~~
+   **Decided: whole text**, and the question deserved a better explanation than
+   it got. The two shapes were:
+
+   - **Whole text** — `update_request { path, text }`. The agent sends the
+     entire `.http` file as a string and Otis parses it, refuses it if it does
+     not parse, and writes it. One code path, `RequestService.SaveText`, which
+     already exists and already validates.
+   - **Structured patch** — something like
+     `update_request { path, setHeader: {…}, setMethod: "POST", setBody: "…" }`.
+     Otis applies the changes to the parsed model. Surgical: it cannot disturb
+     anything the agent did not mention.
+
+   The patch shape is safer in one specific way — an agent rewriting a whole
+   file can drop a comment, a directive or a script it did not understand — and
+   worse in a structural way: it is a second answer to "what is a request",
+   which is the mistake `FORMAT.md` §1.13 exists to prevent, and it needs an
+   API surface mirroring every part of the model.
+
+   Text wins **provided the agent can read the real file first**, which the
+   proposal did not allow for: `get_request` returns *effective* values with
+   provenance, not the source. So `get_request` now returns `source` (§12), and
+   the round trip is read-modify-write on the actual bytes rather than a
+   reconstruction from a summary. That removes most of the clobbering risk, and
+   what remains is visible in the diff like any other change.
 9. **Should WRITE be allowed at all in a collection with uncommitted changes
    already present?** Recommend yes, with no special case: those files are
    simply unreviewed like any other, and §5 already covers them.
@@ -845,9 +944,11 @@ sees what was decided and why rather than re-opening it. Eight are still yours.
     tool-call count for clients billed by it.
 11. ~~Should elicitation be allowed to answer the §6.4 cases too?~~
     **Decided: no** (§6.4). Production, unreviewed sends and
-    `alwaysConfirmSends` stay in the window. It is the one surface no client
-    preference can auto-approve, and the brief asked for an in-app confirmation
-    on production specifically.
+    stay in the window. It is the one surface no client preference can
+    auto-approve, and the brief asked for an in-app confirmation on production
+    specifically. (The third case this once listed —
+    `alwaysConfirmSends` — was dropped when it became a default; §6.4 says
+    why.)
 
     Worth noting this is the one place the design is deliberately *not*
     uniform, having just chosen uniformity for two-phase (§14.10). The
@@ -856,11 +957,19 @@ sees what was decided and why rather than re-opening it. Eight are still yours.
     only confirmation surface a client cannot auto-approve. The first
     simplifies, the second weakens. The cost is a context switch on exactly
     the sends where a context switch is cheap relative to the mistake.
-12. **Should `mcp.alwaysConfirmSends` default on rather than off?** (§4 rule 4)
-    Recommend off, because the committed `agents` policy is meant to be the
-    answer and a local override that is on by default makes it not one. But
-    defaulting it *on* is the more cautious choice and costs only friction, so
-    this is a reasonable place to disagree with me.
+12. ~~Should `mcp.alwaysConfirmSends` default on rather than off?~~
+    **Decided: on** (§4 rule 4). Every agent send asks until somebody turns it
+    off, which means a committed `"allow"` is a statement about the
+    environment rather than a grant that takes effect unasked.
+
+    Deciding this changed §6.4: the setting used to force the confirmation into
+    Otis' window, on the reasoning that turning it on was a deliberate act.
+    A default is not a deliberate act, and keeping that link would have made
+    every send window-only out of the box — leaving elicitation reachable only
+    by *weakening* a safety setting. So the setting now decides whether a
+    person is asked, and §6.4 decides where. A user who wants every
+    confirmation in the window regardless has no switch for that today; if
+    somebody asks, it is a second setting rather than a change to this one.
 
 ## 15. Verification plan
 
@@ -888,8 +997,12 @@ The brief's list, plus what §7 demands:
 11. **The write gate.** With WRITE and RUN on and the environment marked
     `"allow"`: `create_request` a request pointing at an `httptest` server with
     an `Authorization: Bearer {{apiKey}}` header, then `send_request` it →
-    **refused**, because the file is untracked and the send would use a secret.
-    This is the exfiltration attempt from §5 and it must not reach the network.
+    **the §5.1 danger confirmation, in the window, and nothing sent until it is
+    answered**. Assert the dialog names the destination host and the secret,
+    that an elicitation `accept` does not satisfy it, and that the timeout
+    refuses. This is the exfiltration attempt from §5 and after §14.7 it is
+    gated by a person rather than by a refusal — so the test is that the person
+    is genuinely in the way, and that nothing reaches the network without them.
 12. The same request without the secret header → confirmed, not sent silently,
     even though the environment says `"allow"`.
 13. Commit the file, then send again → proceeds under the environment's policy.
@@ -916,8 +1029,10 @@ The brief's list, plus what §7 demands:
     call.
 20. **The §6.4 cases are not answerable through the client.** With
     `confirmBeforeSend: true`, an `accept` from elicitation does **not** send;
-    only the in-app answer does. Same for an unreviewed send and for
-    `alwaysConfirmSends`.
+    only the in-app answer does. Same for an unreviewed send. And the converse:
+    with `alwaysConfirmSends` on and an ordinary `"confirm"` environment,
+    elicitation *can* answer — otherwise the default would make §6.3 dead
+    code.
 21. **Two-phase send, on every client** (§6.2). `send_request` without an
     `intent` sends nothing and asks nobody — asserted against an `httptest`
     server that records every hit, so "nothing was sent" is a fact and not an
@@ -950,12 +1065,19 @@ The brief's list, plus what §7 demands:
     the binding exists to close and it is the test that proves it did.
 29. A returned intent does **not** skip a human confirmation: with the
     environment on `"confirm"`, phase 2 still blocks on the dialog.
-30. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
-    `"allow"`, a send still asks. With it off, the same send does not. And there
-    is no setting or tool argument that turns a `"confirm"` or `"deny"`
-    environment into an `"allow"` one — asserted by exhausting the effective
-    policy function over every combination, so the "tighten only" rule is a
-    test rather than a claim.
+30. **`mcp.alwaysConfirmSends`** (§4 rule 4). Default on: a send against
+    `"allow"` still asks. Turned off, the same send does not. And there is no
+    setting or tool argument that turns a `"confirm"` or `"deny"` environment
+    into an `"allow"` one — asserted by exhausting the effective policy
+    function over every combination, so the "tighten only" rule is a test
+    rather than a claim.
+31. **`get_request.source` is masked** (§12). A committed `.http` file
+    containing a literal credential is not a way for an agent to read one:
+    assert the masker runs over `source` as it does over every other result.
+32. **The round trip does not clobber.** `get_request.source` →
+    `update_request` with one header changed → the file's comments, directives
+    and scripts survive byte for byte. This is the risk §14.8 accepted, so it
+    is the one to measure.
 
 Tests may not touch the network (`CLAUDE.md`), so 5 and 6 run against an
 `httptest` server.
