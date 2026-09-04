@@ -104,6 +104,18 @@ Enabling any of them is a click in the app, per-machine, and persisted in
 let an agent drive your machine is not a fact about the repository, and a
 committed switch would be one person deciding it for the whole team.
 
+```jsonc
+"mcp": {
+  "read": false,
+  "run": false,
+  "write": false,
+  // §4 rule 4: tightens the committed per-environment policy, never loosens it.
+  "alwaysConfirmSends": false,
+  // §9's open decision.
+  "persistAuditLog": false
+}
+```
+
 **Turning RUN on does not grant sending, and turning WRITE on does not grant
 sending what was written.** It grants the *tool*. Whether a
 given call proceeds is §4, §5 and §6.
@@ -148,6 +160,21 @@ Three rules make the defaults safe:
 3. **No environment selected is treated as `confirm`.** With no environment
    there is no way to reason about where a request points, and a request may
    carry a literal URL.
+
+4. **A per-machine setting can tighten this, never loosen it.** `settings.json`
+   carries `mcp.alwaysConfirmSends`, off by default. Turned on, **every** agent
+   send asks, including against an environment marked `"allow"`.
+
+   It exists because `agents` is *committed*: somebody on the team decided that
+   `local` is safe for agents, and you may not agree on your machine — or may
+   not have read the environment file at all. Tightening is always yours to do
+   unilaterally. Loosening is not: there is deliberately no per-machine setting
+   that turns a `"confirm"` or `"deny"` environment into an `"allow"` one,
+   because that is the one direction where a local preference could quietly
+   cancel a decision the team made in review.
+
+   The effective policy is therefore the **stricter** of the committed one and
+   the local one, computed in one place so no caller can get it wrong.
 
 Unknown values are an error naming the key, not a silent fallback — `"agents":
 "alow"` must not read as permission.
@@ -204,6 +231,65 @@ already has them, in more detail and with a diff.
 
 ## 6. The consent model
 
+Two confirmations, by two different parties, for two different reasons. The
+agent confirms what it is about to do; the person confirms that it may. They
+are independent, and the first can never satisfy the second.
+
+### 6.1 Two-phase send: the agent confirms too
+
+**No send ever happens on a single tool call.** `send_request` and `run_folder`
+are two-phase, always, whenever RUN is enabled:
+
+```jsonc
+// Phase 1 — no arguments beyond the target. Nothing is sent.
+→ send_request { "path": "orders/create-order.http" }
+← { "intent": "i_7f2a…", "expiresAt": "2026-09-04T11:03:41Z",
+    "method": "POST",
+    "resolvedUrl": "https://api.acme.com/v2/orders",
+    "environment": "production",
+    "usesSecret": true, "secrets": ["apiKey"],
+    "reviewed": true,
+    "willAsk": "the person, because production confirms before send" }
+
+// Phase 2 — the same tool, now carrying the intent back.
+→ send_request { "path": "orders/create-order.http", "intent": "i_7f2a…" }
+← { "sendId": "s_7f2b", "status": 201, … }
+```
+
+What this buys, precisely:
+
+- **The target lands in the agent's context before the send.** The agent cannot
+  send without first having read the resolved URL, the environment and whether
+  a credential is involved. In a client like Claude Code that transcript is
+  also what *you* are reading, so a send to somewhere surprising is visible in
+  the conversation and not only in the audit log.
+- **A single stray tool call cannot send anything.** If an agent is talked into
+  one call — by a prompt injection in a response body, say (§13) — that call is
+  a preview. Sending needs a second, deliberate one.
+- **It is uniform.** There is no code path in which a send happens on one call,
+  which is a property worth more than the one saved round trip.
+
+The intent is **single-use**, expires in **60 seconds**, and — the part that
+makes it real rather than ceremonial — **is bound to a fingerprint of the
+resolved request**: method, URL, headers, body, environment, and the session
+values it consumed. If anything changes between the two phases the intent is
+void and the agent must preview again.
+
+Without that binding the two phases would be a hole rather than a gate: preview
+something harmless, edit the file with `update_request`, then spend the intent
+on what the preview never described. With WRITE enabled that is not a
+hypothetical, which is why the fingerprint covers the request body and not just
+the URL.
+
+**What this is not.** It is not a security boundary against a malicious agent.
+Anything an agent can be talked into doing once it can be talked into doing
+twice, and it will happily echo an intent back. It is defence in depth and a
+way of forcing the truth into the transcript — nothing here weakens §4, §5 or
+§6.2 on the strength of it, and an implementation that let a returned intent
+skip a human confirmation would be a bug of the worst kind.
+
+### 6.2 The person confirms
+
 **Every call that needs confirmation gets its own confirmation. There is no
 session-wide approval, no "allow for 10 minutes", and no "always allow".**
 
@@ -212,11 +298,12 @@ holds the `confirmBeforeSend` gate for the Send button, ⌘↵, the palette and
 folder runs, on the argument that "a safety feature with a hole in it is not
 one". An agent send is one more caller, and it must not get its own path.
 
-The flow for a call that needs confirmation:
+The flow for a call that needs confirmation, which begins at **phase 2** —
+phase 1 never asks anybody anything, because nothing is happening yet:
 
-1. The tool handler resolves the request far enough to know **what it would
-   do**: method, the resolved URL with secrets masked, the environment, and
-   whether a secret would be used.
+1. The handler re-resolves the request and checks the intent's fingerprint
+   still matches, so what the person is about to be shown is what will
+   actually be sent.
 2. It raises a confirmation in the window and **blocks**.
 3. The window shows a modal naming the agent, the tool, and those details.
    Two buttons: **Send once** and **Refuse**.
@@ -443,18 +530,30 @@ means the most recent send.
 
 ### RUN
 
+Both are two-phase (§6.1): called without `intent` they describe and send
+nothing; called with one they proceed.
+
 **`send_request`** — send one request.
-`{ path: string, environment?: string }` →
-`{ sendId, status, statusText, timing, size, resolvedUrl,
+`{ path: string, environment?: string, intent?: string }` →
+without `intent`: `{ intent, expiresAt, method, resolvedUrl, environment,
+   usesSecret, secrets: [name], reviewed, willAsk }`
+with `intent`: `{ sendId, status, statusText, timing, size, resolvedUrl,
    tests: { passed, failed }, sessionVariablesSet: [{ name, scope, owner }] }`
 Naming an `environment` is allowed and is policy-checked like any other; it
 does not change the app's active environment, because an agent must not be able
-to silently repoint the human's next send.
+to silently repoint the human's next send. It is part of the fingerprint, so an
+intent taken for one environment cannot be spent against another.
 
 **`run_folder`** — run a folder in order.
-`{ path: string, stopOnFailure?: boolean }` →
-`{ runId, results: [{ path, status, tests }], summary: { sent, passed, failed } }`
-Confirmation is per request (§6).
+`{ path: string, stopOnFailure?: boolean, intent?: string }` →
+without `intent`: the plan, and every request's preview — which is the useful
+shape anyway, since it is what tells an agent how many confirmations it is
+about to ask a person for.
+with `intent`: `{ runId, results: [{ path, status, tests }],
+   summary: { sent, passed, failed } }`
+One intent covers the run, because the plan is what was previewed. Human
+confirmation is still **per request** (§6.2): the agent confirming a folder
+once does not confirm anything on the person's behalf.
 
 ### WRITE
 
@@ -549,7 +648,12 @@ by `git status` rather than by policy.
 **Does not:**
 - **A malicious agent within its grant.** If you enable RUN and mark an
   environment `"allow"`, an agent can send those requests as fast as the rate
-  limit permits. That is the grant working, not failing.
+  limit permits. That is the grant working, not failing. §6.1's two-phase send
+  does **not** change this: an agent will echo an intent back without a
+  thought. Its value is that the target reaches the transcript, not that it
+  stops anything. If you do not trust the committed `"allow"`, the control is
+  `mcp.alwaysConfirmSends` (§4 rule 4), which is a human gate and does stop
+  things.
 - **An agent changing a request you already reviewed.** With WRITE on, it can.
   §5 means it cannot then *send* it without you reading the resolved URL, and
   the change shows up as an `M` in the tree and in the diff — but the file did
@@ -596,6 +700,16 @@ by `git status` rather than by policy.
 9. **Should WRITE be allowed at all in a collection with uncommitted changes
    already present?** Recommend yes, with no special case: those files are
    simply unreviewed like any other, and §5 already covers them.
+10. **Should two-phase send be mandatory, or opt-in?** (§6.1) Recommend
+    mandatory. Opt-in would mean a code path where one call sends, which is
+    exactly the path worth not having — and the cost is one round trip on an
+    operation that already involves the network. The argument against is that
+    it doubles every agent's tool-call count and some clients are billed by it.
+11. **Should `mcp.alwaysConfirmSends` default on rather than off?** (§4 rule 4)
+    Recommend off, because the committed `agents` policy is meant to be the
+    answer and a local override that is on by default makes it not one. But
+    defaulting it *on* is the more cautious choice and costs only friction, so
+    this is a reasonable place to disagree with me.
 
 ## 15. Verification plan
 
@@ -636,6 +750,23 @@ The brief's list, plus what §7 demands:
 16. No `rename`, `delete`, environment-write, `.order`-write, commit,
     `create_collection` or `open_collection` tool is registered at all — asserted
     against the registered tool list, so adding one later fails the test.
+17. **Two-phase send** (§6.1). `send_request` without an `intent` sends nothing
+    — asserted against an `httptest` server that records every hit, so "nothing
+    was sent" is a fact and not an absence of evidence. The preview names the
+    method, resolved URL and environment.
+18. An intent is single-use: spending it twice fails the second time. An expired
+    intent fails. An intent from a different request or environment fails.
+19. **The fingerprint holds.** Preview a request, `update_request` its URL, then
+    spend the intent → refused, and nothing is sent. This is the TOCTOU hole
+    the binding exists to close and it is the test that proves it did.
+20. A returned intent does **not** skip a human confirmation: with the
+    environment on `"confirm"`, phase 2 still blocks on the dialog.
+21. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
+    `"allow"`, a send still asks. With it off, the same send does not. And there
+    is no setting or tool argument that turns a `"confirm"` or `"deny"`
+    environment into an `"allow"` one — asserted by exhausting the effective
+    policy function over every combination, so the "tighten only" rule is a
+    test rather than a claim.
 
 Tests may not touch the network (`CLAUDE.md`), so 5 and 6 run against an
 `httptest` server.
