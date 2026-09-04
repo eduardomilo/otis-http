@@ -8,6 +8,7 @@ import * as DiffService from "./diffservice.js";
 import * as EnvironmentService from "./environmentservice.js";
 import * as FolderService from "./folderservice.js";
 import * as GitService from "./gitservice.js";
+import * as MCPService from "./mcpservice.js";
 import * as OrderService from "./orderservice.js";
 import * as RequestService from "./requestservice.js";
 import * as SendService from "./sendservice.js";
@@ -20,6 +21,7 @@ export {
     EnvironmentService,
     FolderService,
     GitService,
+    MCPService,
     OrderService,
     RequestService,
     SendService,
@@ -56,10 +58,14 @@ export type {
     FolderScript,
     FolderVariable,
     KeychainState,
+    MCPConfirmation,
+    MCPResolved,
+    MCPStatus,
     Node,
     OpenTarget,
     Opened,
     OrderResult,
+    RefusedRequest,
     ResponseMeta,
     RunComplete,
     RunResult,

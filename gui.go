@@ -84,6 +84,9 @@ func init() {
 	application.RegisterEvent[services.RunStarted](events.RunStarted)
 	application.RegisterEvent[services.RunResult](events.RunResult)
 	application.RegisterEvent[services.RunComplete](events.RunComplete)
+	application.RegisterEvent[services.MCPConfirmation](events.MCPConfirm)
+	application.RegisterEvent[services.MCPResolved](events.MCPConfirmResolved)
+	application.RegisterEvent[services.MCPStatus](events.MCPChanged)
 }
 
 // runGUI opens the window. openPath is a file or directory to show, or "" to
@@ -122,6 +125,19 @@ func runGUI(openPath string) {
 	// variables all belong to the collection, not to the process.
 	sends := services.NewSendService(collections, secretStore)
 
+	// The services the MCP server delegates to. It is constructed with them
+	// rather than reimplementing anything, which is what makes an agent's
+	// write subject to the invariants a person's is (docs/MCP.md §12). Note
+	// that it gets the *services*, never the secret store: no tool reads or
+	// writes a secret, and the way that is guaranteed is that this service
+	// has no way to.
+	gitState := services.NewGitService(collections)
+	requestSvc := services.NewRequestService(collections)
+	environmentSvc := services.NewEnvironmentService(collections, store, secretStore)
+	folderSvc := services.NewFolderService(collections, sends)
+	agents := services.NewMCPService(
+		store, collections, sends, requestSvc, folderSvc, environmentSvc, gitState)
+
 	app := application.New(application.Options{
 		Name:        "Otis",
 		Description: "File-based HTTP client",
@@ -130,10 +146,10 @@ func runGUI(openPath string) {
 			application.NewService(services.NewSettingsService(store)),
 			application.NewService(dialogs),
 			application.NewService(collections),
-			application.NewService(services.NewGitService(collections)),
-			application.NewService(services.NewRequestService(collections)),
+			application.NewService(gitState),
+			application.NewService(requestSvc),
 			application.NewService(sends),
-			application.NewService(services.NewEnvironmentService(collections, store, secretStore)),
+			application.NewService(environmentSvc),
 			// The one service that writes to a repository, and only what a
 			// review needs: the index, and a commit. internal/git stays
 			// read-only.
@@ -141,8 +157,12 @@ func runGUI(openPath string) {
 			// The folder view borrows the sender's session store: the
 			// variables a run set are half of its Variables panel, and they
 			// live nowhere on disk (docs/FORMAT.md §4.5).
-			application.NewService(services.NewFolderService(collections, sends)),
+			application.NewService(folderSvc),
 			application.NewService(services.NewOrderService(collections)),
+			// The agent server. It starts nothing on its own: the listener
+			// and each capability are separate switches and all of them are
+			// off in the zero settings, so a fresh install exposes nothing.
+			application.NewService(agents),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

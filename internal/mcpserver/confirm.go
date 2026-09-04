@@ -192,13 +192,13 @@ func (s *Server) askThroughClient(
 			return refusal{
 				decision: mcp.Refused,
 				surface:  mcp.OnClient,
-				message:  "A person refused this. " + confirmation.Reason + ".",
+				message:  "A person refused this. " + capitalize(confirmation.Reason) + ".",
 			}
 		case mcpgo.ElicitationResponseActionDecline:
 			return refusal{
 				decision: mcp.Refused,
 				surface:  mcp.OnClient,
-				message:  "A person declined this. " + confirmation.Reason + ".",
+				message:  "A person declined this. " + capitalize(confirmation.Reason) + ".",
 			}
 		default:
 			// cancel — the prompt went away. Logged distinctly from a
@@ -258,7 +258,7 @@ func answered(ok bool, err error, confirmation Confirmation) error {
 		return refusal{
 			decision: mcp.Refused,
 			surface:  mcp.InWindow,
-			message:  "A person refused this. " + confirmation.Reason + ".",
+			message:  "A person refused this. " + capitalize(confirmation.Reason) + ".",
 		}
 	}
 	return nil

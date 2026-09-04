@@ -83,6 +83,9 @@ func (s *Server) sendRequest(ctx context.Context, req mcpgo.CallToolRequest, c *
 	if err != nil {
 		return nil, redactor, err
 	}
+	// What it actually resolved against, which is not the argument unless the
+	// agent named one.
+	c.environment = prepared.Environment
 
 	intentID := req.GetString("intent", "")
 	if intentID == "" {
@@ -91,7 +94,7 @@ func (s *Server) sendRequest(ctx context.Context, req mcpgo.CallToolRequest, c *
 		if !c.spend() {
 			return nil, redactor, fmt.Errorf("too many run calls; wait a moment and try again")
 		}
-		preview, err := s.preview(prepared)
+		preview, err := s.preview(prepared, s.clientCanBeAsked(ctx))
 		if err != nil {
 			return nil, redactor, err
 		}
@@ -158,7 +161,7 @@ func (s *Server) runFolder(ctx context.Context, req mcpgo.CallToolRequest, c *ca
 		if !c.spend() {
 			return nil, redactor, fmt.Errorf("too many run calls; wait a moment and try again")
 		}
-		return s.planView(plan)
+		return s.planView(ctx, plan)
 	}
 
 	// One intent covers the run, because the plan is what was previewed. It
@@ -184,6 +187,7 @@ func (s *Server) runFolder(ctx context.Context, req mcpgo.CallToolRequest, c *ca
 	// before it starts.
 	var refusedAny bool
 	before := func(ctx context.Context, prepared Prepared) error {
+		c.environment = prepared.Environment
 		decision := mcp.Decide(s.grants.Grants(), sendOf(prepared))
 		inner := &call{spend: c.spend}
 		if err := s.askInWindowOrRefuse(ctx, decision, s.confirmationFor("run_folder", ctx, prepared), inner); err != nil {
@@ -223,7 +227,7 @@ func (s *Server) runFolder(ctx context.Context, req mcpgo.CallToolRequest, c *ca
 // the agent spend an intent to find out: the point of phase 1 is that the
 // resolved target and its consequences land in the agent's context — and so in
 // a transcript a person may be reading — before anything happens.
-func (s *Server) preview(p Prepared) (SendPreview, error) {
+func (s *Server) preview(p Prepared, clientCanAsk bool) (SendPreview, error) {
 	decision := mcp.Decide(s.grants.Grants(), sendOf(p))
 	view := SendPreview{
 		Path:        p.Path,
@@ -233,7 +237,7 @@ func (s *Server) preview(p Prepared) (SendPreview, error) {
 		UsesSecret:  p.UsesSecret,
 		Secrets:     p.SecretNames,
 		Reviewed:    p.Review != mcp.Unreviewed,
-		WillAsk:     s.willAsk(decision),
+		WillAsk:     s.willAsk(decision, clientCanAsk),
 	}
 	if decision.Outcome == mcp.Deny {
 		view.Blocked = true
@@ -253,9 +257,13 @@ func (s *Server) preview(p Prepared) (SendPreview, error) {
 
 // planView is run_folder's phase 1: the plan, every request's preview, and
 // the number of times a person is about to be asked.
-func (s *Server) planView(plan FolderPlan) (any, *mcp.Redactor, error) {
+func (s *Server) planView(ctx context.Context, plan FolderPlan) (any, *mcp.Redactor, error) {
 	view := FolderPlanView{Path: plan.Path, Requests: []PlanRequest{}}
 	grants := s.grants.Grants()
+	// A folder run's confirmations are window-only whatever the surface would
+	// otherwise be (see runFolder), so the plan says so rather than promising
+	// the client's prompt.
+	const clientCanAsk = false
 	for _, prepared := range plan.Requests {
 		decision := mcp.Decide(grants, sendOf(prepared))
 		view.Requests = append(view.Requests, PlanRequest{
@@ -265,7 +273,7 @@ func (s *Server) planView(plan FolderPlan) (any, *mcp.Redactor, error) {
 			ResolvedURL: prepared.URL,
 			UsesSecret:  prepared.UsesSecret,
 			Reviewed:    prepared.Review != mcp.Unreviewed,
-			WillAsk:     s.willAsk(decision),
+			WillAsk:     s.willAsk(decision, clientCanAsk),
 			Blocked:     decision.Outcome == mcp.Deny,
 			Reason:      decision.Reason,
 		})
@@ -300,21 +308,39 @@ func planPrint(plan FolderPlan) mcp.RequestPrint {
 }
 
 // willAsk says who will be asked and where, in words.
-func (s *Server) willAsk(decision mcp.Decision) string {
+//
+// It names the actual surface rather than the possibilities. An earlier
+// version said "in your client or in Otis' window, whichever answers first",
+// which was true of the design and is not true of the code: the two surfaces
+// cannot be raced, because asking through the client returns from the tool
+// call while asking in the window blocks inside it (docs/MCP.md §6.4). An
+// agent that tells a person to watch the wrong place has warned them of
+// nothing, so this takes clientCanAsk and commits to an answer.
+func (s *Server) willAsk(decision mcp.Decision, clientCanAsk bool) string {
 	switch decision.Outcome {
 	case mcp.Deny:
 		return "nobody — Otis will refuse this: " + decision.Reason
 	case mcp.Proceed:
 		return "nobody — this environment allows agent sends without confirmation"
 	}
+
+	windowOpen := s.asker != nil && s.asker.WindowOpen()
 	if decision.Surface == mcp.SurfaceWindow {
 		where := "the person, in Otis' own window"
-		if s.asker == nil || !s.asker.WindowOpen() {
+		if !windowOpen {
 			where += " — and no Otis window is open, so this will fail"
 		}
 		return where + " — " + decision.Reason
 	}
-	return "the person, in your client or in Otis' window, whichever answers first — " + decision.Reason
+	switch {
+	case clientCanAsk:
+		return "the person, in your client — " + decision.Reason
+	case windowOpen:
+		return "the person, in Otis' own window — " + decision.Reason
+	default:
+		return "nobody can be asked: no Otis window is open and this client cannot ask " +
+			"you questions, so this will fail — " + decision.Reason
+	}
 }
 
 // sendOf is the policy's view of a prepared request.

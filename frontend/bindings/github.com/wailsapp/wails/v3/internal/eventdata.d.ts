@@ -20,6 +20,9 @@ declare module "@wailsio/runtime" {
             "collection:opened": services$0.CollectionInfo;
             "environments:changed": services$0.Environments;
             "git:changed": git$0.State;
+            "mcp:changed": services$0.MCPStatus;
+            "mcp:confirm": services$0.MCPConfirmation;
+            "mcp:confirm-resolved": services$0.MCPResolved;
             "open:node": void;
             "run:complete": services$0.RunComplete;
             "run:result": services$0.RunResult;

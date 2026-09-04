@@ -15,6 +15,9 @@ import * as httpclient$0 from "../httpclient/models.js";
 import * as httpfile$0 from "../httpfile/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mcp$0 from "../mcp/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as resolve$0 from "../resolve/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -710,6 +713,129 @@ export interface KeychainState {
 }
 
 /**
+ * MCPConfirmation is the events.MCPConfirm payload.
+ * 
+ * It wraps mcpserver.Confirmation rather than restating it, so the window and
+ * the confirmation logic cannot drift about what a person is being told.
+ */
+export interface MCPConfirmation {
+    /**
+     * Tool and Client name who is asking.
+     */
+    "tool": string;
+    "client": string;
+    "path": string;
+    "name": string;
+    "method": string;
+    "url": string;
+    "environment": string;
+    "usesSecret": boolean;
+    "secrets"?: string[] | null;
+    "reviewed": boolean;
+
+    /**
+     * Danger is §5.1: an unreviewed send that would consume a secret. The
+     * window draws this one with the destructive treatment, the diff, the
+     * host in the button text and Refuse focused.
+     */
+    "danger": boolean;
+
+    /**
+     * Reason is why a confirmation is needed, in words.
+     */
+    "reason": string;
+
+    /**
+     * Host is the URL's host alone, so the window can put it in the button:
+     * "Send to evil.test", never "Send". Muscle memory cannot approve a host
+     * it has to read.
+     */
+    "host": string;
+
+    /**
+     * ID identifies this confirmation across the binding, so the window's
+     * answer can be matched to the call that is blocking on it.
+     */
+    "id": string;
+
+    /**
+     * ExpiresAt is when it refuses itself.
+     */
+    "expiresAt": string;
+}
+
+/**
+ * MCPResolved is the events.MCPConfirmResolved payload.
+ */
+export interface MCPResolved {
+    "id": string;
+
+    /**
+     * Reason is why it resolved without the person, or "" when they answered.
+     */
+    "reason"?: string;
+}
+
+/**
+ * MCPStatus is what the indicator and its popover draw (DESIGN-NOTES §9.22).
+ */
+export interface MCPStatus {
+    /**
+     * Enabled is the listener; Running is whether it actually came up.
+     */
+    "enabled": boolean;
+    "running": boolean;
+
+    /**
+     * Read, Run and Write are the three capabilities.
+     */
+    "read": boolean;
+    "run": boolean;
+    "write": boolean;
+
+    /**
+     * AlwaysConfirmSends is §4 rule 4, on by default.
+     */
+    "alwaysConfirmSends": boolean;
+    "persistAuditLog": boolean;
+
+    /**
+     * Client is the connected MCP client's declared name, or "" when nothing
+     * has called. The chip says `agent · idle` until this fills in.
+     */
+    "client": string;
+
+    /**
+     * Waiting is how many confirmations are outstanding. Exact, like every
+     * other count in Otis (DESIGN-NOTES §8.5).
+     */
+    "waiting": number;
+
+    /**
+     * Port is the loopback port, or 0.
+     */
+    "port": number;
+
+    /**
+     * WriteBlocked explains why WRITE cannot be granted, or is empty when it
+     * can. WRITE depends on the review gate and the review gate is git
+     * status, so a collection outside git cannot have it (§3).
+     */
+    "writeBlocked"?: string;
+
+    /**
+     * AuditError is the last failure to write the audit log. Surfaced rather
+     * than failing calls (§9.1).
+     */
+    "auditError"?: string;
+
+    /**
+     * Recent is the newest audit entries for the popover.
+     */
+    "recent": mcp$0.Entry[] | null;
+}
+
+/**
  * Node is one entry in the tree the sidebar renders.
  */
 export interface Node {
@@ -905,6 +1031,16 @@ export interface OrderResult {
 }
 
 /**
+ * RefusedRequest is one request a run did not send because beforeRequest said
+ * not to. It is kept apart from Failed because "a person said no" is not a
+ * fault of the request.
+ */
+export interface RefusedRequest {
+    "path": string;
+    "reason": string;
+}
+
+/**
  * ResponseMeta is everything about a response except the body.
  */
 export interface ResponseMeta {
@@ -1005,6 +1141,14 @@ export interface RunComplete {
     "total": number;
     "durationMs": number;
     "at": string;
+
+    /**
+     * Refused lists requests a beforeRequest hook declined, which only an
+     * agent run has. Kept apart from Failed: a person saying no to a
+     * confirmation is not a fault of the request, and counting it as one
+     * would make an agent's run look broken when it was governed.
+     */
+    "refused"?: RefusedRequest[] | null;
 }
 
 /**

@@ -55,6 +55,14 @@ type call struct {
 	// because the path in the arguments is the folder and the interesting
 	// one is the request.
 	target string
+	// environment overrides the audited environment name.
+	//
+	// The arguments only carry one when the agent *named* one, and most
+	// sends do not — they resolve against whatever the person has active. A
+	// log that recorded the argument would say "" for those, and "which
+	// environment did that credential go to" is the most security-relevant
+	// question the log answers after "which request".
+	environment string
 
 	// inputRequired is set when a handler has asked the person a question
 	// through their client and is waiting for the retry that carries the
@@ -107,6 +115,9 @@ func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, onEntry bo
 			entry.Surface = c.surface
 			if c.target != "" {
 				entry.Target = c.target
+			}
+			if c.environment != "" {
+				entry.Environment = c.environment
 			}
 			entry.DurationMs = float64(time.Since(started).Microseconds()) / 1000
 			s.record(entry)

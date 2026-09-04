@@ -229,7 +229,7 @@ func runAndWait(t *testing.T, sends *SendService, folder string, stopOnFailure b
 	if len(requests) == 0 {
 		t.Fatalf("%s has no requests", folder)
 	}
-	return sends.runFolder(t.Context(), "run-1", loaded, node, requests, "", stopOnFailure, time.Now())
+	return sends.runFolder(t.Context(), "run-1", loaded, node, requests, "", stopOnFailure, time.Now(), nil)
 }
 
 func TestRunResultCarriesWhatTheRowNeeds(t *testing.T) {

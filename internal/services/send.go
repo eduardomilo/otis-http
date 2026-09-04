@@ -398,6 +398,141 @@ func (s *SendService) Send(nodePath, envName string) (string, error) {
 	return id, nil
 }
 
+// A beforeRequest runs before each request in a folder run, and a non-nil
+// error means that request is not sent.
+//
+// Only the MCP server passes one; the window and the CLI pass nil. See
+// runFolder for why it is a parameter.
+type beforeRequest func(ctx context.Context, node *collection.Node) error
+
+// RefusedRequest is one request a run did not send because beforeRequest said
+// not to. It is kept apart from Failed because "a person said no" is not a
+// fault of the request.
+type RefusedRequest struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// requestNode finds a sendable request, with the same checks Send makes.
+func (s *SendService) requestNode(nodePath string) (*collection.Collection, *collection.Node, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return nil, nil, err
+	}
+	node := loaded.Find(nodePath)
+	switch {
+	case node == nil:
+		return nil, nil, fmt.Errorf("%s is not in the collection", nodePath)
+	case node.Kind != collection.KindRequest:
+		return nil, nil, fmt.Errorf("%s is a folder, not a request", nodePath)
+	case node.Broken:
+		return nil, nil, fmt.Errorf("%s: %s", nodePath, node.Error)
+	case node.Request == nil:
+		return nil, nil, fmt.Errorf("%s contains no request", nodePath)
+	}
+	return loaded, node, nil
+}
+
+// sendNow sends and waits, for a caller that needs the outcome rather than an
+// event.
+//
+// It is the same s.run the window's Send button reaches, on the caller's
+// goroutine instead of a new one — so a tool call, a click and `otis run`
+// resolve, prepare and send identically, which is the property CLAUDE.md asks
+// for and the reason this is a wrapper rather than a second sender.
+func (s *SendService) sendNow(ctx context.Context, nodePath, envName string) (outcome, error) {
+	loaded, node, err := s.requestNode(nodePath)
+	if err != nil {
+		return outcome{}, err
+	}
+	id := newSendID()
+	ctx, cancel := context.WithCancel(ctx)
+	s.mu.Lock()
+	s.inflight[id] = cancel
+	s.mu.Unlock()
+	defer func() {
+		cancel()
+		s.mu.Lock()
+		delete(s.inflight, id)
+		s.mu.Unlock()
+	}()
+	return s.run(ctx, id, loaded, node, envName, time.Now()), nil
+}
+
+// folderRequests gathers a folder's runnable requests, in the folder's order.
+func (s *SendService) folderRequests(nodePath string) (*collection.Collection, *collection.Node, []*collection.Node, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	folder := loaded.Find(nodePath)
+	switch {
+	case folder == nil:
+		return nil, nil, nil, fmt.Errorf("%s is not in the collection", displayPath(nodePath))
+	case folder.Kind != collection.KindFolder:
+		return nil, nil, nil, fmt.Errorf("%s is a request, not a folder", nodePath)
+	}
+	var requests []*collection.Node
+	walk(folder, func(n *collection.Node) bool {
+		if n.Kind == collection.KindRequest && !n.Broken && n.Request != nil {
+			requests = append(requests, n)
+		}
+		return true
+	})
+	if len(requests) == 0 {
+		return nil, nil, nil, fmt.Errorf("%s has no requests to run", displayPath(nodePath))
+	}
+	return loaded, folder, requests, nil
+}
+
+// runFolderNow runs a folder and waits, calling before for each request.
+func (s *SendService) runFolderNow(
+	ctx context.Context, nodePath, envName string, stopOnFailure bool, before beforeRequest,
+) (RunComplete, error) {
+	loaded, folder, requests, err := s.folderRequests(nodePath)
+	if err != nil {
+		return RunComplete{}, err
+	}
+	id := newSendID()
+	ctx, cancel := context.WithCancel(ctx)
+	s.mu.Lock()
+	s.inflight[id] = cancel
+	s.mu.Unlock()
+	defer func() {
+		cancel()
+		s.mu.Lock()
+		delete(s.inflight, id)
+		s.mu.Unlock()
+	}()
+
+	started := time.Now()
+	paths := make([]string, 0, len(requests))
+	for _, n := range requests {
+		paths = append(paths, n.ID)
+	}
+	// The window is told, so a run an agent started shows in the run pane
+	// exactly like one the Run button started. An agent driving Otis is not
+	// something that should happen invisibly.
+	s.emit(events.RunStarted, RunStarted{
+		RunID: id, Folder: folder.ID, Requests: paths,
+		Env: envName, StopOnFailure: stopOnFailure, At: started,
+	})
+	return s.runFolder(ctx, id, loaded, folder, requests, envName, stopOnFailure, started, before), nil
+}
+
+// newestSendID is the most recent held response, or "".
+//
+// `order` is append-ordered by keep, so the last element is the newest. It is
+// what a tool call means by "the last response" when it names no send id.
+func (s *SendService) newestSendID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.order) == 0 {
+		return ""
+	}
+	return s.order[len(s.order)-1]
+}
+
 // Cancel stops a send in flight. Cancelling one that has already finished is
 // not an error: the click and the response can cross.
 func (s *SendService) Cancel(sendID string) error {
@@ -1127,6 +1262,11 @@ type RunComplete struct {
 	Total      int       `json:"total"`
 	DurationMs float64   `json:"durationMs"`
 	At         time.Time `json:"at"`
+	// Refused lists requests a beforeRequest hook declined, which only an
+	// agent run has. Kept apart from Failed: a person saying no to a
+	// confirmation is not a fault of the request, and counting it as one
+	// would make an agent's run look broken when it was governed.
+	Refused []RefusedRequest `json:"refused,omitempty"`
 }
 
 // RunFolder sends every request below a folder, one at a time, in the folder's
@@ -1190,7 +1330,7 @@ func (s *SendService) RunFolder(nodePath, envName string, stopOnFailure bool) (s
 			delete(s.inflight, id)
 			s.mu.Unlock()
 		}()
-		s.runFolder(ctx, id, loaded, folder, requests, envName, stopOnFailure, started)
+		s.runFolder(ctx, id, loaded, folder, requests, envName, stopOnFailure, started, nil)
 	}()
 	return id, nil
 }
@@ -1209,6 +1349,7 @@ func (s *SendService) runFolder(
 	envName string,
 	stopOnFailure bool,
 	started time.Time,
+	before beforeRequest,
 ) RunComplete {
 	summary := RunComplete{RunID: runID, Folder: folder.ID, State: RunFinished, Total: len(requests)}
 
@@ -1217,6 +1358,24 @@ func (s *SendService) runFolder(
 			summary.State = RunCancelled
 			summary.Skipped = len(requests) - i
 			break
+		}
+		// The hook is where an agent's per-request confirmation happens
+		// (docs/MCP.md §6.5). It is a parameter rather than a second loop
+		// because what "running a folder" means — the order, the session
+		// values flowing between requests, stopOnFailure — has to be one
+		// thing whether the Run button or an agent started it.
+		if before != nil {
+			if err := before(ctx, node); err != nil {
+				summary.Refused = append(summary.Refused, RefusedRequest{
+					Path: node.ID, Reason: err.Error(),
+				})
+				if stopOnFailure {
+					summary.State = RunStopped
+					summary.Skipped = len(requests) - i - 1
+					break
+				}
+				continue
+			}
 		}
 		// Each request is a send in its own right: its own id, its own
 		// events, its own held response. The run is the sequence, not a

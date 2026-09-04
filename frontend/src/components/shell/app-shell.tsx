@@ -9,6 +9,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { AgentConfirmDialog } from "@/components/shell/agent-confirm-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
@@ -423,6 +424,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                 : null
         }
       />
+
+      {/* An agent's confirmation. Mounted here beside the other dialogs so it
+          appears over whatever screen is open: a Go tool call is blocked on
+          it, and a dialog that only existed on one route would be one an
+          agent could get past by asking while you were on another. */}
+      <AgentConfirmDialog />
 
       <CreateDialog
         kind={creating?.kind ?? null}

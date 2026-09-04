@@ -1195,3 +1195,46 @@ func auditLines(t *testing.T, path string) []mcp.Entry {
 	}
 	return out
 }
+
+// The audit log records the environment a send actually resolved against, not
+// the argument it was given.
+//
+// Most sends name no environment — they use whatever the person has active —
+// so a log that recorded the argument would say "" for exactly the sends worth
+// auditing. "Which environment did that credential go to" is the most
+// security-relevant question the log answers after "which request", and it was
+// answering it wrong until a live run showed an empty field on a send that had
+// gone to `dev`.
+func TestTheAuditLogRecordsTheResolvedEnvironment(t *testing.T) {
+	s, sender, _, _ := runFixture(t, mcp.Grants{Run: true})
+	sender.env = resolve.EnvMeta{Agents: resolve.AgentAllow}
+	sender.environment = "staging"
+	auditPath := s.audit.Path()
+
+	endpoint, err := s.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := connect(t, endpoint, endpoint.Token)
+
+	// No `environment` argument: the agent takes the active one.
+	out, _ := callTool(t, c, "send_request", map[string]any{"path": "orders/create-order.http"})
+	var preview SendPreview
+	if err := json.Unmarshal([]byte(out), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if _, isErr := callTool(t, c, "send_request", map[string]any{
+		"path": "orders/create-order.http", "intent": preview.Intent}); isErr {
+		t.Fatal("the send failed")
+	}
+
+	entries := auditLines(t, auditPath)
+	if len(entries) == 0 {
+		t.Fatal("nothing was audited")
+	}
+	for _, entry := range entries {
+		if entry.Environment != "staging" {
+			t.Errorf("an audit line says environment %q, want the resolved \"staging\"", entry.Environment)
+		}
+	}
+}

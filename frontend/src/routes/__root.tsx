@@ -9,6 +9,7 @@ import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
 import { DiffProvider } from "@/state/diff-context";
 import { EnvironmentProvider } from "@/state/environment-context";
+import { MCPProvider } from "@/state/mcp-context";
 import { OrderProvider } from "@/state/order-context";
 import { RunProvider } from "@/state/run-context";
 import { SendProvider } from "@/state/send-context";
@@ -35,6 +36,13 @@ function RootLayout() {
   return (
     <SettingsProvider>
       <CollectionProvider>
+        {/* The agent server sits high and outside everything else: its
+            confirmation dialog has to be reachable whatever is open, and it is
+            deliberately not below Tabs or Documents — an agent's send is not
+            about the active tab, and a dialog that could only appear over one
+            screen would be a dialog an agent could get past by asking while
+            you were on another. */}
+        <MCPProvider>
         {/* Environments sit above Tabs: which one is active decides how every
             document resolves, so both the editor and the sender read it from
             here. */}
@@ -72,6 +80,7 @@ function RootLayout() {
           </DiffProvider>
           </OrderProvider>
         </EnvironmentProvider>
+        </MCPProvider>
       </CollectionProvider>
     </SettingsProvider>
   );

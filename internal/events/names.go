@@ -135,6 +135,38 @@ const (
 	// The payload names environments, variable names and secret *references*.
 	// It never carries a secret value.
 	EnvironmentsChanged = "environments:changed"
+
+	// MCPConfirm asks the window to put an agent's operation in front of the
+	// person (docs/MCP.md §6.4). Payload: services.MCPConfirmation.
+	//
+	// The Go side is *blocked* on the answer, which is why this is an event
+	// and not a poll: a tool call is waiting, with a 60-second deadline, and
+	// the window has to be told the moment there is something to ask rather
+	// than on its next tick. The answer comes back through
+	// MCPService.Answer, matched on the confirmation's id.
+	//
+	// The payload carries a masked URL and the *names* of any secrets, never
+	// a value.
+	MCPConfirm = "mcp:confirm"
+
+	// MCPConfirmResolved tells the window a confirmation no longer needs an
+	// answer, so the dialog closes itself. Payload: services.MCPResolved.
+	//
+	// It exists because the deadline can pass, or the kill switch can be
+	// thrown, while a dialog is up — and a dialog whose answer no longer goes
+	// anywhere is worse than no dialog, because the next thing the person
+	// does is click it.
+	MCPConfirmResolved = "mcp:confirm-resolved"
+
+	// MCPChanged is emitted when the agent server's state changed: enabled,
+	// disabled, a capability flipped, a client connected, or a call recorded.
+	// Payload: services.MCPStatus.
+	//
+	// It drives the indicator chip (DESIGN-NOTES §9.22), whose whole job is
+	// to say that something other than the person can currently drive this
+	// window. A chip that lags is a chip that lies, so every change to that
+	// state emits.
+	MCPChanged = "mcp:changed"
 )
 
 // Entry is one event in the Registry.
@@ -162,6 +194,9 @@ var Registry = []Entry{
 	{"SendError", SendError, "Emitted when a send produced no response. Payload: SendFailure, with a masked message."},
 	{"SessionVarsChanged", SessionVarsChanged, "Emitted when the variables a run set changed. No payload; re-read them."},
 	{"EnvironmentsChanged", EnvironmentsChanged, "Emitted when the environments or the active one changed. Payload: Environments; never a secret value."},
+	{"MCPConfirm", MCPConfirm, "Emitted when an agent's operation needs a person's confirmation in Otis' own window. Payload: MCPConfirmation, with a masked URL and secret names only. A tool call is blocked on the answer; reply with MCPService.Answer."},
+	{"MCPConfirmResolved", MCPConfirmResolved, "Emitted when a confirmation no longer needs an answer \u2014 it timed out, or the kill switch was thrown \u2014 so the dialog closes itself. Payload: MCPResolved."},
+	{"MCPChanged", MCPChanged, "Emitted when the agent server's state changed: enabled, disabled, a capability flipped, or a call recorded. Payload: MCPStatus."},
 	{"ScriptTest", ScriptTest, "Emitted as each test a post-response script declared finishes. Payload: ScriptTest."},
 	{"ScriptConsole", ScriptConsole, "Emitted for each console call a script makes. Payload: ScriptConsole, already masked."},
 	{"RunStarted", RunStarted, "Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order."},

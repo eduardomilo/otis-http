@@ -1,3 +1,4 @@
+import { AgentChip } from "@/components/shell/agent-chip";
 import { EnvironmentChip } from "@/components/shell/environment-chip";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,10 @@ export function TitleStrip({
         )}
       </div>
 
+      {/* Right of the collection name and left of the environment selector:
+          the two together read as the sentence that matters — which
+          collection, and who else can reach it (DESIGN-NOTES §9.22). */}
+      <AgentChip />
       <EnvironmentChip enabled={name !== null} />
     </header>
   );

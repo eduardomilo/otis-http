@@ -12,6 +12,7 @@ import { relativeTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { useCollection } from "@/state/collection-context";
 import { useDiff } from "@/state/diff-context";
+import { useMCP } from "@/state/mcp-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useSends } from "@/state/send-context";
 import { useTabs } from "@/state/tabs-context";
@@ -138,6 +139,7 @@ export function CommandPalette({
   const { send, recents, clearSessionVars } = useSends();
   const { openTab } = useTabs();
   const { overview } = useDiff();
+  const { status: agents, setEnabled: setAgentsEnabled, disconnect: disconnectAgents } = useMCP();
   const build = useBuildInfo();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -183,6 +185,9 @@ export function CommandPalette({
         clearSessionVars,
         version: buildLabel(build),
         onCreate,
+        agentsEnabled: agents?.enabled ?? false,
+        setAgentsEnabled,
+        disconnectAgents,
       }),
     [
       navigate,
@@ -193,6 +198,9 @@ export function CommandPalette({
       clearSessionVars,
       build,
       onCreate,
+      agents?.enabled,
+      setAgentsEnabled,
+      disconnectAgents,
     ],
   );
 
@@ -799,6 +807,9 @@ function buildCommands(context: {
   clearSessionVars: () => Promise<void>;
   version: string;
   onCreate: (kind: "request" | "folder") => void;
+  agentsEnabled: boolean;
+  setAgentsEnabled: (on: boolean) => Promise<void>;
+  disconnectAgents: () => Promise<void>;
 }): CommandEntry[] {
   const {
     navigate,
@@ -809,6 +820,9 @@ function buildCommands(context: {
     clearSessionVars,
     version,
     onCreate,
+    agentsEnabled,
+    setAgentsEnabled,
+    disconnectAgents,
   } = context;
   const go = (run: () => void) => () => {
     run();
@@ -867,6 +881,24 @@ function buildCommands(context: {
       name: "Clear session variables",
       detail: "the values runs set, on this machine only",
       run: go(() => void clearSessionVars()),
+    },
+    {
+      // Turning the server on is a deliberate act and the chip is not drawn
+      // until it is on (DESIGN-NOTES §9.22), so this is the only way in. It
+      // grants no capability: those are three more switches, in the popover.
+      name: agentsEnabled ? "Turn the agent server off" : "Let an agent drive this collection",
+      detail: agentsEnabled
+        ? "closes the listener and turns every capability off"
+        : "starts a local MCP server — nothing is allowed until you say so",
+      run: go(() => void setAgentsEnabled(!agentsEnabled)),
+    },
+    {
+      // §10's kill switch, reachable without going through the chip: if
+      // something is going wrong, the fastest thing to hand should stop it.
+      name: "Disconnect agents",
+      detail: "revokes the token, cancels anything in flight, turns all three off",
+      hidden: !agentsEnabled,
+      run: go(() => void disconnectAgents()),
     },
     {
       // The one place the version is reachable with a collection open. Its

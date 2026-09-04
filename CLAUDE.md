@@ -90,6 +90,14 @@ lists the design decisions that are still open — do not resolve them silently.
   the part of this feature worth auditing is one package with no protocol in
   it. It must keep building under `otis_cli`, since `cmd/otis` imports it for
   `otis mcp config`, and that is also what keeps mcp-go out of the CLI.
+- `internal/services/mcp.go` — the agent server as the window sees it. Eight
+  exported methods and no more (the popover's switches, the kill switch, and
+  `Answer`); every boundary `internal/mcpserver` calls lives on the unexported
+  `agentBridge`. It constructs the server out of the *other* services and
+  reimplements nothing, which is what makes an agent's write subject to the
+  invariants a person's is. It is never given the secret store: no tool reads
+  or writes a secret, and the way that is guaranteed is that this service has
+  no way to.
 - `internal/mcpserver/` — the MCP protocol surface: `source.go` is the `Source`
   interface the tools read and write through (and the `Grantor` whose
   `RevokeAll` is what makes the kill switch final), `tools.go` the framework
@@ -135,8 +143,11 @@ lists the design decisions that are still open — do not resolve them silently.
     comment when you change one away from the shadcn default.
   - `components/shell/` — the window chrome: title strip, panes, tab bar, status
     bar, palette, empty state, `create-dialog` (naming a new request or folder,
-    showing the path it will write) and `order-strip` (screen 2a's confirmation
-    under the tree). One component per file, named after it.
+    showing the path it will write), `order-strip` (screen 2a's confirmation
+    under the tree), `agent-chip` (the MCP indicator and its popover,
+    DESIGN-NOTES §9.22) and `agent-confirm-dialog` (the confirmation an
+    agent's send blocks on, including §5.1's danger variant with the diff in
+    it). One component per file, named after it.
   - `components/editor/` — the CodeMirror 6 setup: the theme and syntax
     colours (`otis-theme`), the `{{variable}}` decoration
     (`variable-decoration`), and the React wrapper (`code-editor`). One
@@ -282,6 +293,32 @@ lists the design decisions that are still open — do not resolve them silently.
   body marshalled through one call is a 40 MB JSON string built in Go, parsed
   in the webview and handed to the DOM, and all three of those block. For the
   same reason pretty-printing is Go's job, not the window's.
+- **`MCPService`'s exported methods are its binding surface, so the
+  boundaries live on `agentBridge`.** Wails binds every exported method of a
+  registered service to the window. Implementing `internal/mcpserver`'s four
+  interfaces on the service itself put nineteen more methods there —
+  `Send`, `AskInWindow`, `Grants`, `RevokeAll`, `UpdateRequest` — several
+  returning a `*mcp.Redactor`, which must never join that surface.
+  `TestTheAgentServiceExposesOnlyTheWindowsAPI` locks the list, because the
+  `var _ mcpserver.Source = (*agentBridge)(nil)` assertions keep compiling if
+  a method moves back: promotion through the embedded pointer satisfies them
+  from either side.
+- **`CollectionService` fires its `OnClose` hooks from `Open` as well as
+  `Close`**, because opening the first collection of a session is a change
+  from "none". A hook that tears something down must therefore check that a
+  collection *was* open — `Current().Path != ""`, which still holds the
+  outgoing collection while the hooks run. The MCP service's hook did not, and
+  so disconnected at every launch the server `ServiceStartup` had just
+  restored. Only running the built app found it; every test until then opened
+  the collection before the service existed, so the launch order was never
+  exercised. `TestOpeningTheFirstCollectionDoesNotDisconnect` is the
+  regression.
+- **A test that starts the MCP server must isolate the config directory.** The
+  endpoint file and the audit log live under `os.UserConfigDir()`, so a test
+  that does not set `HOME`/`XDG_CONFIG_HOME`/`AppData` writes to — and
+  `Disconnect` *deletes* — the developer's real `~/…/otis/mcp.json`, pulling
+  the endpoint out from under any Otis actually running, and leaves fake
+  entries in their real audit log. Both happened before the isolation went in.
 - **The `Origin` and `Host` checks are the DNS-rebinding defence, and a valid
   token is not a substitute.** Without them any web page the user visits can
   drive the MCP server through their browser: an attacking page points its own
