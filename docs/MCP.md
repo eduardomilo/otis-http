@@ -361,25 +361,57 @@ previewed. The person is still asked **per request** (§6.5).
 
 ### 6.3 Asking through the client — the everyday surface
 
-At phase 2, for a send that needs confirming, the handler **blocks and asks the
-person through their own client**, using MCP elicitation:
+At phase 2, for a send that needs confirming, the handler asks the person
+through their own client, using MCP elicitation.
+
+> **Corrected during implementation.** This section described a *blocking*
+> ask: the handler calls `RequestElicitation` and waits. From protocol version
+> **2026-07-28** that no longer exists — server-initiated requests were
+> replaced by multi round-trip requests (SEP-2322), and `mcp-go` refuses the
+> old call with "server-initiated requests are not supported in protocol
+> version 2026-07-28 or later". The design was written against the older
+> mechanism and had to change; what follows is what is built.
+
+The handler **returns** the question rather than waiting for it. A tool call
+that needs a confirmation answers with `ResultTypeInputRequired` and the
+elicitation it needs; the client collects the answer and **retries the same
+tool call** with the answer in `inputResponses`:
 
 ```go
-res, err := srv.RequestElicitation(ctx, mcp.ElicitationRequest{
-    Params: mcp.ElicitationParams{
-        Mode:    mcp.ElicitationModeForm,
-        Message: "Otis: send POST https://api.acme.dev/v2/orders " +
-                 "against `staging`? Uses secret apiKey.",
-        RequestedSchema: /* one boolean: proceed */,
-    },
-})
-// res.Action is accept | decline | cancel — decline and cancel both refuse.
+// The retry carries the answer, so a handler detects it first.
+if answer := server.ElicitationResponse(req.Params.InputResponses, "otis.confirm"); answer != nil {
+    // accept | decline | cancel. An accept whose `proceed` is false is a no.
+}
+// Otherwise: ask, and return.
+return server.NewInputRequestBuilder(intentID).
+    Elicit("otis.confirm", mcp.ElicitationParams{ /* message, one boolean */ }).
+    ToolResult()
 ```
 
-Enabled with `server.WithElicitation()`, and used only when the client declared
-`ClientCapabilities.Elicitation` in its handshake. A client that did not is not
-given a weaker gate — it is simply not asked *there*, and §6.4's window becomes
-the only place a person can answer at all.
+`mcp-go` bridges clients on an older protocol by performing the
+server-initiated call on their behalf and re-invoking the handler, so one
+handler serves both eras and no client is left out.
+
+Three consequences, all of them improvements except the last:
+
+- **No tool call blocks for a minute.** The old shape held a call open for up
+  to 60 seconds; this returns immediately and the retry arrives when the person
+  has answered. A call that hangs is worse for an agent than one that comes
+  back.
+- **The handler has to be resumable**, because it runs again from the top. That
+  is why an intent is *verified* on the way in and only **spent** at the send
+  (`Intents.Verify` / `Intents.Redeem`): spending it on the first pass would
+  leave the retry with nothing to spend. Verify still voids the intent on any
+  failure, so the rule that a stale fingerprint cannot be retried is unchanged.
+- **The 60-second bound moves.** It still bounds Otis' own dialog directly. On
+  the client surface it is the intent's TTL that bounds it — the same 60
+  seconds — so an answer that arrives too late finds nothing to spend and the
+  agent is told to preview again.
+
+Used only when the client declared `ClientCapabilities.Elicitation` in its
+handshake. A client that did not is not given a weaker gate — it is simply not
+asked *there*, and §6.4's window becomes the only place a person can answer at
+all.
 
 This is the right default surface, because the person is *already looking at
 the client*. Making them alt-tab to Otis to approve a send the agent proposed
@@ -415,8 +447,31 @@ For the two cases above the elicitation message is a notification — "Otis is w
 confirmation" — and the answer is only taken from the window. It costs a
 context switch exactly where a context switch is cheap relative to the mistake.
 
-Everything else — the default `"confirm"` on an ordinary environment — may be
-answered in either place, and the first answer wins.
+Everything else — the default `"confirm"` on an ordinary environment — is asked
+**through the client when the client can be asked, and in the window when it
+cannot.**
+
+> **Corrected during implementation.** This said "may be answered in either
+> place, and the first answer wins", which assumed both surfaces could be
+> opened at once and raced. They cannot, for the reason §6.3 now records: the
+> client's question is a *return* from the tool call and the window's dialog is
+> a *block* inside it. One surface returns and the other waits; there is no
+> shape in which both are live. Preferring the client is §6.3's own argument —
+> the person is already looking at it — and the window is the fallback when the
+> client cannot ask, which is the case that mattered anyway.
+>
+> Nothing is loosened by this. The two window-only cases above are unaffected,
+> and the surface actually used is recorded in the audit log either way (§9).
+
+One further consequence, in `run_folder`: a folder run is a loop inside a
+single tool call, so its per-request confirmations are asked **in Otis' window
+only**, whatever surface the policy would otherwise allow. Returning from the
+middle of the loop to ask the client would abandon the requests already sent.
+This is a mechanical constraint and not a policy difference — each request is
+still decided on its own, and the window is the stricter of the two surfaces.
+§6.5 already says a folder run against a confirming environment is impractical
+from an agent, "which is correct"; this is where that bites, and the plan's
+`confirmations` count is what tells an agent so before it starts.
 
 The flow at phase 2, in both surfaces:
 
@@ -534,10 +589,16 @@ Every tool call is recorded, whatever the outcome:
 | `target` | the request or folder node path |
 | `environment` | the environment name, or `""` |
 | `surface` | `client` or `window` — **where the person was asked**, which is the field that shows §6.4 was honoured |
-| `decision` | `allowed` · `confirmed` · `refused` · `denied-by-policy` · `timed-out` · `rate-limited` |
+| `decision` | `allowed` · `confirmed` · `refused` · `denied-by-policy` · `timed-out` · `rate-limited` · `asked` |
 | `status` | the HTTP status, the failure kind, or `created` / `modified` for a write |
 | `durationMs` | how long it took, in milliseconds. The unit is in the name because a bare `duration` in a log two years old is a number you have to go and find the code for |
 | `client` | the MCP client's declared name and version |
+
+`asked` is the one added during implementation: a confirmation through the
+client is a round trip (§6.3), so the call that *asks* returns before the
+answer exists. Without a line for it, an agent putting prompts in front of
+somebody who never answers would leave no trace in the log at all. The answer,
+when it comes, produces its own line with the surface it came from.
 
 **What is deliberately not in it:** no request body, no response body, no
 headers, no secret value, no session variable value, and **no file contents for

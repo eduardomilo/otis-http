@@ -28,13 +28,59 @@ import (
 // TestNoToolBypassesRedaction asserts the constructor appears nowhere in the
 // package.
 
+// A call is one tool invocation's mutable state, handed to the handler.
+//
+// It exists so a handler can do the two things the framework cannot decide
+// for it: spend its rate budget at the right moment, and say how the call
+// actually ended.
+type call struct {
+	// spend takes one rate token, reporting whether there was one.
+	//
+	// A gated tool calls this **after** a person has approved, never before.
+	// §10: if asking spent the token, an agent could drain the bucket with
+	// calls a person refuses, and refusing would then cost that person their
+	// own next send.
+	spend func() bool
+
+	// surface is where a person was asked. ask() sets it.
+	surface mcp.AuditSurface
+	// confirmed records that a person approved, so the audit line says
+	// "confirmed" rather than "allowed" — the difference between a call
+	// policy let through and one somebody agreed to.
+	confirmed bool
+	// status is the outcome code for the audit log: an HTTP status, or
+	// "created"/"modified" for a write.
+	status string
+	// target overrides the audited node path, which a folder run needs
+	// because the path in the arguments is the folder and the interesting
+	// one is the request.
+	target string
+
+	// inputRequired is set when a handler has asked the person a question
+	// through their client and is waiting for the retry that carries the
+	// answer (§6.3). The framework returns it verbatim: it is a protocol
+	// result rather than a value, so it is the one thing that does not go
+	// through the redactor — and it carries only the question, which this
+	// package composed itself.
+	inputRequired *mcpgo.CallToolResult
+}
+
 // A handler is a tool's body.
 //
 // It returns the value to send, the redactor that must mask it, and an error.
 // The redactor should be returned **even alongside an error**, because an
 // error can carry a resolved URL and a resolved URL can carry a credential in
 // a query parameter. A handler with nothing resolved returns mcp.NoSecrets().
-type handler func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error)
+type handler func(ctx context.Context, req mcpgo.CallToolRequest, c *call) (any, *mcp.Redactor, error)
+
+// spendOnEntry and spendAfterApproval say when a tool takes its rate token.
+//
+// Named rather than a bare bool at the call sites, because "true" at a
+// registration would say nothing about which of §10's two rules is in force.
+const (
+	spendOnEntry       = true
+	spendAfterApproval = false
+)
 
 // register adds a tool, wrapping it in the checks every tool gets.
 //
@@ -42,21 +88,26 @@ type handler func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Red
 // authority, the same principle policy.go's Decide is built on: what the user
 // has granted, then what the budget allows, then the work, then what may
 // leave.
-func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, h handler) {
+func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, onEntry bool, h handler) {
 	s.mcp.AddTool(tool, func(ctx context.Context, req mcpgo.CallToolRequest) (*mcpgo.CallToolResult, error) {
 		started := time.Now()
 		entry := mcp.Entry{
 			At:          started,
 			Collection:  s.collectionName(),
 			Tool:        tool.Name,
-			Target:      req.GetString("path", req.GetString("folder", "")),
+			Target:      req.GetString("path", req.GetString("folder", req.GetString("parent", ""))),
 			Environment: req.GetString("environment", ""),
 			Client:      s.clientName(ctx),
 			Surface:     mcp.NotAsked,
 		}
+		c := &call{spend: func() bool { return s.limits.Allow(capability) }}
 		done := func(decision mcp.AuditDecision, status string) {
 			entry.Decision = decision
 			entry.Status = status
+			entry.Surface = c.surface
+			if c.target != "" {
+				entry.Target = c.target
+			}
 			entry.DurationMs = float64(time.Since(started).Microseconds()) / 1000
 			s.record(entry)
 		}
@@ -71,9 +122,9 @@ func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, h handler)
 				capability)), nil
 		}
 
-		// 2. The budget (§10). A read that has been called too fast is
-		//    refused here, before it can do any work.
-		if !s.limits.Allow(capability) {
+		// 2. The budget (§10), for the tools that ask nobody. A gated tool
+		//    spends its own after approval instead.
+		if onEntry && !c.spend() {
 			done(mcp.RateLimited, "rate-limited")
 			return mcpgo.NewToolResultError(fmt.Sprintf(
 				"Too many %s calls. Otis rate-limits agents; wait a moment and try again.",
@@ -88,9 +139,21 @@ func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, h handler)
 				"No collection is open in Otis. Open one and try again."), nil
 		}
 
-		value, redactor, err := h(ctx, req)
+		value, redactor, err := h(ctx, req, c)
+		if c.inputRequired != nil && err == nil {
+			// A person is being asked. Recorded rather than passed over in
+			// silence: without a line here, an agent putting prompts in
+			// front of somebody who never answers would leave no trace.
+			done(mcp.Asked, "awaiting-confirmation")
+			return c.inputRequired, nil
+		}
 		if err != nil {
-			done(mcp.Refused, failureKind(err))
+			var refused refusal
+			if errors.As(err, &refused) {
+				done(refused.decision, statusOr(c.status, string(refused.decision)))
+				return mcpgo.NewToolResultError(safeMessage(err, redactor)), nil
+			}
+			done(mcp.Refused, statusOr(c.status, failureKind(err)))
 			return mcpgo.NewToolResultError(safeMessage(err, redactor)), nil
 		}
 
@@ -111,9 +174,21 @@ func (s *Server) register(tool mcpgo.Tool, capability mcp.Capability, h handler)
 			return mcpgo.NewToolResultError("Otis could not encode this result."), nil
 		}
 
-		done(mcp.Allowed, "ok")
+		if c.confirmed {
+			done(mcp.Confirmed, statusOr(c.status, "ok"))
+		} else {
+			done(mcp.Allowed, statusOr(c.status, "ok"))
+		}
 		return mcpgo.NewToolResultText(string(out)), nil
 	})
+}
+
+// statusOr prefers what the handler recorded.
+func statusOr(set, fallback string) string {
+	if set != "" {
+		return set
+	}
+	return fallback
 }
 
 // safeMessage is what an agent is told about a failure.
@@ -187,8 +262,21 @@ func (s *Server) clientName(ctx context.Context) string {
 	if c, ok := s.source.(Clienter); ok {
 		return c.ClientName(ctx)
 	}
-	if session := mcpsrv.ClientSessionFromContext(ctx); session != nil {
-		return session.SessionID()
+	session := mcpsrv.ClientSessionFromContext(ctx)
+	if session == nil {
+		return ""
 	}
-	return ""
+	// The name and version the client declared in its handshake, which is
+	// what §9's `client` field is for. A session id would satisfy the schema
+	// and tell a person reading the log nothing.
+	if info, ok := session.(mcpsrv.SessionWithClientInfo); ok {
+		declared := info.GetClientInfo()
+		if declared.Name != "" {
+			if declared.Version != "" {
+				return declared.Name + " " + declared.Version
+			}
+			return declared.Name
+		}
+	}
+	return session.SessionID()
 }

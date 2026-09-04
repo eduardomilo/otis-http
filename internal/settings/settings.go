@@ -54,7 +54,56 @@ type Settings struct {
 	// Only the *name* is ever written here. A secret value never reaches this
 	// file (docs/FORMAT.md §5).
 	ActiveEnv string `json:"activeEnv"`
+	// MCP is the agent server's per-machine state (docs/MCP.md §3, §4).
+	MCP MCP `json:"mcp"`
 }
+
+// MCP is what the person has allowed an agent to do on this machine.
+//
+// Per-machine and never in the collection: whether *you* let an agent drive
+// your machine is not a fact about the repository, the same reasoning that
+// keeps the active environment out of it. An environment's committed
+// `$otis.agents` says what the *team* thinks about that environment; this says
+// what you have turned on.
+//
+// The zero value is the shipped state and is the safe one: the server off and
+// all three capabilities off, with the two protections on. A new install, a
+// deleted settings file and a settings file from before this field existed all
+// read the same way, which is why the two protections are stored *inverted*.
+type MCP struct {
+	// Enabled starts the loopback listener. Off by default: the app ships
+	// with the server itself off, so turning it on is a deliberate act
+	// separate from granting any capability.
+	Enabled bool `json:"enabled"`
+
+	// Read, Run and Write are the three capabilities, all off by default.
+	Read  bool `json:"read"`
+	Run   bool `json:"run"`
+	Write bool `json:"write"`
+
+	// NeverConfirmSends inverts §4 rule 4's `alwaysConfirmSends`, which is
+	// **on by default** — every agent send asks until somebody turns it off,
+	// which is what makes a committed `"allow"` a statement about the
+	// environment rather than a grant that takes effect unasked.
+	//
+	// Stored inverted because a bool's zero value is false and the default
+	// here has to be *on*. Written the other way round, an older settings
+	// file or a corrupt one would read as "never confirm", and a settings
+	// file is a cache that is allowed to be missing (see Store.Get). A
+	// default that fails towards asking is the only acceptable direction.
+	NeverConfirmSends bool `json:"neverConfirmSends"`
+
+	// DoNotPersistAuditLog inverts §9.1's `persistAuditLog`, on by default,
+	// and is inverted for the same reason: a lost or truncated settings file
+	// must not silently stop the recording.
+	DoNotPersistAuditLog bool `json:"doNotPersistAuditLog"`
+}
+
+// AlwaysConfirmSends is §4 rule 4, read the right way round.
+func (m MCP) AlwaysConfirmSends() bool { return !m.NeverConfirmSends }
+
+// PersistAuditLog is §9.1, read the right way round.
+func (m MCP) PersistAuditLog() bool { return !m.DoNotPersistAuditLog }
 
 // Panes is the geometry of the three-pane layout.
 type Panes struct {

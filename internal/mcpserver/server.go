@@ -29,6 +29,15 @@ type Options struct {
 	// Grants answers what is currently allowed, at call time rather than at
 	// registration, because the user can flip a switch while this runs.
 	Grants Grantor
+	// Sender is the RUN half. Nil means the send tools are not registered at
+	// all, so "this build cannot send" is a fact about what was constructed.
+	Sender Sender
+	// Writer is the WRITE half, and nil the same way.
+	Writer Writer
+	// Asker is Otis' own window. Nil means the §6.4 confirmations have
+	// nowhere to happen, and every call needing one fails — which is the
+	// correct behaviour, not a reason to fall back to the client.
+	Asker Asker
 	// Audit is where every call is recorded. Required: a server that cannot
 	// record is not one this package will start.
 	Audit *mcp.Log
@@ -40,6 +49,9 @@ type Options struct {
 // A Server is the loopback MCP listener and the tools on it.
 type Server struct {
 	source Source
+	sender Sender
+	writer Writer
+	asker  Asker
 	grants Grantor
 	audit  *mcp.Log
 
@@ -77,6 +89,9 @@ func New(opts Options) (*Server, error) {
 	}
 	s := &Server{
 		source:       opts.Source,
+		sender:       opts.Sender,
+		writer:       opts.Writer,
+		asker:        opts.Asker,
 		grants:       opts.Grants,
 		audit:        opts.Audit,
 		auth:         &mcp.Auth{},

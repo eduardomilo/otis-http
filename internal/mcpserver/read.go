@@ -22,6 +22,16 @@ import (
 // read against the document rather than assembled from a search.
 func (s *Server) registerAll() {
 	s.registerRead()
+	// A nil Sender or Writer means the tools are not offered at all, so a
+	// build without one cannot send or write rather than being trusted not
+	// to. WRITE additionally requires a git repository, which is checked
+	// where the grant is made rather than here (mcp.CanGrantWrite).
+	if s.sender != nil {
+		s.registerRun()
+	}
+	if s.writer != nil {
+		s.registerWrite()
+	}
 }
 
 func (s *Server) registerRead() {
@@ -34,7 +44,7 @@ func (s *Server) registerRead() {
 			mcpgo.Description("Limit to this folder, as a collection-relative path. Omit for the whole collection.")),
 		mcpgo.WithBoolean("includeFolders",
 			mcpgo.Description("Include folders as well as requests.")),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		return s.source.ListRequests(req.GetString("folder", ""), req.GetBool("includeFolders", false))
 	})
 
@@ -50,7 +60,7 @@ func (s *Server) registerRead() {
 		mcpgo.WithString("environment",
 			mcpgo.Description("Resolve against this environment instead of the active one. "+
 				"This does not change which environment Otis is using.")),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		path, err := req.RequireString("path")
 		if err != nil {
 			return nil, mcp.NoSecrets(), err
@@ -64,7 +74,7 @@ func (s *Server) registerRead() {
 			"values are still somebody's infrastructure. `confirmBeforeSend` and `agents` "+
 			"tell you how sending against each will be gated.",
 		readOnly(),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		return s.source.ListEnvironments()
 	})
 
@@ -75,7 +85,7 @@ func (s *Server) registerRead() {
 		readOnly(),
 		mcpgo.WithString("folder",
 			mcpgo.Description("Limit to variables owned by this folder.")),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		return s.source.SessionVariables(req.GetString("folder", ""))
 	})
 
@@ -90,7 +100,7 @@ func (s *Server) registerRead() {
 			mcpgo.Description("First body line to return, zero-based.")),
 		mcpgo.WithNumber("limit", mcpgo.Min(1), mcpgo.Max(MaxBodyLines),
 			mcpgo.Description("How many body lines to return. Defaults to 200.")),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		// The cap is applied here rather than trusted from the schema: a
 		// schema is a description of what a well-behaved client sends, and
 		// the reason a body is paged at all is that the naive version was
@@ -115,7 +125,7 @@ func (s *Server) registerRead() {
 		readOnly(),
 		mcpgo.WithString("sendId",
 			mcpgo.Description("Which send's tests. Omit for the most recent.")),
-	), mcp.CapRead, func(ctx context.Context, req mcpgo.CallToolRequest) (any, *mcp.Redactor, error) {
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, _ *call) (any, *mcp.Redactor, error) {
 		return s.source.TestResults(req.GetString("sendId", ""))
 	})
 }

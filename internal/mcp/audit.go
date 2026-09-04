@@ -48,6 +48,16 @@ const (
 	TimedOut AuditDecision = "timed-out"
 	// RateLimited: refused by §10's limiter.
 	RateLimited AuditDecision = "rate-limited"
+	// Asked: a person was asked through their client and the answer has not
+	// come back yet.
+	//
+	// It exists because the protocol's confirmation is a round trip rather
+	// than a blocking call (§6.3): the tool returns "input required", the
+	// client collects the answer, and the retry produces the line that says
+	// what happened. Without this, the asking would leave no trace at all
+	// and an agent putting prompts in front of somebody who never answers
+	// would be invisible in the log.
+	Asked AuditDecision = "asked"
 )
 
 // AuditSurface is where the person was actually asked.

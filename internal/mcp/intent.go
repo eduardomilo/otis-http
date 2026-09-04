@@ -162,6 +162,24 @@ func (s *Intents) Issue(tool, target, environment, fingerprint string) (*Intent,
 	return intent, nil
 }
 
+// Verify checks an intent without spending it.
+//
+// It exists because a confirmation is a round trip: the tool call that asks a
+// person returns before the answer arrives, and the retry runs the handler
+// again from the top. Spending the intent on the first pass would leave the
+// retry with nothing to spend.
+//
+// **A failure still voids the intent**, exactly as Redeem does. That is the
+// property that matters here: if a mismatched fingerprint left the intent
+// alive, an agent could call phase 2 repeatedly with different requests and
+// search for one the fingerprint accepts. Verify is not a weaker Redeem — it
+// is Redeem without the successful deletion.
+func (s *Intents) Verify(tool, id, fingerprint string) (*Intent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.checkLocked(tool, id, fingerprint, false)
+}
+
 // Redeem spends an intent, checking that the request has not changed since it
 // was previewed.
 //
@@ -176,11 +194,19 @@ func (s *Intents) Issue(tool, target, environment, fingerprint string) (*Intent,
 func (s *Intents) Redeem(tool, id, fingerprint string) (*Intent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.checkLocked(tool, id, fingerprint, true)
+}
 
+// checkLocked validates an intent, deleting it on any failure and — when
+// spend is set — on success too.
+func (s *Intents) checkLocked(tool, id, fingerprint string, spend bool) (*Intent, error) {
 	intent, ok := s.by[id]
 	if !ok {
 		return nil, ErrNoSuchIntent
 	}
+	// Void first, and put it back only if everything checks out. Written this
+	// way round so that no future branch can return an error while leaving a
+	// failed intent spendable.
 	delete(s.by, id)
 
 	if !s.now().Before(intent.ExpiresAt) {
@@ -193,6 +219,9 @@ func (s *Intents) Redeem(tool, id, fingerprint string) (*Intent, error) {
 	}
 	if intent.Fingerprint != fingerprint {
 		return nil, ErrIntentStale
+	}
+	if !spend {
+		s.by[id] = intent
 	}
 	return intent, nil
 }
