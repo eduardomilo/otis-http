@@ -115,6 +115,11 @@ lists the design decisions that are still open — do not resolve them silently.
     and one file per sub-tab (`params-tab`, `headers-tab`, `body-tab`,
     `auth-tab`, `scripts-tab`), plus `url-bar`, `variable-text` and the two
     prompts (`conflict-banner`, `unsaved-changes-dialog`).
+    `auth-directive-form` is the scheme select and argument field that edits
+    one `# @auth` line, shared with the folder view because the same directive
+    is written at both levels — and because the AWS argument hint is the only
+    place the five shapes docs/FORMAT.md §3.3 allows are spelled out for the
+    user.
   - `components/response/` — the right pane: `response-pane` (status line and
     sub-tabs), `body-view` (the windowed body, whose lines come from Go) and
     `failure-view` (a send that produced no response, by failure kind).
@@ -125,8 +130,10 @@ lists the design decisions that are still open — do not resolve them silently.
   - `components/folder/` — the centre pane for `/f/$path` (screen 3a):
     `folder-view` (header, tabs, the `1fr 440px` split, the README's
     Preview/Edit and the live run), `panels` (the Auth, Headers, Variables and
-    Scripts panels, each naming where its values come from) and `markdown`
-    (the README, rendered).
+    Scripts panels, each naming where its values come from), `settings-editor`
+    (the write half: the Auth, Variables and Headers tabs edit
+    `FolderDocument.Settings` and hand it to `FolderService.Save`) and
+    `markdown` (the README, rendered).
   - `components/environment/` — the centre pane for `/env/$name`:
     `environment-editor` (the variable table), `secret-detail` (the split panel
     of screen 1c), `secret-value-dialog` (the one place a value travels *in*)
@@ -371,6 +378,16 @@ lists the design decisions that are still open — do not resolve them silently.
   `cmd/otis/console_windows.go` makes the GUI binary print at all, and honours
   a redirect or a pipe over the console. This is the one place "the CLI is the
   same binary" needs an asterisk; docs/BUILDING.md §9 carries it.
+
+- **A folder's settings are edited in the folder view, never as a request.**
+  `_folder.http` is settings and not a node in the tree (docs/FORMAT.md §2.1),
+  so `/r/<folder>/_folder.http` cannot load — `RequestService` reports "not in
+  the collection", which is exactly what the folder view's Edit and Add links
+  used to do. `components/folder/settings-editor` is the editor: it changes
+  `FolderDocument.Settings`, the parsed file `FolderService.Load` already
+  returns for the purpose, and hands it back to `FolderService.Save`. Do not
+  route the folder file to the request editor to fix a missing affordance.
+  DESIGN-NOTES §9.20 has the whole account.
 
 - **The tab strip spans everything right of the sidebar, and it can still
   overflow.** Two nested `ResizablePanelGroup`s in `AppShell` are what make

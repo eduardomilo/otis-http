@@ -148,6 +148,32 @@ export function variablesOf(entry: Request): Variable[] {
   return entry.variables ?? [];
 }
 
+/**
+ * Adds a `@name = value` declaration.
+ *
+ * No source line, which is how the serializer knows to place it after the
+ * declarations already in the file rather than guessing at a position
+ * (docs/FORMAT.md §1.13).
+ */
+export function addVariable(entry: Request, name: string, value: string): Request {
+  return { ...entry, variables: [...variablesOf(entry), { name, value, line: 0 }] };
+}
+
+/** Changes one `@name = value` declaration in place, keeping its position. */
+export function setVariableAt(
+  entry: Request,
+  index: number,
+  variable: Partial<Variable>,
+): Request {
+  const variables = variablesOf(entry).map((v, i) => (i === index ? { ...v, ...variable } : v));
+  return { ...entry, variables };
+}
+
+/** Removes one `@name = value` declaration. */
+export function removeVariableAt(entry: Request, index: number): Request {
+  return { ...entry, variables: variablesOf(entry).filter((_, i) => i !== index) };
+}
+
 /** Replaces the entry's body with raw text, dropping any `< ./file` form. */
 export function setBody(entry: Request, raw: string): Request {
   return { ...entry, body: { ...entry.body, raw, filePath: undefined } };

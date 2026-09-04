@@ -675,10 +675,17 @@ those four. What the other tabs show is never drawn.
 Resolved as: the right column is the folder's settings at a glance and is the
 same on every tab; the left column is what the tab chooses. On Overview that
 is the README, which is why there is no Docs tab — the documentation *is* the
-overview. On the other four the left column is that one panel again at full
-width, where its rows have room. The duplication is deliberate: dropping the
-panels from the other tabs would mean losing the glance while editing one of
-them, which is the thing the screen is for.
+overview. The duplication is deliberate: dropping the panels from the other
+tabs would mean losing the glance while editing one of them, which is the
+thing the screen is for.
+
+On the other four the left column was that same panel again at full width, and
+on three of them it is now the **editor** for what the panel shows (Auth,
+Variables, Headers). At full width there is room to change the thing, which is
+a better use of the column than showing it twice, and the panel opposite still
+carries the glance. Scripts keeps the panel: a folder's scripts are files
+beside it rather than lines in `_folder.http`, so there is nothing there for
+this editor to write. §9.20 is why the editor had to exist at all.
 
 The run's results have no design at all — screen 3a shows only "Run folder"
 and a status-bar "Last run: 6/6 passed". They render as a fifth panel above
@@ -820,6 +827,44 @@ Three things follow from a strip that can still overflow:
 
 Still not built from what §1a draws: the `+` new-tab glyph after the last tab,
 and tab reordering (§6 names it).
+
+**9.20 A folder's settings had no editor at all, and now do.** The design
+draws screen 3a's panels with an `Edit` on Auth and an `Add` on Variables, and
+never draws what they open. What shipped sent both to
+`/r/<folder>/_folder.http` — the request editor, addressing the folder file as
+if it were a request. It is not: `_folder.http` is settings and deliberately
+not a node in the tree (`FORMAT.md` §2.1), so the request editor answered
+*"orders/_folder.http is not in the collection"* and the link was a dead end.
+Folder-level auth could be read and never changed, which is worst for the
+scheme that most belongs at that level — AWS SigV4 applies to a whole API, not
+to one request.
+
+So the three editable tabs edit it in place (§9.15), against
+`FolderDocument.Settings` — the parsed file Go was already handing over for
+this purpose — and hand it back to `FolderService.Save`. Go's serializer stays
+the only thing that writes a `.http` file.
+
+Three decisions the design does not cover:
+
+- **An explicit Save, with Revert beside it**, rather than the request
+  editor's dirty tab and ⌘S. A folder has no document tab to mark, the README
+  in the same view already works this way, and what is being saved cascades to
+  every request below — so the count of them sits under the form.
+- **Auth is three choices, not a field**: inherit from above (the default,
+  which writes nothing), declare one here, or `@auth none`. That is the
+  request editor's shape one level up, and it is the only way to express
+  "stop a parent's auth applying below" without inventing syntax.
+- **A `_folder.http` that does not parse is not editable.** Saving would
+  rewrite the file from a model missing whatever failed to parse, so the
+  section says so and sends you to a text editor. §3.4 already says a broken
+  folder file still opens; this is what "still opens" means here.
+
+While wiring it up, the argument field turned out to have been **impossible to
+type a space into** — the form derived its value with a trailing `.trim()`, so
+`profile=dev ` came back as `profile=dev` and the next keystroke landed against
+the previous word. `profile=dev region=eu-west-1` could only ever be pasted.
+That bug was in the request editor's Override form too, since this form was
+extracted from it.
 
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and

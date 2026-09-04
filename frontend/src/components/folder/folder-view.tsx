@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { CircleDashed, Play, X } from "lucide-react";
 
 import { MarkdownView } from "@/components/folder/markdown";
+import { FolderSettingsEditor } from "@/components/folder/settings-editor";
 import {
   AuthPanel,
   HeadersPanel,
@@ -16,7 +16,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { hint } from "@/lib/platform";
-import { nodeRoute } from "@/lib/paths";
 import { indexVariables } from "@/lib/variables";
 import { cn } from "@/lib/utils";
 import { FolderService } from "@bindings/internal/services";
@@ -41,7 +40,6 @@ import { useRuns, type Run } from "@/state/run-context";
 type Tab = "overview" | "auth" | "variables" | "scripts" | "headers";
 
 export function FolderView({ path }: { path: string }) {
-  const navigate = useNavigate();
   const { active: env } = useEnvironments();
   const { runFor, start, cancel } = useRuns();
   const [doc, setDoc] = useState<FolderDocument | null>(null);
@@ -89,10 +87,6 @@ export function FolderView({ path }: { path: string }) {
       .then((next) => next && setDoc(next))
       .catch((cause) => setError(String(cause)));
   };
-  const goToSettings = () => {
-    if (!doc.settingsPath) return;
-    void navigate({ to: nodeRoute("request"), params: { path: doc.settingsPath } });
-  };
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -124,21 +118,37 @@ export function FolderView({ path }: { path: string }) {
           <div className="min-h-0 overflow-auto border-border px-4 py-3 xl:border-r">
             {tab === "overview" ? (
               <ReadmePanel doc={doc} path={path} env={env} onSaved={setDoc} />
-            ) : tab === "auth" ? (
-              <AuthPanel doc={doc} index={index} onEdit={goToSettings} />
-            ) : tab === "variables" ? (
-              <VariablesPanel doc={doc} index={index} onClearSession={clearSession} onAdd={goToSettings} />
             ) : tab === "scripts" ? (
+              // Scripts are files beside the folder, not lines in
+              // _folder.http, so there is nothing here to edit — the panel
+              // names them and the editor for one arrives with the script
+              // engine's own screen.
               <ScriptsPanel doc={doc} />
             ) : (
-              <HeadersPanel doc={doc} index={index} />
+              // §9.15 gives the left column on these tabs to "that one panel
+              // again at full width". It is the editor instead: at full width
+              // there is room to change the thing, and the panel opposite is
+              // still there for the glance.
+              <FolderSettingsEditor
+                doc={doc}
+                path={path}
+                env={env}
+                section={tab}
+                index={index}
+                onSaved={setDoc}
+              />
             )}
           </div>
 
           <aside className="min-h-0 overflow-auto">
             {run ? <RunPanel run={run} /> : null}
-            <AuthPanel doc={doc} index={index} onEdit={goToSettings} />
-            <VariablesPanel doc={doc} index={index} onClearSession={clearSession} onAdd={goToSettings} />
+            <AuthPanel doc={doc} index={index} onEdit={() => setTab("auth")} />
+            <VariablesPanel
+              doc={doc}
+              index={index}
+              onClearSession={clearSession}
+              onAdd={() => setTab("variables")}
+            />
             <ScriptsPanel doc={doc} />
             <HeadersPanel doc={doc} index={index} />
           </aside>

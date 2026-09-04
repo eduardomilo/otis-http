@@ -9,6 +9,7 @@ import {
   lineNumbers,
   placeholder as placeholderExt,
 } from "@codemirror/view";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 
@@ -25,6 +26,14 @@ import type { VariableRef } from "@bindings/internal/services";
  * design does not draw. What is here is what screen 1a shows: line numbers, a
  * fold gutter, a current-line highlight, bracket matching, history, and the
  * `{{variable}}` decoration.
+ *
+ * Plus two behaviours that draw nothing and are what make a body editor feel
+ * like one: Enter indents to the language's level (`defaultKeymap`'s
+ * `insertNewlineAndIndent`, which needs the language loaded to know what that
+ * level is), and typing an opening brace, bracket or quote closes it
+ * (`closeBrackets`). `closeBrackets` comes from `@codemirror/autocomplete`,
+ * which is a package name rather than a statement about what it does: it adds
+ * no completion UI, and the design's objection was to the popup.
  *
  * Two things change without recreating the editor, each behind its own
  * compartment: the language (the Content-Type can change while the body is
@@ -84,12 +93,23 @@ export function CodeEditor({
       drawSelection(),
       indentOnInput(),
       bracketMatching(),
+      // A single-line editor is a form field, and a field that turns a typed
+      // quote into a pair is a field that fights you. The URL bar is that
+      // field (it is an editor only for the {{variable}} decoration), and
+      // `{{` there would close itself into `{{}}`.
+      ...(singleLine || readOnly ? [] : [closeBrackets()]),
       highlightActiveLine(),
       ...(gutters ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : []),
       // The extra keys come first so ⌘↵ and ⌘S reach the shell before
       // CodeMirror's own bindings claim them.
       extraKeys.current.of(keymap.of(latest.current.keys ?? [])),
-      keymap.of([...defaultKeymap, ...historyKeymap]),
+      // closeBracketsKeymap ahead of the default one: it is what makes
+      // Backspace delete both halves of a pair it just inserted.
+      keymap.of([
+        ...(singleLine || readOnly ? [] : closeBracketsKeymap),
+        ...defaultKeymap,
+        ...historyKeymap,
+      ]),
       // Tab indents only in a multi-line editable body. Everywhere else Tab
       // has to move focus, which is CodeMirror's default and the only way out
       // of a one-line field for someone using the keyboard.
