@@ -28,8 +28,12 @@ reach the things that only exist in a running Otis.
 - **The held response.** A response body stays in Go and is paged out a
   screenful at a time (`CLAUDE.md`). The agent reads it the same way, so a
   40 MB body does not become a 40 MB tool result.
-- **The human.** A confirmation an agent needs can appear in the window the
-  person is already looking at. A CLI wrapper has nowhere to ask.
+- **A confirmation surface no client preference can switch off.** Elicitation
+  (§6.2) is available to any MCP server, so "can ask a human" is not the
+  advantage here. Being *the app* is: Otis can raise the question in its own
+  window, which is the one place a client's "always allow this tool" cannot
+  reach, and the only place it can put the diff of an unreviewed request next
+  to the question (§5, §6.3).
 - **One resolver.** The agent's send goes through the same resolve → prepare →
   send path as the Send button and `otis run`, so it cannot disagree with them
   about what a request means.
@@ -231,99 +235,155 @@ already has them, in more detail and with a diff.
 
 ## 6. The consent model
 
-Two confirmations, by two different parties, for two different reasons. The
-agent confirms what it is about to do; the person confirms that it may. They
-are independent, and the first can never satisfy the second.
+**Every send that needs confirmation gets its own confirmation, from a person.
+There is no session-wide approval, no "allow for 10 minutes", and no "always
+allow".** Everything below is about *where* that person is asked, never about
+whether.
 
-### 6.1 Two-phase send: the agent confirms too
+### 6.1 What the tools declare, and why that is not a gate
 
-**No send ever happens on a single tool call.** `send_request` and `run_folder`
-are two-phase, always, whenever RUN is enabled:
+Every tool carries MCP annotations, which mcp-go exposes as tool options:
 
-```jsonc
-// Phase 1 — no arguments beyond the target. Nothing is sent.
-→ send_request { "path": "orders/create-order.http" }
-← { "intent": "i_7f2a…", "expiresAt": "2026-09-04T11:03:41Z",
-    "method": "POST",
-    "resolvedUrl": "https://api.acme.com/v2/orders",
-    "environment": "production",
-    "usesSecret": true, "secrets": ["apiKey"],
-    "reviewed": true,
-    "willAsk": "the person, because production confirms before send" }
+| Tool group | |
+| --- | --- |
+| READ | `WithReadOnlyHintAnnotation(true)` |
+| WRITE | `WithReadOnlyHintAnnotation(false)`, `WithDestructiveHintAnnotation(false)`, `WithIdempotentHintAnnotation(false)` |
+| RUN | `WithReadOnlyHintAnnotation(false)`, `WithDestructiveHintAnnotation(true)`, `WithOpenWorldHintAnnotation(true)` |
 
-// Phase 2 — the same tool, now carrying the intent back.
-→ send_request { "path": "orders/create-order.http", "intent": "i_7f2a…" }
-← { "sendId": "s_7f2b", "status": 201, … }
+`destructiveHint` on `send_request` is honest: Otis cannot know what an endpoint
+does, and a request in a reviewed collection may well delete something.
+`openWorldHint` is honest for the same reason — the effect leaves the machine.
+
+These are worth setting because a good client uses them to decide what to
+prompt about. **They are not the gate**, and the reason is specific: they are
+*hints*, the client decides what to do with them, and real clients offer
+"always allow this tool". One click on that — plausibly made while approving a
+harmless `list_requests` — would silently delete the per-send confirmation this
+section exists to guarantee. A safety property that a client-side preference can
+switch off is not one Otis can claim.
+
+### 6.2 Asking through the client — the everyday surface
+
+For a send that needs confirming, the tool handler **blocks and asks the
+person through their own client**, using MCP elicitation:
+
+```go
+res, err := srv.RequestElicitation(ctx, mcp.ElicitationRequest{
+    Params: mcp.ElicitationParams{
+        Mode:    mcp.ElicitationModeForm,
+        Message: "Otis: send POST https://api.acme.dev/v2/orders " +
+                 "against `staging`? Uses secret apiKey.",
+        RequestedSchema: /* one boolean: proceed */,
+    },
+})
+// res.Action is accept | decline | cancel — decline and cancel both refuse.
 ```
 
-What this buys, precisely:
+Enabled with `server.WithElicitation()`, and available only when the client
+declared `ClientCapabilities.Elicitation` in its handshake, which is how §6.4
+knows to fall back.
 
-- **The target lands in the agent's context before the send.** The agent cannot
-  send without first having read the resolved URL, the environment and whether
-  a credential is involved. In a client like Claude Code that transcript is
-  also what *you* are reading, so a send to somewhere surprising is visible in
-  the conversation and not only in the audit log.
-- **A single stray tool call cannot send anything.** If an agent is talked into
-  one call — by a prompt injection in a response body, say (§13) — that call is
-  a preview. Sending needs a second, deliberate one.
-- **It is uniform.** There is no code path in which a send happens on one call,
-  which is a property worth more than the one saved round trip.
+This is what you were asking for and it is the right default surface, because
+the person is *already looking at the client*. Making them alt-tab to Otis to
+approve a send the agent proposed in a conversation they are reading is worse
+in every way except one — which is §6.3.
 
-The intent is **single-use**, expires in **60 seconds**, and — the part that
-makes it real rather than ceremonial — **is bound to a fingerprint of the
-resolved request**: method, URL, headers, body, environment, and the session
-values it consumed. If anything changes between the two phases the intent is
-void and the agent must preview again.
+`decline` and `cancel` are both refusals and are logged distinctly, because
+"the person said no" and "the prompt went away" are different facts and only
+one of them means they saw it.
 
-Without that binding the two phases would be a hole rather than a gate: preview
-something harmless, edit the file with `update_request`, then spend the intent
-on what the preview never described. With WRITE enabled that is not a
-hypothetical, which is why the fingerprint covers the request body and not just
-the URL.
+### 6.3 Asking in the window — the authority
 
-**What this is not.** It is not a security boundary against a malicious agent.
-Anything an agent can be talked into doing once it can be talked into doing
-twice, and it will happily echo an intent back. It is defence in depth and a
-way of forcing the truth into the transcript — nothing here weakens §4, §5 or
-§6.2 on the strength of it, and an implementation that let a returned intent
-skip a human confirmation would be a bug of the worst kind.
+**Three cases must be answered in Otis' own window, and elicitation only
+points at it:**
 
-### 6.2 The person confirms
+1. The environment sets `confirmBeforeSend: true` — production. The brief this
+   was written from asks for an "explicit in-app confirmation" here, and it is
+   right to: this is the case where a misconfigured or over-permissive client
+   is catastrophic rather than annoying.
+2. The send is **unreviewed** (§5) — an untracked or modified file. Otis' own
+   dialog is where the diff is, one keystroke away.
+3. `mcp.alwaysConfirmSends` is on (§4 rule 4). Turning it on is a statement
+   that you want to be asked *by Otis*, and honouring it through the client
+   would miss the point.
 
-**Every call that needs confirmation gets its own confirmation. There is no
-session-wide approval, no "allow for 10 minutes", and no "always allow".**
+For these, the elicitation message is a notification — "Otis is waiting for
+your confirmation" — and the answer is only taken from the window. It costs a
+context switch exactly where a context switch is cheap relative to the mistake.
 
-The gate lives where the existing one lives — `send-context`, which already
-holds the `confirmBeforeSend` gate for the Send button, ⌘↵, the palette and
-folder runs, on the argument that "a safety feature with a hole in it is not
-one". An agent send is one more caller, and it must not get its own path.
+Everything else — the default `"confirm"` on an ordinary environment — may be
+answered in either place, and the first answer wins.
 
-The flow for a call that needs confirmation, which begins at **phase 2** —
-phase 1 never asks anybody anything, because nothing is happening yet:
+The flow, in both surfaces:
 
-1. The handler re-resolves the request and checks the intent's fingerprint
-   still matches, so what the person is about to be shown is what will
-   actually be sent.
-2. It raises a confirmation in the window and **blocks**.
-3. The window shows a modal naming the agent, the tool, and those details.
-   Two buttons: **Send once** and **Refuse**.
-4. The person answers. Refusal returns an error the agent can read. No answer
-   within **60 seconds** is a refusal — an agent must not be able to leave a
+1. The handler resolves the request far enough to know **what it would do**:
+   method, the resolved URL with secrets masked, the environment, and whether a
+   secret would be used.
+2. It asks, and **blocks**.
+3. The prompt names the client, the tool, and those details. Not "allow?" — the
+   whole value of a confirmation is in what it says.
+4. The person answers. A refusal returns an error the agent can read. No answer
+   within **60 seconds** is a refusal: an agent must not be able to leave a
    dialog up indefinitely, and a call that hangs forever is worse for the agent
    than one that fails.
 5. Only then does the send happen.
 
-Consequences worth stating plainly:
+The gate itself lives where the existing one lives — `send-context`, which
+already holds the `confirmBeforeSend` gate for the Send button, ⌘↵, the palette
+and folder runs, on the argument that "a safety feature with a hole in it is not
+one". An agent send is one more caller and must not get its own path. What is
+new is only that this caller can be asked in two places.
+
+### 6.4 When the client cannot be asked
+
+A client that did not declare the elicitation capability cannot be prompted. It
+must not therefore get a *weaker* gate, so it gets a more awkward one — sends
+become **two-phase**:
+
+```jsonc
+// Phase 1 — nothing is sent.
+→ send_request { "path": "orders/create-order.http" }
+← { "intent": "i_7f2a…", "expiresAt": "…", "method": "POST",
+    "resolvedUrl": "https://api.acme.com/v2/orders",
+    "environment": "production", "usesSecret": true,
+    "reviewed": true, "willAsk": "the person, in Otis' window" }
+
+// Phase 2 — the intent handed back.
+→ send_request { "path": "…", "intent": "i_7f2a…" }
+```
+
+Plus the in-app dialog, which for such a client is the only place a person can
+answer at all. Two phases buy two things a single call does not: the resolved
+target lands in the agent's context — and therefore in the transcript a person
+may be reading — before anything is sent, and a single stray tool call, from a
+prompt injection in a response body say (§13), is a preview rather than a send.
+
+The intent is **single-use**, expires in **60 seconds**, and is bound to a
+**fingerprint of the resolved request**: method, URL, headers, body,
+environment, and the session values it consumed. Without that binding two
+phases would be a hole rather than a gate — preview something harmless, edit it
+with `update_request`, then spend the intent on what the preview never
+described. With WRITE enabled that is not hypothetical, which is why the
+fingerprint covers the body and not just the URL.
+
+**Two phases are not a substitute for asking a person**, in either direction.
+An agent will echo an intent back without a thought; anything it can be talked
+into once it can be talked into twice. It is defence in depth, and an
+implementation that let a returned intent skip a human confirmation would be a
+bug of the worst kind.
+
+### 6.5 Consequences worth stating plainly
 
 - An agent cannot batch approvals. Ten sends against a `confirm` environment
-  are ten dialogs. That is the intended friction; if it is too much, the answer
+  are ten prompts. That is the intended friction; if it is too much the answer
   is `"allow"` on a safe environment, not a weaker gate.
-- `run_folder` against a `confirm` environment asks **once per request in the
-  folder**, not once for the folder. A folder run is N sends and the policy is
-  per send. A twenty-request folder is therefore impractical to run against
-  production from an agent, which is correct.
-- If no window is open, or the collection is closed, a call needing
+- `run_folder` asks **once per request**, not once for the folder. A folder run
+  is N sends and the policy is per send, so a twenty-request folder is
+  impractical to run against production from an agent — which is correct.
+- If Otis has no window open, or no collection, a call needing a §6.3
   confirmation fails. There is nobody to ask.
+- A client that supports elicitation and a person who ignores the prompt reach
+  the same place as a refusal, after 60 seconds. Nothing proceeds by default.
 
 ## 7. Secrets
 
@@ -469,7 +529,7 @@ the old one back.
 
 **When the server is enabled, the title strip carries a chip; when a client is
 actually connected, the chip is live.** The design does not draw one, so this
-is a `DESIGN-NOTES` §10 item (§14.3), but its content is not in doubt:
+is a `DESIGN-NOTES` §9 item (§14.3), but its content is not in doubt:
 
 - Off: nothing at all. A feature that is off should not occupy the chrome.
 - Enabled, nothing connected: `agent · idle`, in `--fg-dim`.
@@ -489,7 +549,8 @@ every screen including the diff and the empty state.
 ## 12. Tool surface
 
 Refined from the brief. Every result is masked (§7). Every path is a
-collection-relative node path (`FORMAT.md` §2.1).
+collection-relative node path (`FORMAT.md` §2.1). Every tool carries the
+annotations §6.1 lists.
 
 ### READ
 
@@ -530,14 +591,16 @@ means the most recent send.
 
 ### RUN
 
-Both are two-phase (§6.1): called without `intent` they describe and send
-nothing; called with one they proceed.
+`intent` applies only to a client that cannot be asked through elicitation
+(§6.4). For a client that can, one call is enough and the person is prompted
+mid-call.
 
 **`send_request`** — send one request.
 `{ path: string, environment?: string, intent?: string }` →
-without `intent`: `{ intent, expiresAt, method, resolvedUrl, environment,
-   usesSecret, secrets: [name], reviewed, willAsk }`
-with `intent`: `{ sendId, status, statusText, timing, size, resolvedUrl,
+without `intent`, on a client that cannot be asked: `{ intent, expiresAt,
+   method, resolvedUrl, environment, usesSecret, secrets: [name], reviewed,
+   willAsk }`
+otherwise: `{ sendId, status, statusText, timing, size, resolvedUrl,
    tests: { passed, failed }, sessionVariablesSet: [{ name, scope, owner }] }`
 Naming an `environment` is allowed and is policy-checked like any other; it
 does not change the app's active environment, because an agent must not be able
@@ -634,6 +697,9 @@ by `git status` rather than by policy.
 ## 13. What this protects against, and what it does not
 
 **Does:**
+- Ask a person before a send that policy says needs asking — through their own
+  client where it can (§6.2), and in Otis' window where that is the only
+  trustworthy place (§6.3).
 - An agent reading a secret value — architecturally, not by policy (§7).
 - An agent sending to production without a person seeing it (§4, §6).
 - Another process or user on the machine driving it — token, loopback bind.
@@ -660,9 +726,15 @@ by `git status` rather than by policy.
   change under you, and if you commit without reading the diff you have
   reviewed nothing. This is the cost of the WRITE grant and there is no
   mechanism here that removes it.
-- **A confused person clicking through confirmations.** A dialog is only as
+- **A confused person clicking through confirmations.** A prompt is only as
   good as its reading, which is why the confirmation names the method, the
   resolved URL and the environment rather than asking "allow?".
+- **A client configured to auto-approve tools.** Real clients offer "always
+  allow this tool", and a person may click it while approving something
+  harmless. That is precisely why the tool annotations of §6.1 are not treated
+  as the gate, and why the three cases in §6.3 are answered in Otis' own
+  window, which no client preference can reach. If you want *every* send to
+  land there, `mcp.alwaysConfirmSends` (§4 rule 4) is the switch.
 - **Anything a request itself does.** Otis sends what the collection says. A
   reviewed request that deletes a production table will delete it.
 - **Another local process reading `mcp.json`.** It is mode `0600`, which stops
@@ -680,7 +752,7 @@ by `git status` rather than by policy.
    `otis mcp config` to print the client block.
 2. **Audit log persistence** (§9). Recommend: in memory, persistence an
    off-by-default setting.
-3. **The indicator's colour and place** (§11). A `DESIGN-NOTES` §10 item;
+3. **The indicator's colour and place** (§11). A `DESIGN-NOTES` §9 item;
    recommend the title strip in amber, and I would add it as §9.22 rather than
    decide it here.
 4. **`agents` default.** Recommend `"confirm"`. `"deny"` is safer and makes RUN
@@ -700,12 +772,19 @@ by `git status` rather than by policy.
 9. **Should WRITE be allowed at all in a collection with uncommitted changes
    already present?** Recommend yes, with no special case: those files are
    simply unreviewed like any other, and §5 already covers them.
-10. **Should two-phase send be mandatory, or opt-in?** (§6.1) Recommend
-    mandatory. Opt-in would mean a code path where one call sends, which is
-    exactly the path worth not having — and the cost is one round trip on an
-    operation that already involves the network. The argument against is that
-    it doubles every agent's tool-call count and some clients are billed by it.
-11. **Should `mcp.alwaysConfirmSends` default on rather than off?** (§4 rule 4)
+10. **Should two-phase apply to *every* client, or only to ones that cannot be
+    asked?** (§6.4) Recommend only the latter, as written: a client that can be
+    prompted gives the person a better surface *and* one fewer round trip, and
+    making everyone pay double for a property that only matters without
+    elicitation is the wrong trade. The argument for always: there would then
+    be no code path in which a single tool call sends anything, which is a
+    simpler thing to reason about and to test.
+11. **Should elicitation be allowed to answer the §6.3 cases too?** Recommend
+    no — production, unreviewed sends and `alwaysConfirmSends` stay in the
+    window. It is the one place no client preference can auto-approve, and the
+    brief asked for an in-app confirmation on production specifically. The
+    argument against me is the context switch, which is real.
+12. **Should `mcp.alwaysConfirmSends` default on rather than off?** (§4 rule 4)
     Recommend off, because the committed `agents` policy is meant to be the
     answer and a local override that is on by default makes it not one. But
     defaulting it *on* is the more cautious choice and costs only friction, so
@@ -750,18 +829,35 @@ The brief's list, plus what §7 demands:
 16. No `rename`, `delete`, environment-write, `.order`-write, commit,
     `create_collection` or `open_collection` tool is registered at all — asserted
     against the registered tool list, so adding one later fails the test.
-17. **Two-phase send** (§6.1). `send_request` without an `intent` sends nothing
+17. **Elicitation is the gate, on a client that supports it** (§6.2). A fake
+    client declaring the capability: `send_request` against a `"confirm"`
+    environment blocks on `elicitation/create`; `accept` proceeds; `decline`
+    and `cancel` both refuse and are logged distinctly; no answer in 60s
+    refuses. Assert against an `httptest` server that nothing was sent in
+    every case but `accept`.
+18. **Annotations are set** — `readOnlyHint` on every READ tool,
+    `destructiveHint` and `openWorldHint` on the send tools — asserted against
+    the registered tool list, so a new tool cannot arrive unannotated.
+19. **Annotations are not load-bearing.** A client that ignores every
+    annotation and calls `send_request` directly is still gated: the
+    confirmation happens inside the handler, not in the client's decision to
+    call.
+20. **The §6.3 cases are not answerable through the client.** With
+    `confirmBeforeSend: true`, an `accept` from elicitation does **not** send;
+    only the in-app answer does. Same for an unreviewed send and for
+    `alwaysConfirmSends`.
+21. **Two-phase send** (§6.4). `send_request` without an `intent` sends nothing
     — asserted against an `httptest` server that records every hit, so "nothing
     was sent" is a fact and not an absence of evidence. The preview names the
     method, resolved URL and environment.
-18. An intent is single-use: spending it twice fails the second time. An expired
+22. An intent is single-use: spending it twice fails the second time. An expired
     intent fails. An intent from a different request or environment fails.
-19. **The fingerprint holds.** Preview a request, `update_request` its URL, then
+23. **The fingerprint holds.** Preview a request, `update_request` its URL, then
     spend the intent → refused, and nothing is sent. This is the TOCTOU hole
     the binding exists to close and it is the test that proves it did.
-20. A returned intent does **not** skip a human confirmation: with the
+24. A returned intent does **not** skip a human confirmation: with the
     environment on `"confirm"`, phase 2 still blocks on the dialog.
-21. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
+25. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
     `"allow"`, a send still asks. With it off, the same send does not. And there
     is no setting or tool argument that turns a `"confirm"` or `"deny"`
     environment into an `"allow"` one — asserted by exhausting the effective
