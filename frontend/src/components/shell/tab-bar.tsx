@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Folder, X } from "lucide-react";
 
 import { methodColor } from "@/lib/method";
@@ -28,11 +28,21 @@ import { useTabs } from "@/state/tabs-context";
  * nothing. Activation comes from four places (the tree, the palette, a
  * forwarded file open, and the tab itself), so the scroll belongs here, keyed
  * on which tab is active, rather than in each caller.
+ *
+ * Tabs reorder by dragging, which §6 names as the thing Radix `Tabs` could not
+ * do and the design never draws. It borrows the tree's vocabulary rather than
+ * inventing one (DESIGN-NOTES §7.7): the dragged tab dims, and a single accent
+ * line marks the edge it would land on.
  */
 export function TabBar() {
-  const { tabs, activePath, closeTab, openTab } = useTabs();
+  const { tabs, activePath, closeTab, openTab, moveTab } = useTabs();
   const { tree } = useCollection();
   const active = useRef<HTMLDivElement | null>(null);
+  const strip = useRef<HTMLDivElement | null>(null);
+  // The tab being dragged and the gap it would drop into. The gap is an index
+  // between tabs — 0 is before the first, tabs.length is after the last.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [gap, setGap] = useState<number | null>(null);
 
   // A layout effect, not an effect: this runs in the same frame as the
   // activation, so an off-screen tab is never painted off-screen first.
@@ -42,9 +52,63 @@ export function TabBar() {
     active.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activePath]);
 
+  /**
+   * Which gap a pointer at `clientX` is nearest.
+   *
+   * Measured off the rendered tabs rather than tracked during the drag,
+   * because the strip scrolls: an index computed from a stored offset would
+   * be wrong the moment the pointer reaches an edge and the strip moves.
+   */
+  const gapAt = (clientX: number): number => {
+    const element = strip.current;
+    if (!element) return 0;
+    const rects = [...element.querySelectorAll('[role="tab"]')].map((t) =>
+      t.getBoundingClientRect(),
+    );
+    for (let i = 0; i < rects.length; i++) {
+      if (clientX < rects[i].left + rects[i].width / 2) return i;
+    }
+    return rects.length;
+  };
+
+  const onTabPointerDown = (event: React.PointerEvent, path: string) => {
+    // Left button only, and never from the close button, which has its own job.
+    if (event.button !== 0) return;
+    const startX = event.clientX;
+    let armed = false;
+
+    const move = (e: PointerEvent) => {
+      // A drag starts only after the pointer has actually travelled, so a
+      // click that wobbles a pixel still selects the tab instead of
+      // reordering the strip.
+      if (!armed && Math.abs(e.clientX - startX) < 4) return;
+      if (!armed) {
+        armed = true;
+        setDragging(path);
+      }
+      setGap(gapAt(e.clientX));
+    };
+    const up = (e: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (armed) {
+        // The click that would otherwise follow the drop is not a selection.
+        e.preventDefault();
+        moveTab(path, gapAt(e.clientX));
+      }
+      setDragging(null);
+      setGap(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   return (
-    <div className="no-scrollbar flex h-[var(--tab-bar-height)] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background">
-      {tabs.map((tab) => (
+    <div
+      ref={strip}
+      className="no-scrollbar flex h-[var(--tab-bar-height)] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background"
+    >
+      {tabs.map((tab, i) => (
         <TabButton
           key={tab.path}
           tab={tab}
@@ -54,8 +118,21 @@ export function TabBar() {
           // over the file name, and only the parsed file knows it.
           node={tree ? findNode(tree.root, tab.path) : undefined}
           active={tab.path === activePath}
+          dragging={dragging === tab.path}
+          // The one insertion line, on whichever edge the drop is nearest.
+          // Only ever on one tab, so two adjacent tabs never both draw it.
+          line={
+            dragging === null || gap === null
+              ? null
+              : gap === i
+                ? "before"
+                : gap === tabs.length && i === tabs.length - 1
+                  ? "after"
+                  : null
+          }
           onActivate={() => openTab(tab.path, tab.kind)}
           onClose={() => void closeTab(tab.path)}
+          onGrab={(event) => onTabPointerDown(event, tab.path)}
         />
       ))}
     </div>
@@ -68,6 +145,9 @@ function TabButton({
   active,
   onActivate,
   onClose,
+  onGrab,
+  dragging,
+  line,
   ref,
 }: {
   tab: Tab;
@@ -75,6 +155,11 @@ function TabButton({
   active: boolean;
   onActivate: () => void;
   onClose: () => void;
+  onGrab: (event: React.PointerEvent) => void;
+  /** This tab is the one being dragged: dimmed, as a dragged tree row is. */
+  dragging: boolean;
+  /** The single insertion line, when it belongs on this tab's edge. */
+  line: "before" | "after" | null;
   /** Set on the active tab only, so the bar can scroll it into view. */
   ref?: React.Ref<HTMLDivElement>;
 }) {
@@ -95,11 +180,20 @@ function TabButton({
           onClose();
         }
       }}
+      onPointerDown={onGrab}
       className={cn(
-        "group flex min-w-0 shrink-0 cursor-default items-center gap-2 border-r border-border px-3 select-none",
-        active
-          ? "bg-background text-fg-emphasis shadow-[inset_0_-1px_0_var(--accent)]"
-          : "text-fg-muted hover:bg-control",
+        // The transparent left/right borders are reserved, not decorative:
+        // the insertion line replaces one of them, so a tab's width never
+        // changes when the line appears and the strip does not shift
+        // mid-drag (the same trick the tree rows use, DESIGN-NOTES §7.7).
+        "group flex min-w-0 shrink-0 cursor-default items-center gap-2 border-x border-transparent border-r-border px-3 select-none",
+        line === "before" && "border-l-primary",
+        line === "after" && "border-r-primary",
+        dragging
+          ? "bg-inset text-fg-faint opacity-40"
+          : active
+            ? "bg-background text-fg-emphasis shadow-[inset_0_-1px_0_var(--accent)]"
+            : "text-fg-muted hover:bg-control",
       )}
     >
       {tab.kind === "folder" ? (
@@ -140,6 +234,7 @@ function TabButton({
         <button
           type="button"
           aria-label={tab.dirty ? `Close ${label} — unsaved changes` : `Close ${label}`}
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             onClose();

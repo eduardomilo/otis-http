@@ -11,6 +11,7 @@ import {
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import { nodeRoute } from "@/lib/paths";
+import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useSettings } from "@/state/settings-context";
 
@@ -54,6 +55,8 @@ interface TabsContextValue {
   activePath: string;
   /** Opens a tab and, unless activate is false, navigates to it. */
   openTab: (path: string, kind: TabKind, options?: { activate?: boolean }) => void;
+  /** Moves a tab to a position in the strip; see moveTab. */
+  moveTab: (path: string, to: number) => void;
   closeTab: (path: string) => void;
   closeActive: () => void;
   /** Reopens the most recently closed tab. */
@@ -75,7 +78,7 @@ const KIND_BY_ROUTE: Record<string, TabKind> = {
 export function TabsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { settings, saveTabs } = useSettings();
-  const { collection } = useCollection();
+  const { collection, tree } = useCollection();
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState("");
   const closed = useRef<Tab[]>([]);
@@ -113,6 +116,29 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     }
   }, [collection]);
 
+  /**
+   * A tab whose file is gone closes itself.
+   *
+   * The tree is the authority on what exists, so a request deleted in another
+   * editor, on a branch switch, or by a `git checkout` leaves a tab behind
+   * that cannot load and shows no method — and, because the open paths are
+   * persisted, it came back on the next launch too.
+   *
+   * A **dirty** tab is kept, deliberately. Its edits only exist in the draft,
+   * and closing it to tidy up the tab strip would throw them away — with the
+   * file gone, saving is the only way to get them back, and that needs the tab
+   * to still be there. So the pruning is for tabs with nothing to lose.
+   */
+  useEffect(() => {
+    if (!tree) return;
+    const root = tree.root;
+    if (!root) return;
+    setTabs((existing) => {
+      const kept = existing.filter((t) => t.dirty || findNode(root, t.path) !== undefined);
+      return kept.length === existing.length ? existing : kept;
+    });
+  }, [tree]);
+
   // Navigating to a document opens its tab and makes it active. This is the
   // only place a tab becomes active from a route, so deep links, palette
   // results and tree clicks all behave identically.
@@ -143,6 +169,19 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     },
     [navigate],
   );
+
+  // If the pruning above took the active tab, move to another one rather than
+  // leaving the shell pointing at a document that is not in the list.
+  useEffect(() => {
+    if (!activePath || tabs.some((t) => t.path === activePath)) return;
+    const next = tabs[tabs.length - 1];
+    if (next) {
+      goTo(next);
+    } else {
+      setActivePath("");
+      void navigate({ to: "/" });
+    }
+  }, [tabs, activePath, goTo, navigate]);
 
   const openTab = useCallback<TabsContextValue["openTab"]>(
     (path, kind, options) => {
@@ -183,6 +222,26 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     [activePath, goTo, navigate],
   );
 
+  /**
+   * Moves a tab to a new position in the strip.
+   *
+   * The order is already persisted — `tabs.open` is an array and the shell
+   * restores it in order — so reordering needs no new state, and dragging a
+   * tab to the front is a preference that survives a relaunch for free.
+   */
+  const moveTab = useCallback((path: string, to: number) => {
+    setTabs((existing) => {
+      const from = existing.findIndex((t) => t.path === path);
+      if (from === -1 || to < 0 || to > existing.length) return existing;
+      const without = existing.filter((_, i) => i !== from);
+      // `to` is an index in the original list, so a move rightwards has to
+      // account for the tab having been lifted out from behind it.
+      const at = to > from ? to - 1 : to;
+      if (at === from) return existing;
+      return [...without.slice(0, at), existing[from], ...without.slice(at)];
+    });
+  }, []);
+
   const closeActive = useCallback(() => {
     if (activePath) void closeTab(activePath);
   }, [activePath, closeTab]);
@@ -211,13 +270,24 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       tabs,
       activePath,
       openTab,
+      moveTab,
       closeTab,
       closeActive,
       reopenLastClosed,
       setDirty,
       setCloseGuard,
     }),
-    [tabs, activePath, openTab, closeTab, closeActive, reopenLastClosed, setDirty, setCloseGuard],
+    [
+      tabs,
+      activePath,
+      openTab,
+      moveTab,
+      closeTab,
+      closeActive,
+      reopenLastClosed,
+      setDirty,
+      setCloseGuard,
+    ],
   );
 
   return <TabsContext.Provider value={value}>{children}</TabsContext.Provider>;

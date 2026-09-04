@@ -8,7 +8,9 @@ Desktop app built with Wails v3 (Go) + React/TypeScript. Go module
 Read these before changing anything they cover. They are the specs; the code
 follows them, not the other way round.
 
-- `docs/VISION.md` — what Otis is and why. **Not yet written.**
+- `docs/VISION.md` — what Otis is and why: the thesis, what follows from it,
+  the line under secrets, and the order the priorities go in. The tiebreak when
+  FORMAT.md and DESIGN-NOTES.md do not settle a decision.
 - `docs/FORMAT.md` — the on-disk format and the CLI surface. Authoritative.
 - `docs/design/DESIGN-NOTES.md` — the UI design system: color tokens, method
   colors, type scale, spacing, shadcn mapping. Authoritative for anything
@@ -388,6 +390,22 @@ lists the design decisions that are still open — do not resolve them silently.
   returns for the purpose, and hands it back to `FolderService.Save`. Do not
   route the folder file to the request editor to fix a missing affordance.
   DESIGN-NOTES §9.20 has the whole account.
+
+- **A layout that lives inside a resizable pane uses a container query, never
+  a viewport breakpoint.** The folder view's `1fr 440px` split was `xl:`, a
+  *viewport* rule, so on a 1512px window it split into two columns while the
+  centre pane was 735px wide — leaving the left column ~275px and clipping its
+  fields. It is `@container` plus `@min-[800px]:` now. Only the shadcn
+  primitives in `components/ui/` may use `sm:`/`md:`/`lg:`, and only because a
+  dialog is positioned against the viewport rather than inside a pane.
+
+- **A tab whose file is gone closes itself, unless it is dirty.** The tree is
+  the authority on what exists, so a request deleted in another editor or by a
+  branch switch takes its tab with it — otherwise the tab cannot load, shows no
+  method, and comes back on the next launch because the open paths are
+  persisted. A *dirty* tab is kept on purpose: its edits live only in the
+  draft, and with the file gone, saving is the only way to get them back and
+  that needs the tab to still be there.
 
 - **The tab strip spans everything right of the sidebar, and it can still
   overflow.** Two nested `ResizablePanelGroup`s in `AppShell` are what make

@@ -99,7 +99,12 @@ export function FolderView({ path }: { path: string }) {
         onCancel={() => void cancel(path)}
       />
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as Tab)} className="min-h-0 flex-1">
+      {/* A container, so the split below reacts to the *pane's* width. */}
+      <Tabs
+        value={tab}
+        onValueChange={(value) => setTab(value as Tab)}
+        className="@container min-h-0 flex-1"
+      >
         <TabsList className="h-8 shrink-0 gap-4 border-b border-border px-4">
           <FolderTab value="overview">Overview</FolderTab>
           <FolderTab value="auth">Auth</FolderTab>
@@ -114,8 +119,16 @@ export function FolderView({ path }: { path: string }) {
           </FolderTab>
         </TabsList>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[1fr_440px]">
-          <div className="min-h-0 overflow-auto border-border px-4 py-3 xl:border-r">
+        {/* DESIGN-NOTES §4.1's `1fr 440px`, but conditioned on a container
+            query rather than a viewport one. This lives inside a resizable
+            pane, so a `xl:` breakpoint asked the wrong question: on a 1512px
+            window it split into two columns while the centre pane was 735px
+            wide, which left the left column ~275px and clipped the auth
+            arguments field and the variables table. 800px is the point at
+            which 440 for the panels still leaves the editor a usable 360.
+            Below it the two stack, panels under the editor. */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden @min-[800px]:grid-cols-[1fr_440px]">
+          <div className="min-h-0 overflow-auto border-border px-4 py-3 @min-[800px]:border-r">
             {tab === "overview" ? (
               <ReadmePanel doc={doc} path={path} env={env} onSaved={setDoc} />
             ) : tab === "scripts" ? (

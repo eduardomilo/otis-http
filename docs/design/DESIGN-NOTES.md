@@ -825,8 +825,20 @@ Three things follow from a strip that can still overflow:
   box so the tab's width never changes under the pointer. SCREENS.md already
   lists "tab close" among the interactions the static design cannot show.
 
-Still not built from what §1a draws: the `+` new-tab glyph after the last tab,
-and tab reordering (§6 names it).
+Tab **reordering** is built, and borrows this document's existing drag
+vocabulary rather than inventing one: the dragged tab dims to `--bg-inset` at
+40% and a single accent line marks the edge it would land on, exactly as a
+dragged tree row does (§7.7, screen 2a). Both live in one fixed-size box per
+tab so the strip does not shift mid-drag. The order is the persisted
+`tabs.open` array, so a tab dragged to the front stays there across a
+relaunch.
+
+Still not built from what §1a draws: the **`+` new-tab glyph** after the last
+tab. It is not a missing affordance but a missing *feature* — there is no way
+to create a request in Otis at all, in the UI or in Go, and building one means
+deciding where the file lands, what it is named, and how that interacts with
+§2.2's rule that adding a request must not touch `.order`. A `+` that opened a
+dialog saying "not yet" would be worse than no `+`.
 
 **9.20 A folder's settings had no editor at all, and now do.** The design
 draws screen 3a's panels with an `Edit` on Auth and an `Add` on Variables, and
