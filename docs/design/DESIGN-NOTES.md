@@ -979,3 +979,33 @@ client, the recent audit entries, and *Disconnect agents*. That control is the
 kill switch (`MCP.md` §10), so it takes the destructive treatment — `#f87171`
 text, no fill — and unlike §9.17's ordering operations it has no undo, because
 its whole purpose is that there is no way back to the old token.
+
+**9.23 Neither replaced sidebar had a way back, and now both do.** The
+environment editor (screen 1c) and the diff view (screen 1b) each swap the
+request tree out for their own navigator — that is what the design draws, and
+it is right: there is no tree to filter while you are reading a diff or editing
+`env/staging.json`. What neither screen draws is anything that returns, and
+with no document tab open there was nothing in the window that did. ⌘K still
+worked, and the tab strip works whenever a tab is open, but a keyboard shortcut
+is not an affordance and an empty tab strip is not a hint. The report that
+found this was "can't go back to the requests view from the environments view
+or the git view".
+
+**A chevron at the left of the navigator's own title**, sharing that row rather
+than adding one. The heading stays where the design puts it, and the control is
+the standard master-detail idiom, which is what a replaced navigator is.
+
+**It goes to the active document, not to the root**, so returning restores what
+you were looking at instead of dropping you on "Open a request from the
+sidebar". With nothing open it does go to the root, which is where a fresh
+launch lands anyway. The tooltip names the destination either way, because a
+bare chevron is the one control where "back to *what*" is worth stating.
+
+`components/shell/back-to-requests` is one component used by both lists rather
+than two implementations, and the reason it is not in `sidebar.tsx` — which is
+where the decision to replace the tree is made, and would be the tidier place —
+is that both lists own their own header row. Injecting a control into a header
+from outside would have meant either a second stacked header or plumbing an
+element through both components. If a third navigator is ever added, it needs
+this in its header too; there is no structural check for that, which is the
+cost of the choice.

@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { BackToRequests } from "@/components/shell/back-to-requests";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useEnvironments } from "@/state/environment-context";
@@ -38,7 +39,12 @@ export function EnvironmentList({ activeName }: { activeName: string }) {
   return (
     <div className="flex h-full flex-col bg-background px-2.5">
       <div className="flex h-12 shrink-0 items-center justify-between">
-        <span className="pl-1 text-ui text-fg-muted">Environments</span>
+        <div className="flex min-w-0 items-center gap-1">
+          {/* This list replaced the request tree, so it carries the way back
+              (DESIGN-NOTES §9.23). */}
+          <BackToRequests />
+          <span className="text-ui text-fg-muted">Environments</span>
+        </div>
         <button
           type="button"
           onClick={() => setCreating(true)}

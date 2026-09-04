@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 
+import { BackToRequests } from "@/components/shell/back-to-requests";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useDiff } from "@/state/diff-context";
@@ -22,7 +23,12 @@ export function ChangesList({ activePath }: { activePath: string }) {
   return (
     <div className="flex h-full flex-col bg-background px-2.5">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-border">
-        <span className="pl-1 text-ui text-fg-muted">Changes</span>
+        <div className="flex min-w-0 items-center gap-1">
+          {/* This list replaced the request tree, so it carries the way back
+              (DESIGN-NOTES §9.23). */}
+          <BackToRequests />
+          <span className="text-ui text-fg-muted">Changes</span>
+        </div>
         <span className="pr-1 font-mono text-meta text-fg-dim">{changes.length}</span>
       </div>
 

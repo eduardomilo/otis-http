@@ -567,6 +567,15 @@ lists the design decisions that are still open — do not resolve them silently.
   primitives in `components/ui/` may use `sm:`/`md:`/`lg:`, and only because a
   dialog is positioned against the viewport rather than inside a pane.
 
+- **A sidebar that replaces the request tree carries the way back.** The
+  environment list and the changes list each swap the tree out, and neither
+  screen in the design draws anything that returns — so with no document tab
+  open there was no way back to the requests view at all. Both headers render
+  `components/shell/back-to-requests`, which navigates to the *active
+  document* when there is one so returning restores what you were looking at,
+  and to the collection root otherwise. A third replaced navigator needs it in
+  its header too, and nothing checks that for you: DESIGN-NOTES §9.23 records
+  why it lives in the lists rather than in `sidebar.tsx`.
 - **A tab whose file is gone closes itself, unless it is dirty.** The tree is
   the authority on what exists, so a request deleted in another editor or by a
   branch switch takes its tab with it — otherwise the tab cannot load, shows no
