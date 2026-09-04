@@ -21,7 +21,8 @@
    --bg                    bg-background
    --bg-raised             bg-raised
    --bg-inset              bg-inset
-   --bg-selected           bg-selected
+   --bg-selected           bg-selected         (a selected *row*, never text)
+   --bg-text-selection     —                   (editor text selection; §9.29)
    --bg-control            bg-control          (also shadcn's --accent, the
                                                 hover surface its components
                                                 reach for)
@@ -168,6 +169,21 @@
     --bg-selected: #141417;
     --bg-control: #18181b;
 
+    /* Text selection inside an editor. Not in DESIGN-NOTES §2.1's table:
+       §9.29 adds it, because the design assigns no colour to this and the two
+       that looked close are both spoken for. --bg-selected is the *row*
+       token — the tree, the changes list, the palette — and at #141417 on
+       #0f0f11 it is about five points a channel, which is why a selection
+       looked like nothing at all. --accent-wash is the background behind a
+       {{variable}}, and the URL bar is full of those.
+
+       Neutral rather than tinted on purpose: colour means something
+       everywhere else in this design, and a text selection means nothing —
+       it is a UI state, so it gets a plain lift that cannot be mistaken for
+       a variable, a diff line or a status. Alpha rather than a flat colour so
+       it works on --bg, --bg-raised and --bg-inset alike. */
+    --bg-text-selection: rgba(255, 255, 255, 0.14);
+
     /* §2.2 Borders. --border-line rather than --border: Tailwind v4 owns the
        bare --border name for its own border-width utility. */
     --border-hairline: #141417;
@@ -265,6 +281,21 @@
     height: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+}
+
+/* ...but without a visible scrollbar. A long URL still scrolls; an 8px
+   horizontal bar inside a 30px control eats a quarter of it and looks like a
+   pane, not a field. The same treatment the tab strip gets, for the same
+   reason (see .no-scrollbar above), declared here as well because the theme
+   sets ::-webkit-scrollbar on .cm-scroller and a shorthand utility class
+   cannot reach a CodeMirror-owned element. */
+.cm-single-line .cm-scroller {
+    scrollbar-width: none;
+}
+
+.cm-single-line .cm-scroller::-webkit-scrollbar {
+    width: 0;
+    height: 0;
 }
 
 .cm-single-line .cm-content {

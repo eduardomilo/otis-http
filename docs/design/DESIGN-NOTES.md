@@ -1214,3 +1214,51 @@ justification is that it is not a change to anything — it is the file catching
 up with what is already on screen, and it announces itself the moment it lands:
 the tab's dirty dot clears, the tree gains its git dot, the status bar says `M`
 and `⌘G` shows the diff.
+
+**9.29 Text selection had no colour of its own, and the rule that set it never
+applied.** Two separate faults, reported together as "the selection colour is
+not always visible, it looks like nothing is selected". The word *always* was
+the clue.
+
+**The rule.** `otis-theme` carried
+`&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection`
+with a comment claiming it covered the focused and unfocused cases. It did not
+cover the focused one. `@codemirror/view`'s base theme has
+
+```
+&dark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground
+  { background: #233 }
+```
+
+which outranks a two-class selector, so **every selection in a focused editor
+was CodeMirror's own dim teal** — and `#233` on `#0f0f11` reads as nothing at
+all. Unfocused, the theme's own rule won and the colour changed. Mirroring the
+base theme's selector shape wins it back: a theme outranks a base theme at
+equal specificity. Worth remembering the next time a CodeMirror rule "does not
+take" — the base theme is more specific than it looks.
+
+**The colour.** The rule was reaching for `--bg-selected`, which §2.1 assigns
+to the selected **row** in the tree, the changes list, the environment list and
+the palette. At `#141417` on the editor's `#0f0f11` that is about five points a
+channel, so even where the rule did apply it was close to invisible.
+
+So `--bg-text-selection` is a new token, and neither of the two that looked
+close would do. `--bg-selected` is a row token. `--accent-wash` is "the
+background behind a `{{variable}}` token" — and the URL bar is made of those,
+so a selected variable would have been indistinguishable from an unselected
+one.
+
+`rgba(255,255,255,.14)`, and **neutral on purpose**: every other colour in this
+design means something, and a text selection means nothing — it is a UI state,
+not a status, so it gets a plain lift that cannot be read as a variable, a diff
+line or a result. Alpha rather than a flat value so the one token works on
+`--bg`, `--bg-raised` and `--bg-inset` alike, and so syntax colours read
+through it.
+
+**9.30 The URL field had a scrollbar.** A single-line CodeMirror scrolls
+horizontally when the URL is longer than the field, and the theme declares 8px
+webkit scrollbars for `.cm-scroller` — so a bar appeared inside the 30px
+control of §4.4, taking a quarter of its height and making a text field look
+like a pane. It is hidden now and still scrolls, the same treatment the tab
+strip already gets (`.no-scrollbar`), declared against `.cm-scroller` because a
+utility class cannot reach an element CodeMirror owns.

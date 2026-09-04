@@ -230,6 +230,19 @@ lists the design decisions that are still open — do not resolve them silently.
 - **Never change the Vite `build.outDir`.** `main.go` embeds `frontend/dist`.
 - **Any SQLite work uses `modernc.org/sqlite`.** Keep `CGO_ENABLED=0` possible for
   Windows builds. No cgo dependencies without asking.
+- **A CodeMirror rule that "does not take" is probably losing to the base
+  theme.** `@codemirror/view`'s base theme uses long, specific selectors —
+  `&dark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+  for one — which outrank the short ones a theme naturally reaches for. The
+  selection colour was set for two years' worth of reading and never applied to
+  a focused editor. Mirror the base theme's selector shape; a theme outranks a
+  base theme at equal specificity. DESIGN-NOTES §9.29.
+- **`--bg-selected` is a selected *row*, never selected text.** The tree, the
+  changes list, the environment list and the palette. Editor text selection is
+  `--bg-text-selection`, which is deliberately neutral: colour means something
+  everywhere else in this design and a selection means nothing. Do not reach
+  for `--accent-wash` either — that is the background behind a `{{variable}}`,
+  and the URL bar is made of those.
 - **Build UI with shadcn components and Tailwind utilities.** No hand-rolled styled
   divs, no hardcoded hex colors — use the theme tokens (`bg-background`,
   `text-muted-foreground`, etc.). Tailwind v4 is CSS-first: theme lives in

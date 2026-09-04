@@ -43,10 +43,34 @@ export const otisTheme = EditorView.theme(
     },
     "&.cm-focused": { outline: "none" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent)" },
-    // The selection layer needs both selectors: the second is what a focused
-    // editor uses, and without it the selection is invisible while typing.
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": {
-      backgroundColor: "var(--bg-selected)",
+    // Text selection.
+    //
+    // Two things had to be right here and neither was. **The colour**:
+    // --bg-selected is the *row* token (§2.1 — the tree, the changes list,
+    // the palette), and at #141417 on the editor's #0f0f11 it is about five
+    // points a channel. --bg-text-selection is its own token for this
+    // (§9.29).
+    //
+    // **The selector**: this used to read
+    // `&.cm-focused .cm-selectionBackground`, which never applied to a
+    // focused editor at all. @codemirror/view's base theme carries
+    //
+    //     &dark.cm-focused > .cm-scroller > .cm-selectionLayer
+    //       .cm-selectionBackground { background: #233 }
+    //
+    // and that outranks a two-class selector, so every selection in a focused
+    // editor was CodeMirror's own dim teal — which on this background reads as
+    // nothing being selected. Unfocused, the theme won and the colour changed.
+    // "Not always visible" was exactly right, and the rule that claimed to
+    // handle both cases handled the one nobody looks at.
+    //
+    // Mirroring the base's structure is what wins it back: same shape, and a
+    // theme outranks a base theme at equal specificity.
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+      backgroundColor: "var(--bg-text-selection)",
+    },
+    ".cm-selectionBackground, ::selection": {
+      backgroundColor: "var(--bg-text-selection)",
     },
     // §4.6: a 44px line-number gutter with 14px of right padding in the body
     // editor, numbers in --fg-ghost and unselectable.
