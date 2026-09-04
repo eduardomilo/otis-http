@@ -123,11 +123,14 @@ export function CommandPalette({
   open,
   onOpenChange,
   onReveal,
+  onCreate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** ⇧↵: show where a request lives, without opening it. */
   onReveal: (path: string) => void;
+  /** Opens the create dialog, in the folder the shell decides is current. */
+  onCreate: (kind: "request" | "folder") => void;
 }) {
   const navigate = useNavigate();
   const { tree, collection } = useCollection();
@@ -179,8 +182,18 @@ export function CommandPalette({
         firstEnvironment: environments[0]?.name ?? "",
         clearSessionVars,
         version: buildLabel(build),
+        onCreate,
       }),
-    [navigate, close, collection?.path, overview?.changes?.length, environments, clearSessionVars, build],
+    [
+      navigate,
+      close,
+      collection?.path,
+      overview?.changes?.length,
+      environments,
+      clearSessionVars,
+      build,
+      onCreate,
+    ],
   );
 
   // The prefix modes of the design's right rail. A mode makes its section the
@@ -785,14 +798,37 @@ function buildCommands(context: {
   firstEnvironment: string;
   clearSessionVars: () => Promise<void>;
   version: string;
+  onCreate: (kind: "request" | "folder") => void;
 }): CommandEntry[] {
-  const { navigate, close, collection, hasChanges, firstEnvironment, clearSessionVars, version } =
-    context;
+  const {
+    navigate,
+    close,
+    collection,
+    hasChanges,
+    firstEnvironment,
+    clearSessionVars,
+    version,
+    onCreate,
+  } = context;
   const go = (run: () => void) => () => {
     run();
     close();
   };
   return [
+    {
+      // First, because it is the only command that makes something rather
+      // than navigating somewhere.
+      name: "New request",
+      detail: "in the folder you are looking at",
+      hidden: collection === "",
+      run: go(() => onCreate("request")),
+    },
+    {
+      name: "New folder",
+      detail: "in the folder you are looking at",
+      hidden: collection === "",
+      run: go(() => onCreate("folder")),
+    },
     {
       name: "Show changes",
       detail: hasChanges ? "the git diff view" : "the git diff view — nothing has changed",

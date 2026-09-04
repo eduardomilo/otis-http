@@ -107,7 +107,8 @@ lists the design decisions that are still open — do not resolve them silently.
   - `components/ui/` — shadcn components. Ours to edit; note the deviation in a
     comment when you change one away from the shadcn default.
   - `components/shell/` — the window chrome: title strip, panes, tab bar, status
-    bar, palette, empty state, and `order-strip` (screen 2a's confirmation
+    bar, palette, empty state, `create-dialog` (naming a new request or folder,
+    showing the path it will write) and `order-strip` (screen 2a's confirmation
     under the tree). One component per file, named after it.
   - `components/editor/` — the CodeMirror 6 setup: the theme and syntax
     colours (`otis-theme`), the `{{variable}}` decoration
@@ -380,6 +381,25 @@ lists the design decisions that are still open — do not resolve them silently.
   `cmd/otis/console_windows.go` makes the GUI binary print at all, and honours
   a redirect or a pipe over the console. This is the one place "the CLI is the
   same binary" needs an asterisk; docs/BUILDING.md §9 carries it.
+
+- **`.order` stays untouched when something is created.** `RequestService.Create`
+  and `FolderService.Create` are the two paths that add an entry to a folder,
+  and neither may write `.order`: the new entry is unlisted, so it sorts
+  alphabetically after the listed ones, and that is the whole mechanism
+  (docs/FORMAT.md §2.2). `order.go` remains the only writer.
+  `TestCreatingARequestOrFolderDoesNotTouchTheOrderFile` asserts the file is
+  *byte*-identical through both.
+- **A new folder always gets a `_folder.http`.** Git does not track an empty
+  directory, so a folder created without a file in it vanishes on the next
+  clone or checkout and the collection silently differs between two people.
+  The importer already does this for the same reason (docs/FORMAT.md §7).
+- **One implementation of the slug rules, in `internal/collection`.** `Slug`
+  and `UniqueName` name a file for both the Postman importer and anything
+  created in the app, because the same request arriving by either route has to
+  land on the same file name. `frontend/src/lib/slug.ts` mirrors them for the
+  create dialog's preview *only* — Go decides what is written, and the caller
+  navigates to the path Go returns rather than to the preview, since only Go
+  can see the collisions.
 
 - **A folder's settings are edited in the folder view, never as a request.**
   `_folder.http` is settings and not a node in the tree (docs/FORMAT.md §2.1),

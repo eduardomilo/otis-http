@@ -580,10 +580,20 @@ a request that opted out would be the same untruth in a different place.
 `FolderCounts` carries both and names them `Requests`/`Subfolders` and
 `Below`. Implemented in Increment 14.
 
-**9.7 The folder "has shared settings" icon is a plus sign.** In screen 3a the
-marker next to `auth` and `orders` is a `+` glyph (`M6 1.5v9M1.5 6h9`), which
-reads as an add-item affordance sitting exactly where an add button would go.
-The intended meaning is "this folder has a `_folder.http`".
+**9.7 The folder "has shared settings" icon is a plus sign — and the collision
+is now real.** In screen 3a the marker next to `auth` and `orders` is a `+`
+glyph (`M6 1.5v9M1.5 6h9`), which reads as an add-item affordance sitting
+exactly where an add button would go. The intended meaning is "this folder has
+a `_folder.http`".
+
+Creating requests and folders now exists (§9.21), so the tab strip has a `+`
+that means **add** and a folder row has a `+` that means **has settings**, a
+few hundred pixels apart. Nothing has been changed about the folder marker,
+because resolving this is a design decision and §9 items are not resolved
+silently — but it is no longer theoretical, and it is the first thing to settle
+next time this document is opened. The obvious candidates: give the folder
+marker a different glyph, or move it out of the row's trailing slot where an
+add button would sit.
 
 **9.8 Ordering of scripts versus resolution — resolved.**
 Screen 4a shows an inherited header `Idempotency-Key: {{idemKey}}` annotated
@@ -877,6 +887,43 @@ type a space into** — the form derived its value with a trailing `.trim()`, so
 the previous word. `profile=dev region=eu-west-1` could only ever be pasted.
 That bug was in the request editor's Override form too, since this form was
 extracted from it.
+
+**9.21 Creating a request or a folder, which the design half-draws.** Screen
+1a puts a `+` after the last document tab and never says what it opens; §3
+sizes "the `+` new-tab and `+` add glyphs" and stops there. Nothing else in the
+design covers making a request, and until now nothing in the product did
+either — there was no writer for a new file in Go and no affordance in the UI.
+
+Three entry points, because the answer to "which folder does it go in?" is
+different at each and the design gives none of them:
+
+- **The tab strip's `+`** makes a request in the folder you are looking at: the
+  active document's own folder, or the folder itself when a folder document is
+  open. It is pinned to the right of the strip rather than scrolling away with
+  the tabs, so with twenty documents open it is still where you left it.
+- **A tree row's context menu** offers both, and the label names the
+  destination — "New request in orders/…" — because aiming at a *request* row
+  means creating beside it and aiming at a folder row means creating inside it,
+  and a menu that did not say which would be a coin flip.
+- **The palette** (`⌘K` › `>`) offers both, using the same folder as the `+`.
+
+The dialog **shows the path it will write** as you type. This is §8.2's rule
+("every write to disk is announced before it happens") applied to the one case
+that most needs it: the file is named for the slug of what you type while the
+typed name is kept as the `# @name` directive, so "Create order" becomes
+`create-order.http` and still reads as "Create order" everywhere. A name that
+silently becomes a different file name is exactly the surprise that rule
+exists to prevent.
+
+The preview is computed in the window and can be one character behind the
+truth — Go resolves collisions against what is actually on disk and may answer
+`create-order-2.http` — so the navigation follows the path Go returns, never
+the preview. `lib/slug.ts` says so, and its rules are pinned to Go's.
+
+A new folder gets a `_folder.http` with a comment and nothing else. Two
+reasons: git does not track an empty directory, so without it the folder would
+vanish on the next clone; and a new folder should inherit everything from above
+and declare nothing, which is what an empty settings file expresses.
 
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and

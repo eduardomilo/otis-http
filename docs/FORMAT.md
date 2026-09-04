@@ -711,7 +711,22 @@ prefers explicit, boring files over clever ones.
 **Slugs.** Names are lower-cased; runs of anything other than ASCII letters
 and digits become one hyphen; non-ASCII letters are dropped. Collisions get
 `-2`, `-3`, ... in Postman order. An empty slug becomes `request` or
-`folder`.
+`folder`, and `env` is reserved because `env/` at the root is the environment
+directory (§2.1, §4.3).
+
+**The same rules name a request or folder created in the app.** "Create order"
+becomes `create-order.http`, and the name as typed is kept in an `# @name`
+directive so it still reads as "Create order" in the tree (§2.1). One
+implementation serves both — `collection.Slug` and `collection.UniqueName` —
+because a request created in the window and the same request imported from
+Postman landing on different file names would mean the two halves of the
+product disagreed about what a collection looks like.
+
+Creating either **does not write `.order`**: the new entry is unlisted, so it
+sorts alphabetically after the listed ones (§2.2). A new folder does get a
+`_folder.http` containing only a comment, because git does not track an empty
+directory and a folder that vanished on the next clone would be worse than a
+file nobody asked for.
 
 **URLs.** Structured URLs are rebuilt from their parts (protocol, host,
 port, path, enabled query parameters, hash); a string URL is used as-is.

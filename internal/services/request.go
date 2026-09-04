@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -175,6 +176,64 @@ func (s *RequestService) SaveText(nodePath, envName, text string) (Document, err
 		return Document{}, fmt.Errorf("%s: %w", nodePath, err)
 	}
 	return s.write(nodePath, envName, text)
+}
+
+// Create writes a new request file in folderPath and returns its node path.
+//
+// The name is what the user typed; the file is named for its slug
+// (collection.Slug, the same rules the Postman importer uses, docs/FORMAT.md
+// §7) and the typed name is kept verbatim in an `# @name` directive, which is
+// what the tree and the tabs display (§2.1). So "Create order" becomes
+// create-order.http and still reads as "Create order" everywhere.
+//
+// A collision gets -2, -3, and so on rather than an error: the name a person
+// types is a label, not an identifier, and two requests may reasonably want
+// the same one.
+//
+// It does **not** touch `.order`. The new file is unlisted, so it sorts
+// alphabetically after the listed ones, and that is the whole mechanism
+// (docs/FORMAT.md §2.2). order.go stays the only writer of that file.
+func (s *RequestService) Create(folderPath, name string) (string, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return "", err
+	}
+	folder := loaded.Find(folderPath)
+	if folder == nil || folder.Kind != collection.KindFolder {
+		return "", fmt.Errorf("%s is not a folder in this collection", displayPath(folderPath))
+	}
+
+	used := map[string]bool{}
+	entries, err := os.ReadDir(folder.Path)
+	if err != nil {
+		return "", fmt.Errorf("creating a request in %s: %w", displayPath(folderPath), err)
+	}
+	for _, entry := range entries {
+		used[strings.TrimSuffix(entry.Name(), collection.RequestExt)] = true
+	}
+	base := collection.UniqueName(used, collection.Slug(name), "request")
+
+	nodePath := path.Join(folderPath, base+collection.RequestExt)
+	if _, err := s.write(nodePath, "", newRequestText(name)); err != nil {
+		return "", err
+	}
+	return nodePath, nil
+}
+
+// newRequestText is what a new request file starts as.
+//
+// The smallest thing that is a valid request and is obviously not finished: a
+// name, and a GET at {{baseUrl}}. The reference rather than a literal URL
+// because an environment is where a host belongs in this product (§4.3), and
+// because an unresolved {{baseUrl}} shows up as exactly that in the editor —
+// which is a truer first impression than a placeholder host that would appear
+// to work.
+func newRequestText(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		trimmed = "New request"
+	}
+	return fmt.Sprintf("# @name %s\nGET {{baseUrl}}/\n", trimmed)
 }
 
 // write is the one path that touches a request file on disk.

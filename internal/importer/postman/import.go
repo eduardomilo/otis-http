@@ -7,7 +7,6 @@ import (
 	"path"
 	"regexp"
 	"strings"
-	"unicode"
 
 	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/httpfile"
@@ -140,13 +139,13 @@ func (p *planner) folder(dir, name, description string, authRaw json.RawMessage,
 	used := map[string]bool{}
 	for _, it := range items {
 		if it.isFolder() {
-			slug := uniqueSlug(used, slugify(it.Name), "folder")
+			slug := collection.UniqueName(used, collection.Slug(it.Name), "folder")
 			order = append(order, slug+"/")
 			p.rep().Folders++
 			p.folder(path.Join(dir, slug), it.Name, descriptionText(it.Description), it.Auth, it.Variable, it.Event, *it.Item)
 			continue
 		}
-		slug := uniqueSlug(used, slugify(it.Name), "request")
+		slug := collection.UniqueName(used, collection.Slug(it.Name), "request")
 		order = append(order, slug+collection.RequestExt)
 		p.request(dir, slug, it)
 	}
@@ -522,7 +521,7 @@ func (p *planner) environment(data []byte) error {
 	if env.Name == "" || env.Values == nil {
 		return fmt.Errorf("environment: not a Postman environment export (missing name or values)")
 	}
-	rel := resolve.EnvPath(slugify(env.Name))
+	rel := resolve.EnvPath(collection.Slug(env.Name))
 	p.rep().Environments++
 	var b strings.Builder
 	b.WriteString("{\n")
@@ -620,33 +619,4 @@ func wrap(s string, width int) []string {
 	return lines
 }
 
-// slugify turns a Postman name into a file-safe ASCII name: lowercase,
-// runs of anything other than letters and digits become one hyphen.
-func slugify(name string) string {
-	var b strings.Builder
-	dash := false
-	for _, r := range strings.ToLower(name) {
-		switch {
-		case r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)):
-			b.WriteRune(r)
-			dash = false
-		case !dash && b.Len() > 0:
-			b.WriteByte('-')
-			dash = true
-		}
-	}
-	return strings.TrimRight(b.String(), "-")
-}
 
-// uniqueSlug resolves collisions with -2, -3, ... and avoids reserved names.
-func uniqueSlug(used map[string]bool, slug, fallback string) string {
-	if slug == "" || slug == "env" || strings.TrimLeft(slug, "-") == "" {
-		slug = fallback
-	}
-	candidate := slug
-	for i := 2; used[candidate]; i++ {
-		candidate = fmt.Sprintf("%s-%d", slug, i)
-	}
-	used[candidate] = true
-	return candidate
-}

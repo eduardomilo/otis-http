@@ -255,12 +255,12 @@ func TestSlugify(t *testing.T) {
 		"a--b":                         "a-b",
 	}
 	for in, want := range tests {
-		if got := slugify(in); got != want {
-			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
+		if got := collection.Slug(in); got != want {
+			t.Errorf("collection.Slug(%q) = %q, want %q", in, got, want)
 		}
 	}
 	used := map[string]bool{}
-	got := []string{uniqueSlug(used, "", "request"), uniqueSlug(used, "", "request"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "a", "x"), uniqueSlug(used, "env", "x")}
+	got := []string{collection.UniqueName(used, "", "request"), collection.UniqueName(used, "", "request"), collection.UniqueName(used, "a", "x"), collection.UniqueName(used, "a", "x"), collection.UniqueName(used, "a", "x"), collection.UniqueName(used, "env", "x")}
 	want := []string{"request", "request-2", "a", "a-2", "a-3", "x"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("uniqueSlug = %v, want %v", got, want)

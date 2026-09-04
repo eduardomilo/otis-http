@@ -29,6 +29,29 @@ export function ClearSession(nodePath: string): $CancellablePromise<$models.Fold
 }
 
 /**
+ * Create makes a new folder inside parentPath and returns its node path.
+ * 
+ * It writes a `_folder.http` inside it, and that is not optional: **git does
+ * not track an empty directory**, so a folder created without a file in it
+ * would vanish the moment anyone cloned or checked out the branch — the
+ * collection would differ between two people for no visible reason. The
+ * Postman importer already does this for the same reason (docs/FORMAT.md §7,
+ * "An otherwise empty folder gets a _folder.http with a comment so the
+ * directory exists").
+ * 
+ * The file it writes is a comment and nothing else: no auth, no headers, no
+ * variables. A new folder should inherit everything from above and declare
+ * nothing, so the comment explains what the file is for and the folder view is
+ * where you would add anything (DESIGN-NOTES §9.20).
+ * 
+ * Like RequestService.Create, it does not touch `.order`: an unlisted
+ * directory sorts alphabetically after the listed entries (§2.2).
+ */
+export function Create(parentPath: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(1285433308, parentPath, name);
+}
+
+/**
  * Load reads one folder. nodePath is collection-relative; "" is the root.
  * envName is the active environment, used only to describe which values a
  * {{reference}} would resolve to — never to fetch a secret.

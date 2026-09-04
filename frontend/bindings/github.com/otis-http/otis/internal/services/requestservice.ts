@@ -24,6 +24,27 @@ import * as httpfile$0 from "../httpfile/models.js";
 import * as $models from "./models.js";
 
 /**
+ * Create writes a new request file in folderPath and returns its node path.
+ * 
+ * The name is what the user typed; the file is named for its slug
+ * (collection.Slug, the same rules the Postman importer uses, docs/FORMAT.md
+ * §7) and the typed name is kept verbatim in an `# @name` directive, which is
+ * what the tree and the tabs display (§2.1). So "Create order" becomes
+ * create-order.http and still reads as "Create order" everywhere.
+ * 
+ * A collision gets -2, -3, and so on rather than an error: the name a person
+ * types is a label, not an identifier, and two requests may reasonably want
+ * the same one.
+ * 
+ * It does **not** touch `.order`. The new file is unlisted, so it sorts
+ * alphabetically after the listed ones, and that is the whole mechanism
+ * (docs/FORMAT.md §2.2). order.go stays the only writer of that file.
+ */
+export function Create(folderPath: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(1258686519, folderPath, name);
+}
+
+/**
  * Load reads one request file. nodePath is collection-relative; envName is the
  * active environment, or "" for none.
  * 

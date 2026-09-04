@@ -9,6 +9,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { CommandPalette } from "@/components/shell/command-palette";
+import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
 import type { TreeHandle } from "@/components/shell/tree";
@@ -18,7 +19,7 @@ import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
 import { OtisEvent } from "@/lib/events.gen";
 import { CollectionService } from "@bindings/internal/services";
-import { nodeRoute } from "@/lib/paths";
+import { nodeParentPath, nodeRoute } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
 import { findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
@@ -108,6 +109,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const treeHandle = useRef<TreeHandle | null>(null);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // What the create dialog is making, and where. Null when it is closed.
+  const [creating, setCreating] = useState<{ kind: CreateKind; folder: string } | null>(null);
   // The whole pane geometry, held here because it is now spread over two
   // nested groups: the sidebar's callback never sees the response pane's size
   // and vice versa, so each writes its own half in and then saves all of it.
@@ -137,6 +140,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!panel) return;
     if (panel.isCollapsed()) panel.expand();
     else panel.collapse();
+  }, []);
+
+  /**
+   * The folder a new request or folder goes in when nothing names one: the
+   * active document's own folder, which is where you were looking. A folder
+   * document counts as itself rather than its parent — having just opened
+   * `orders/`, "New request" means one in `orders/`.
+   */
+  const folderForNew = () => {
+    if (!routeDocument) return "";
+    if (routeDocument.kind === "folder") return routeDocument.path;
+    if (routeDocument.kind === "request") return nodeParentPath(routeDocument.path);
+    return "";
+  };
+
+  const openCreate = useCallback((kind: CreateKind, folder: string) => {
+    setCreating({ kind, folder });
   }, []);
 
   const toggleDiff = useCallback(() => {
@@ -322,6 +342,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 environment={environment}
                 diff={onDiff}
                 revealRef={treeHandle}
+                onCreate={openCreate}
               />
             </div>
           </ResizablePanel>
@@ -334,7 +355,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               which the inner group cannot then honour. */}
           <ResizablePanel id="documents" minSize={onDiff ? CENTER_MIN : CENTER_MIN + RESPONSE_MIN}>
             <div className="flex h-full min-h-0 flex-col">
-              <TabBar />
+              <TabBar onNewRequest={() => openCreate("request", folderForNew())} />
 
               <div ref={innerGroup} className="min-h-0 flex-1">
                 <ResizablePanelGroup
@@ -403,6 +424,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         }
       />
 
+      <CreateDialog
+        kind={creating?.kind ?? null}
+        folder={creating?.folder ?? ""}
+        onClose={() => setCreating(null)}
+        // Go returns the node path it actually used, which may carry a -2 the
+        // dialog's preview could not know about, so the navigation follows
+        // Go rather than the preview.
+        onCreated={(nodePath, kind) => {
+          openTab(nodePath, kind, { activate: true });
+          void navigate({ to: nodeRoute(kind), params: { path: nodePath } });
+        }}
+      />
+
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
@@ -413,6 +447,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           sidebarPanel.current?.expand();
           treeHandle.current?.reveal(path);
         }}
+        onCreate={(kind) => openCreate(kind, folderForNew())}
       />
     </>
   );

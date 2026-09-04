@@ -450,3 +450,79 @@ func TestFolderLoadRejectsARequest(t *testing.T) {
 		t.Error("Load on a missing path should fail")
 	}
 }
+
+// Creating a folder writes a directory *and* a _folder.http inside it, which
+// is not decoration: git does not track an empty directory, so a folder
+// created without a file in it would vanish on the next clone or checkout.
+func TestCreateFolder(t *testing.T) {
+	s, _, collections, root := newFolderService(t)
+
+	nodePath, err := s.Create("", "Payment methods")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if nodePath != "payment-methods" {
+		t.Errorf("nodePath = %q, want payment-methods", nodePath)
+	}
+
+	settings := filepath.Join(root, "payment-methods", collection.FolderFileName)
+	info, err := os.Stat(settings)
+	if err != nil {
+		t.Fatalf("no %s in the new folder, so git would not track it: %v",
+			collection.FolderFileName, err)
+	}
+	if info.Size() == 0 {
+		t.Error("the settings file is empty, so git still has nothing to track")
+	}
+
+	// It has to parse, and it must declare nothing: a new folder inherits
+	// everything from above.
+	body := readFile(t, settings)
+	file, err := httpfile.ParseString(body)
+	if err != nil {
+		t.Fatalf("the created %s does not parse: %v\n%s", collection.FolderFileName, err, body)
+	}
+	entry := file.Requests[0]
+	if len(entry.Headers) != 0 || len(entry.Directives) != 0 || len(entry.Variables) != 0 {
+		t.Errorf("a new folder should declare nothing, got %d headers, %d directives, %d variables",
+			len(entry.Headers), len(entry.Directives), len(entry.Variables))
+	}
+
+	// And it is in the tree as a folder.
+	loaded, err := collections.Loaded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := loaded.Find(nodePath)
+	if node == nil || node.Kind != collection.KindFolder {
+		t.Fatalf("the created folder is not a folder in the tree: %+v", node)
+	}
+}
+
+func TestCreateFolderResolvesCollisions(t *testing.T) {
+	s, _, _, _ := newFolderService(t)
+	first, err := s.Create("", "Reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Create("", "Reports")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "reports" || second != "reports-2" {
+		t.Errorf("got %q then %q, want reports then reports-2", first, second)
+	}
+}
+
+// `env` at the root is the environment directory, not a request folder
+// (docs/FORMAT.md §2.1, §4.3), so the name is reserved.
+func TestCreateFolderWillNotClaimTheEnvDirectory(t *testing.T) {
+	s, _, _, _ := newFolderService(t)
+	got, err := s.Create("", "env")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got == collection.EnvDirName {
+		t.Errorf("Create made a folder called %q, which is the environment directory", got)
+	}
+}

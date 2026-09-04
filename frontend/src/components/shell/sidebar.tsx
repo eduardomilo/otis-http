@@ -27,8 +27,10 @@ export const Sidebar = forwardRef<
     diff?: boolean;
     /** Filled in with the tree's reveal handle, for the palette's ⇧↵. */
     revealRef?: React.RefObject<TreeHandle | null>;
+    /** Opens the create dialog for a folder in the tree. */
+    onCreate: (kind: "request" | "folder", folder: string) => void;
   }
->(function Sidebar({ activePath, environment, diff, revealRef }, filterRef) {
+>(function Sidebar({ activePath, environment, diff, revealRef, onCreate }, filterRef) {
   const { tree } = useCollection();
   const [query, setQuery] = useState("");
 
@@ -78,7 +80,13 @@ export const Sidebar = forwardRef<
       </div>
 
       {tree ? (
-        <Tree tree={tree} filter={filter} activePath={activePath} revealRef={revealRef} />
+        <Tree
+          tree={tree}
+          filter={filter}
+          activePath={activePath}
+          revealRef={revealRef}
+          onCreate={onCreate}
+        />
       ) : (
         <p className="px-1 py-2 text-meta text-fg-faint">Reading the collection…</p>
       )}

@@ -469,3 +469,81 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// Creating a request: the file is named for the slug, the typed name survives
+// as the @name directive, and `.order` is not touched.
+func TestCreateRequest(t *testing.T) {
+	root := inheritanceFixture(t)
+	s := newRequestService(t, root)
+
+	nodePath, err := s.Create("orders", "Refund order")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if nodePath != "orders/refund-order.http" {
+		t.Errorf("nodePath = %q, want orders/refund-order.http", nodePath)
+	}
+
+	body := readFile(t, filepath.Join(root, "orders", "refund-order.http"))
+	if !strings.Contains(body, "# @name Refund order") {
+		t.Errorf("the typed name is not in the file:\n%s", body)
+	}
+	// It has to parse, or the editor cannot open what was just created.
+	if _, err := httpfile.ParseString(body); err != nil {
+		t.Errorf("the created file does not parse: %v\n%s", err, body)
+	}
+
+	// And the tree shows it under the name that was typed, not the slug
+	// (docs/FORMAT.md §2.1 prefers @name).
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := loaded.Find(nodePath)
+	if node == nil {
+		t.Fatal("the created request is not in the tree")
+	}
+	if node.Name != "Refund order" {
+		t.Errorf("node name = %q, want %q", node.Name, "Refund order")
+	}
+}
+
+// A name that already exists gets -2 rather than an error: the name a person
+// types is a label, and two requests may reasonably want the same one.
+func TestCreateRequestResolvesCollisions(t *testing.T) {
+	s := newRequestService(t, inheritanceFixture(t))
+
+	first, err := s.Create("orders", "Duplicate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Create("orders", "Duplicate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != "orders/duplicate.http" || second != "orders/duplicate-2.http" {
+		t.Errorf("got %q then %q, want duplicate.http then duplicate-2.http", first, second)
+	}
+}
+
+// A name with nothing usable in it still produces a file.
+func TestCreateRequestFallsBackWhenTheNameSlugsToNothing(t *testing.T) {
+	s := newRequestService(t, inheritanceFixture(t))
+	got, err := s.Create("", "***")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got != "request.http" {
+		t.Errorf("nodePath = %q, want request.http", got)
+	}
+}
+
+func TestCreateRequestRejectsSomethingThatIsNotAFolder(t *testing.T) {
+	s := newRequestService(t, inheritanceFixture(t))
+	if _, err := s.Create("orders/create-order.http", "Nope"); err == nil {
+		t.Error("Create accepted a request as its parent folder")
+	}
+	if _, err := s.Create("nowhere", "Nope"); err == nil {
+		t.Error("Create accepted a folder that does not exist")
+	}
+}

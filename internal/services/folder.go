@@ -270,6 +270,76 @@ func (s *FolderService) Save(nodePath, envName string, file httpfile.File) (Fold
 	return s.Load(nodePath, envName)
 }
 
+// Create makes a new folder inside parentPath and returns its node path.
+//
+// It writes a `_folder.http` inside it, and that is not optional: **git does
+// not track an empty directory**, so a folder created without a file in it
+// would vanish the moment anyone cloned or checked out the branch — the
+// collection would differ between two people for no visible reason. The
+// Postman importer already does this for the same reason (docs/FORMAT.md §7,
+// "An otherwise empty folder gets a _folder.http with a comment so the
+// directory exists").
+//
+// The file it writes is a comment and nothing else: no auth, no headers, no
+// variables. A new folder should inherit everything from above and declare
+// nothing, so the comment explains what the file is for and the folder view is
+// where you would add anything (DESIGN-NOTES §9.20).
+//
+// Like RequestService.Create, it does not touch `.order`: an unlisted
+// directory sorts alphabetically after the listed entries (§2.2).
+func (s *FolderService) Create(parentPath, name string) (string, error) {
+	loaded, parent, err := s.folder(parentPath)
+	if err != nil {
+		return "", err
+	}
+
+	used := map[string]bool{}
+	entries, err := os.ReadDir(parent.Path)
+	if err != nil {
+		return "", fmt.Errorf("creating a folder in %s: %w", displayPath(parentPath), err)
+	}
+	for _, entry := range entries {
+		used[strings.TrimSuffix(entry.Name(), collection.RequestExt)] = true
+	}
+	base := collection.UniqueName(used, collection.Slug(name), "folder")
+
+	dir := filepath.Join(parent.Path, base)
+	settings := filepath.Join(dir, collection.FolderFileName)
+
+	// Both writes inside the guard, like every write Otis makes: the watcher
+	// would otherwise report the directory and the file as two separate
+	// changes somebody else made, and the window would re-walk twice.
+	release := s.collections.Guard().Writing(settings)
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		release()
+		return "", fmt.Errorf("creating %s: %w", path.Join(parentPath, base), err)
+	}
+	err = writeFileAtomic(settings, []byte(newFolderText(name)))
+	release()
+	if err != nil {
+		return "", fmt.Errorf("creating %s: %w", path.Join(parentPath, base, collection.FolderFileName), err)
+	}
+
+	if err := s.collections.Refresh(); err != nil {
+		return "", err
+	}
+	_ = loaded
+	return path.Join(parentPath, base), nil
+}
+
+// newFolderText is the `_folder.http` a new folder starts with: a comment
+// saying what the file is, and nothing that changes behaviour.
+func newFolderText(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		trimmed = "New folder"
+	}
+	return fmt.Sprintf(
+		"# %s\n#\n# Shared settings for this folder. Headers, @auth and @name = value\n"+
+			"# declared here apply to every request in it and below it.\n",
+		trimmed)
+}
+
 // SaveReadme writes a folder's README.md.
 func (s *FolderService) SaveReadme(nodePath, envName, text string) (FolderDocument, error) {
 	_, folder, err := s.folder(nodePath)

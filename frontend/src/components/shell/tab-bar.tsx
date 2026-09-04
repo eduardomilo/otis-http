@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Folder, X } from "lucide-react";
+import { Folder, Plus, X } from "lucide-react";
 
 import { methodColor } from "@/lib/method";
 import { nodeDisplayName } from "@/lib/paths";
@@ -34,7 +34,7 @@ import { useTabs } from "@/state/tabs-context";
  * inventing one (DESIGN-NOTES §7.7): the dragged tab dims, and a single accent
  * line marks the edge it would land on.
  */
-export function TabBar() {
+export function TabBar({ onNewRequest }: { onNewRequest: () => void }) {
   const { tabs, activePath, closeTab, openTab, moveTab } = useTabs();
   const { tree } = useCollection();
   const active = useRef<HTMLDivElement | null>(null);
@@ -135,6 +135,21 @@ export function TabBar() {
           onGrab={(event) => onTabPointerDown(event, tab.path)}
         />
       ))}
+
+      {/* Screen 1a's `+`, after the last tab. It makes a request in the
+          folder you are looking at; the dialog says which before it writes
+          anything. 16px sans is what DESIGN-NOTES §3 gives this glyph.
+          It does not scroll away with the tabs — it is pinned so that with
+          twenty documents open it is still where you left it. */}
+      <button
+        type="button"
+        aria-label="New request"
+        title="New request"
+        onClick={onNewRequest}
+        className="sticky right-0 flex w-8 shrink-0 items-center justify-center bg-background text-fg-faint hover:text-fg-emphasis"
+      >
+        <Plus className="size-3.5" />
+      </button>
     </div>
   );
 }

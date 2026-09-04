@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/otis-http/otis/internal/collection"
+	"github.com/otis-http/otis/internal/secrets"
 	"github.com/otis-http/otis/internal/settings"
 )
 
@@ -99,6 +100,40 @@ func TestAddingARequestDoesNotTouchTheOrderFile(t *testing.T) {
 	want := "orders/create-order.http,orders/get-order.http,orders/fixtures,orders/archive-order.http,orders/cancel-order.http"
 	if got != want {
 		t.Errorf("order = %v, want the listed three then the unlisted two alphabetically", got)
+	}
+}
+
+// The same invariant, but through the creators rather than a file appearing on
+// disk. RequestService.Create and FolderService.Create are the two paths that
+// add an entry to a folder, and neither may write .order: the new entry is
+// unlisted, so it sorts alphabetically after the listed ones, and that is the
+// whole mechanism (docs/FORMAT.md §2.2).
+//
+// Byte-identical, not equivalent: a rewrite that produced the same order would
+// still put the file in somebody's diff and would still have eaten their
+// comments on the way.
+func TestCreatingARequestOrFolderDoesNotTouchTheOrderFile(t *testing.T) {
+	_, collections, root := newOrderService(t)
+	orderPath := filepath.Join(root, "orders", collection.OrderFileName)
+	before := readBytes(t, orderPath)
+
+	requests := NewRequestService(collections)
+	if _, err := requests.Create("orders", "Archive order"); err != nil {
+		t.Fatalf("creating a request: %v", err)
+	}
+	if after := readBytes(t, orderPath); !bytes.Equal(before, after) {
+		t.Errorf(".order changed when a request was created\n--- before ---\n%s\n--- after ---\n%s",
+			before, after)
+	}
+
+	sends := NewSendService(collections, secrets.NewMemory())
+	folders := NewFolderService(collections, sends)
+	if _, err := folders.Create("orders", "Fixtures two"); err != nil {
+		t.Fatalf("creating a folder: %v", err)
+	}
+	if after := readBytes(t, orderPath); !bytes.Equal(before, after) {
+		t.Errorf(".order changed when a folder was created\n--- before ---\n%s\n--- after ---\n%s",
+			before, after)
 	}
 }
 

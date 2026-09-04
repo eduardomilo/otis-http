@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { dropAt, parentOf, reorderedPaths, type Drop } from "@/lib/drag";
 import { methodColor, methodGutter } from "@/lib/method";
-import { nodeRoute } from "@/lib/paths";
+import { nodeParentPath, nodeRoute } from "@/lib/paths";
 import { fileManagerName } from "@/lib/platform";
 import {
   expandFolder,
@@ -90,12 +90,15 @@ export function Tree({
   filter,
   activePath,
   revealRef,
+  onCreate,
 }: {
   tree: CollectionTree;
   filter: ReadonlySet<string> | undefined;
   activePath: string;
   /** Filled in with the reveal handle, for the palette's ⇧↵. */
   revealRef?: React.RefObject<TreeHandle | null>;
+  /** Opens the create dialog, in the folder the menu was opened on. */
+  onCreate: (kind: "request" | "folder", folder: string) => void;
 }) {
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
   const [menuTarget, setMenuTarget] = useState<Node | null>(null);
@@ -329,7 +332,7 @@ export function Tree({
         </div>
       </ContextMenuTrigger>
 
-      <RowMenu node={menuTarget} />
+      <RowMenu node={menuTarget} onCreate={onCreate} />
       {drag?.armed ? <DragGhost node={drag.node} x={drag.x} y={drag.y} scroller={scroller} /> : null}
     </ContextMenu>
   );
@@ -662,13 +665,32 @@ function report(work: Promise<unknown>, what: string): void {
   void work.catch((err: unknown) => console.error(`[otis] could not ${what}:`, err));
 }
 
-function RowMenu({ node }: { node: Node | null }) {
+function RowMenu({
+  node,
+  onCreate,
+}: {
+  node: Node | null;
+  onCreate: (kind: "request" | "folder", folder: string) => void;
+}) {
   const { setMode } = useOrder();
   const folder = node?.kind === "folder" ? node : null;
+  // Creating from a *request* row means creating beside it, which is what
+  // aiming at it implies. From a folder row it means inside it.
+  const target = node === null ? "" : folder ? folder.path : nodeParentPath(node.path);
   return (
     // The design never draws this menu (DESIGN-NOTES §6); it takes the app's
     // 12px default rather than shadcn's 14px.
     <ContextMenuContent className="w-56 text-ui *:data-[slot=context-menu-item]:text-ui">
+      {/* First, because creating is the thing you came to the menu for most
+          often. The label names where it will land, so aiming at a request
+          row and aiming at its folder read differently. */}
+      <ContextMenuItem onSelect={() => onCreate("request", target)}>
+        New request in {target === "" ? "the root" : `${target}/`}…
+      </ContextMenuItem>
+      <ContextMenuItem onSelect={() => onCreate("folder", target)}>
+        New folder in {target === "" ? "the root" : `${target}/`}…
+      </ContextMenuItem>
+      <ContextMenuSeparator />
       <ContextMenuItem
         disabled={!node}
         onSelect={() => node && report(CollectionService.Reveal(node.path), "reveal")}
