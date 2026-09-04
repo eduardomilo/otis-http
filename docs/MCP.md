@@ -115,8 +115,8 @@ committed switch would be one person deciding it for the whole team.
   "write": false,
   // §4 rule 4: tightens the committed per-environment policy, never loosens it.
   "alwaysConfirmSends": false,
-  // §9's open decision.
-  "persistAuditLog": false
+  // §9.1. On by default; false keeps the session's calls in memory only.
+  "persistAuditLog": true
 }
 ```
 
@@ -479,10 +479,12 @@ Every tool call is recorded, whatever the outcome:
 
 | Field | |
 | --- | --- |
-| `at` | when |
+| `at` | when, RFC 3339 in UTC |
+| `collection` | which collection was open. Without it a log spanning two collections is ambiguous about which `orders/create-order.http` was touched |
 | `tool` | which tool |
 | `target` | the request or folder node path |
 | `environment` | the environment name, or `""` |
+| `surface` | `client` or `window` — **where the person was asked**, which is the field that shows §6.4 was honoured |
 | `decision` | `allowed` · `confirmed` · `refused` · `denied-by-policy` · `timed-out` · `rate-limited` |
 | `status` | the HTTP status, the failure kind, or `created` / `modified` for a write |
 | `duration` | how long it took |
@@ -501,12 +503,43 @@ the diff view says what it did to it.
 Inspectable from the UI: a panel listing the calls, newest first, with the
 in-app indicator (§11) as its way in.
 
-> **Open decision (§14.2).** In memory for the session, or appended to
-> `<config>/otis/mcp-audit.jsonl`? In memory matches how session state works
-> and leaves nothing behind. A file is what makes it an audit log rather than a
-> readout — but it records which endpoints you called, which is a privacy
-> artifact that did not exist before. My recommendation: in memory by default,
-> with persistence a setting, off.
+### 9.1 It is a file
+
+Appended to **`<config>/otis/mcp-audit.jsonl`**, one JSON object per line,
+beside `settings.json` and the secret key index. On by default; a
+`mcp.persistAuditLog: false` turns it off and keeps the session's calls in
+memory only.
+
+A file rather than a session buffer because a readout you lose on quit answers
+"what is this agent doing" but not "what did it do last Tuesday", and the
+second is the question an audit log exists for.
+
+Five things about it that are not incidental:
+
+- **It is never in the collection.** The config directory, not the repository.
+  A log inside the collection would be committed, and then everybody on the
+  branch would have a record of which endpoints you called from your machine.
+  This is the same reasoning that keeps the active environment out of the
+  collection (`FORMAT.md` §4.3).
+- **Mode `0600`.** It records your infrastructure's shape — hostnames, paths,
+  which environments exist. That is not secret but it is not public either.
+- **It is capped.** 5 MB, then rotated once to `mcp-audit.jsonl.1` and the old
+  one dropped. Unbounded growth in a file nobody looks at is how you find a
+  gigabyte of JSON in a config directory two years later.
+- **JSONL, not JSON**, so appending is a write with no read-modify-write, a
+  truncated last line from a crash costs one entry rather than the file, and
+  `grep` and `jq` work on it.
+- **What is in it is asserted by a test.** The secret key index next door
+  "holds keys and nothing else; a test asserts it" (`CLAUDE.md`), and this file
+  gets the same treatment: a test drives every tool, with secrets and bodies
+  in play, and fails if any secret value, request body, response body, header
+  or file content reaches a line.
+
+The privacy trade, stated rather than buried: **turning Otis' MCP server on now
+also starts a durable record of which endpoints you asked an agent to call.**
+That is the point of an audit log, and it is a new artifact that did not exist
+before. The switch to turn it off exists for that reason and not as an
+afterthought.
 
 ## 10. Rate limiting and the kill switch
 
@@ -765,17 +798,28 @@ by `git status` rather than by policy.
   needs the same consent as the first, which is exactly why there is no
   session-wide approval.
 
-## 14. Open decisions — for you
+## 14. Decisions
+
+Four are settled and struck through, with the reasoning kept so a later reader
+sees what was decided and why rather than re-opening it. Eight are still yours.
 
 1. **Port and token stability** (§2). Recommend: unstable, plus
    `otis mcp config` to print the client block.
-2. **Audit log persistence** (§9). Recommend: in memory, persistence an
-   off-by-default setting.
+2. ~~Audit log persistence?~~ **Decided: a file** (§9.1), against my
+   recommendation. `<config>/otis/mcp-audit.jsonl`, on by default, capped and
+   rotated, `0600`, never inside the collection, with a test asserting nothing
+   sensitive reaches a line. The reasoning that won: a readout you lose on quit
+   answers "what is this agent doing" but not "what did it do last Tuesday",
+   and the second is the question an audit log exists for. The cost is a
+   durable record of which endpoints you called, which is why the off switch
+   is part of the design.
 3. **The indicator's colour and place** (§11). A `DESIGN-NOTES` §9 item;
    recommend the title strip in amber, and I would add it as §9.22 rather than
    decide it here.
-4. **`agents` default.** Recommend `"confirm"`. `"deny"` is safer and makes RUN
-   useless until every environment is annotated; `"allow"` is indefensible.
+4. ~~`agents` default?~~ **Decided: `"confirm"`** (§4). `"deny"` is safer but
+   makes RUN useless until every environment is annotated, and `"allow"` is
+   indefensible. An environment that says nothing gets a person in the loop;
+   opting out is the deliberate act.
 5. **Confirmation timeout** (§6). Recommend 60s. Longer leaves dialogs up;
    shorter makes a person racing a timer.
 6. **Should RUN require READ?** Recommend no — an agent told exactly what to
@@ -799,11 +843,19 @@ by `git status` rather than by policy.
     clients is a gate you have to reason about per client. The cost is one
     round trip on an operation that already involves the network, and a doubled
     tool-call count for clients billed by it.
-11. **Should elicitation be allowed to answer the §6.4 cases too?** Recommend
-    no — production, unreviewed sends and `alwaysConfirmSends` stay in the
-    window. It is the one place no client preference can auto-approve, and the
-    brief asked for an in-app confirmation on production specifically. The
-    argument against me is the context switch, which is real.
+11. ~~Should elicitation be allowed to answer the §6.4 cases too?~~
+    **Decided: no** (§6.4). Production, unreviewed sends and
+    `alwaysConfirmSends` stay in the window. It is the one surface no client
+    preference can auto-approve, and the brief asked for an in-app confirmation
+    on production specifically.
+
+    Worth noting this is the one place the design is deliberately *not*
+    uniform, having just chosen uniformity for two-phase (§14.10). The
+    difference is what uniformity would buy: making two phases universal
+    removes a code path, while making elicitation universal would remove the
+    only confirmation surface a client cannot auto-approve. The first
+    simplifies, the second weakens. The cost is a context switch on exactly
+    the sends where a context switch is cheap relative to the mistake.
 12. **Should `mcp.alwaysConfirmSends` default on rather than off?** (§4 rule 4)
     Recommend off, because the committed `agents` policy is meant to be the
     answer and a local override that is on by default makes it not one. But
@@ -877,14 +929,28 @@ The brief's list, plus what §7 demands:
     every environment policy including `"allow"`. This is the test that makes
     two phases a property rather than a configuration, which is the whole
     reason it applies everywhere.
-23. An intent is single-use: spending it twice fails the second time. An expired
+23. **The audit file holds nothing sensitive** (§9.1). Drive every tool with a
+    keychain-backed secret, a request body and a response body in play, then
+    assert no line contains any secret value, request body, response body,
+    header or file content. The sibling of the key index's own test, and for
+    the same reason: the promise is worth more than the convenience of putting
+    more in it.
+24. The audit file is written to the config directory and **never inside the
+    collection** — asserted by driving the tools and then checking `git status`
+    on the collection is unchanged by logging alone.
+25. It is capped and rotated: past 5 MB a new file starts and only one previous
+    generation survives. And `mcp.persistAuditLog: false` writes no file at all
+    while the in-app panel still lists the session's calls.
+26. `surface` records where the person was actually asked, and is `window` for
+    all three §6.4 cases even on a client that declares elicitation.
+27. An intent is single-use: spending it twice fails the second time. An expired
     intent fails. An intent from a different request or environment fails.
-24. **The fingerprint holds.** Preview a request, `update_request` its URL, then
+28. **The fingerprint holds.** Preview a request, `update_request` its URL, then
     spend the intent → refused, and nothing is sent. This is the TOCTOU hole
     the binding exists to close and it is the test that proves it did.
-25. A returned intent does **not** skip a human confirmation: with the
+29. A returned intent does **not** skip a human confirmation: with the
     environment on `"confirm"`, phase 2 still blocks on the dialog.
-26. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
+30. **`mcp.alwaysConfirmSends`** (§4 rule 4). With it on and the environment on
     `"allow"`, a send still asks. With it off, the same send does not. And there
     is no setting or tool argument that turns a `"confirm"` or `"deny"`
     environment into an `"allow"` one — asserted by exhausting the effective
