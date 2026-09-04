@@ -242,6 +242,21 @@
     }
 }
 
+/* A scrolling element with no visible scrollbar, for the document tab strip.
+   §5's 8px bar is right for a pane; inside the 34px tab bar it eats a quarter
+   of the height and draws a line under tabs that already have a border. The
+   strip stays scrollable — the wheel works, and the tab bar scrolls the active
+   tab into view itself, which is what actually gets you to an off-screen tab. */
+.no-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+
 /* A single-line CodeMirror (the URL field; see components/request/url-bar.tsx
    for why it is an editor at all) has to behave like an input: one line, no
    wrap, no vertical scroll, centred in the 30px control of DESIGN-NOTES §4.4. */

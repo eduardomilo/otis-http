@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { Folder, X } from "lucide-react";
 
 import { methodColor } from "@/lib/method";
@@ -17,19 +18,37 @@ import { useTabs } from "@/state/tabs-context";
  * and cannot do closeable, overflowing document tabs (DESIGN-NOTES §7.3).
  *
  * The active tab takes --bg and an accent underline; the inactive ones sit on
- * the strip. A dirty tab shows an amber dot *in place of* the close ×, as in
- * screen 1a — nothing marks a tab dirty until the editor lands in Phase C.
+ * the strip.
+ *
+ * The strip scrolls when the tabs outgrow it, and two things follow from that.
+ * Its scrollbar is hidden (`no-scrollbar`): §5's 8px bar is right for a pane,
+ * but inside a 34px strip it eats a quarter of the height. And **activating a
+ * tab scrolls it into view** — without that, clicking a request in the tree
+ * activates a tab you cannot see, which reads as the click having done
+ * nothing. Activation comes from four places (the tree, the palette, a
+ * forwarded file open, and the tab itself), so the scroll belongs here, keyed
+ * on which tab is active, rather than in each caller.
  */
 export function TabBar() {
   const { tabs, activePath, closeTab, openTab } = useTabs();
   const { tree } = useCollection();
+  const active = useRef<HTMLDivElement | null>(null);
+
+  // A layout effect, not an effect: this runs in the same frame as the
+  // activation, so an off-screen tab is never painted off-screen first.
+  // `nearest` on both axes scrolls the strip the minimum needed and leaves the
+  // rest of the window alone.
+  useLayoutEffect(() => {
+    active.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activePath]);
 
   return (
-    <div className="flex h-[var(--tab-bar-height)] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background">
+    <div className="no-scrollbar flex h-[var(--tab-bar-height)] shrink-0 items-stretch overflow-x-auto border-b border-border bg-background">
       {tabs.map((tab) => (
         <TabButton
           key={tab.path}
           tab={tab}
+          ref={tab.path === activePath ? active : undefined}
           // The method and the display name come from the tree rather than
           // from the path: docs/FORMAT.md §2.1 prefers the @name directive
           // over the file name, and only the parsed file knows it.
@@ -49,16 +68,20 @@ function TabButton({
   active,
   onActivate,
   onClose,
+  ref,
 }: {
   tab: Tab;
   node: Node | undefined;
   active: boolean;
   onActivate: () => void;
   onClose: () => void;
+  /** Set on the active tab only, so the bar can scroll it into view. */
+  ref?: React.Ref<HTMLDivElement>;
 }) {
   const label = node?.name ?? nodeDisplayName(tab.path);
   return (
     <div
+      ref={ref}
       role="tab"
       aria-selected={active}
       tabIndex={-1}
@@ -94,26 +117,41 @@ function TabButton({
 
       <span className={cn("truncate text-ui", active && "font-medium")}>{label}</span>
 
-      {tab.dirty ? (
-        // Screen 1a: an amber dot *in place of* the close ×.
-        <span
-          aria-label="Unsaved changes"
-          title="Unsaved changes"
-          className="size-1.5 shrink-0 rounded-full bg-modified"
-        />
-      ) : (
+      {/* Screen 1a draws an amber dot *in place of* the close × on a dirty
+          tab, and taken literally that leaves a tab with unsaved changes no
+          close control at all — the one tab you cannot shut with the mouse.
+          SCREENS.md lists "tab close" among the interactions the static design
+          cannot show, so the resting state is the design's dot and hovering
+          the tab swaps in the ×, the way every editor does it.
+
+          Both share one fixed-size box, so the tab's width does not change
+          under the pointer and the strip never shifts. The button is always in
+          the tree and only made transparent, so it stays focusable rather than
+          being a control a keyboard user can never reach (DESIGN-NOTES §9.14
+          makes that argument about the hunk controls). */}
+      <span className="relative flex size-3 shrink-0 items-center justify-center">
+        {tab.dirty ? (
+          <span
+            aria-label="Unsaved changes"
+            title="Unsaved changes"
+            className="size-1.5 rounded-full bg-modified group-hover:opacity-0"
+          />
+        ) : null}
         <button
           type="button"
-          aria-label={`Close ${label}`}
+          aria-label={tab.dirty ? `Close ${label} — unsaved changes` : `Close ${label}`}
           onClick={(event) => {
             event.stopPropagation();
             onClose();
           }}
-          className="shrink-0 text-fg-faint hover:text-fg-emphasis"
+          className={cn(
+            "absolute inset-0 flex items-center justify-center text-fg-faint hover:text-fg-emphasis",
+            tab.dirty && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          )}
         >
           <X className="size-3" />
         </button>
-      )}
+      </span>
     </div>
   );
 }

@@ -372,6 +372,19 @@ lists the design decisions that are still open — do not resolve them silently.
   a redirect or a pipe over the console. This is the one place "the CLI is the
   same binary" needs an asterisk; docs/BUILDING.md §9 carries it.
 
+- **The tab strip spans everything right of the sidebar, and it can still
+  overflow.** Two nested `ResizablePanelGroup`s in `AppShell` are what make
+  that layout possible — the sidebar divides the outer one, the strip sits
+  below that divide, the centre and response panes divide the inner one — which
+  splits pane-size persistence over two layout callbacks that each see half the
+  geometry. `AppShell`'s `geometry` ref holds the whole of it so neither
+  callback overwrites the other's half; do not go back to reading the other
+  half out of settings, because the save is debounced and two drags can land
+  before it does. Because the strip overflows, `TabBar` scrolls the active tab
+  into view — activation comes from four places and the scroll belongs to the
+  bar, not to each caller. DESIGN-NOTES §9.19 records the whole deviation from
+  screen 1a.
+
 - **One keyboard handler.** `useKeymap` in `AppShell` owns every shortcut;
   components do not bind their own. A shortcut that needs the platform
   modifier fires wherever focus is; one that does not is suppressed in a text

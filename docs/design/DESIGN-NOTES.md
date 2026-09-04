@@ -780,6 +780,47 @@ view context (§8.4), and a version is none of those and never changes. On
 macOS the native About panel carries it as well, for free, from
 `CFBundleShortVersionString`.
 
+**9.19 The tab strip spans more than screen 1a draws it over — deliberate.**
+Screen 1a puts the document tabs over the centre pane only, with the response
+pane's `200 OK · 184 ms · 1.2 KB` status line level with them, and that is what
+shipped. It does not survive real use: with a 260px sidebar and a 480px
+response pane, seven tabs already overflow a strip that has less than half the
+window to work with, while the width beside it sits empty.
+
+So the strip now spans **everything right of the sidebar**, and the response
+pane's status line sits below it rather than beside it. The argument for it is
+not only space: the response pane shows the response *of the active tab's
+request*, so it is part of that document, and the strip that names the document
+should span the document. The sidebar is the exception because the tree is
+collection-level — it does not belong to any one tab.
+
+Two nested `ResizablePanelGroup`s are what make that possible: the sidebar
+divides the outer one, the strip sits below that divide, and the centre and
+response panes divide the inner one underneath it. The cost is that pane-size
+persistence is split over two layout callbacks, neither of which sees the whole
+geometry — `AppShell`'s `geometry` ref is what keeps them from overwriting each
+other's half.
+
+Three things follow from a strip that can still overflow:
+
+- **Its scrollbar is hidden.** §5's 8px bar is right for a pane; inside a 34px
+  strip it takes a quarter of the height and draws a second line under tabs
+  that already have a border. The strip still scrolls.
+- **Activating a tab scrolls it into view.** Without that, clicking a request
+  in the tree activates a tab that is off-screen, and the click reads as having
+  done nothing. Activation arrives from four places — the tree, the palette, a
+  file opened from the desktop, and the tab itself — so it belongs in the tab
+  bar, keyed on which tab is active, not in each caller.
+- **A dirty tab keeps a close control.** Screen 1a draws the amber dot *in
+  place of* the `×`, and taken literally that leaves the one tab you most want
+  to think twice about as the only one the mouse cannot close. The dot is the
+  resting state and hovering the tab swaps in the `×`, both in one fixed-size
+  box so the tab's width never changes under the pointer. SCREENS.md already
+  lists "tab close" among the interactions the static design cannot show.
+
+Still not built from what §1a draws: the `+` new-tab glyph after the last tab,
+and tab reordering (§6 names it).
+
 **9.13 "Set on this machine · Aug 28" has no source.** The secret detail panel
 dates a stored secret. No OS keyring reports when an entry was written, and
 Otis' key index deliberately holds nothing but keys — adding a date would be

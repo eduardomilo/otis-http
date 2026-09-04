@@ -44,11 +44,22 @@ import { useTabs } from "@/state/tabs-context";
  *
  * Widths are in pixels rather than percentages so a restored layout is the
  * layout that was saved, whatever size the window is now.
+ *
+ * **The tab strip spans everything right of the sidebar**, which is a
+ * deliberate deviation from screen 1a — the design draws it over the centre
+ * pane only, with the response pane's status line level with it. Two nested
+ * panel groups are what make that possible: the sidebar divides the outer one,
+ * the tab strip sits below that divide, and the centre and response panes
+ * divide the inner one underneath it. The reason is that the tabs kept
+ * overflowing while half the window's width sat unused beside them, and the
+ * response pane belongs to the active tab's request anyway — so the strip that
+ * names the document should span the document. DESIGN-NOTES §9.19 records it.
  */
 
 const SIDEBAR_DEFAULT = 260;
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 420;
+const CENTER_MIN = 320;
 const RESPONSE_MIN = 280;
 /** The response pane's share of what is left after the sidebar, on first run. */
 const RESPONSE_DEFAULT_FRACTION = 0.4;
@@ -64,7 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { undo: undoOrder } = useOrder();
   const { runFor, start } = useRuns();
   const routeDocument = useRouteDocument();
-  // Read inside rememberLayout, which is registered once and must not be
+  // Read inside rememberResponse, which is registered once and must not be
   // re-created every time the route changes.
   const onDiffRef = useRef(false);
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
@@ -83,6 +94,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     : null;
 
   const navigate = useNavigate();
+  // One wrapper per group, so each layout callback can measure its own group
+  // and only its own separator. A single ref around both would find the other
+  // group's handle too and mis-measure by a pixel every time.
+  const innerGroup = useRef<HTMLDivElement>(null);
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const responsePanel = useRef<PanelImperativeHandle>(null);
   const sidebarPane = useRef<HTMLDivElement>(null);
@@ -93,9 +108,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const treeHandle = useRef<TreeHandle | null>(null);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
-  // The last non-zero width of each collapsible pane, so collapsing does not
-  // overwrite the size it should expand back to.
-  const widths = useRef({ sidebar: 0, response: 0 });
+  // The whole pane geometry, held here because it is now spread over two
+  // nested groups: the sidebar's callback never sees the response pane's size
+  // and vice versa, so each writes its own half in and then saves all of it.
+  // Reading the other half back out of settings instead would lose a drag,
+  // since the save is debounced and two drags can land before it lands.
+  //
+  // A collapsed pane is 0 wide, and recording that as its width would lose the
+  // size to expand back to, so only a real width is ever written.
+  const geometry = useRef({
+    sidebar: 0,
+    response: 0,
+    sidebarCollapsed: false,
+    responseCollapsed: false,
+  });
 
   // The response pane's first-run width is a fraction of what is left after
   // the sidebar, so the group has to be measured before it can be rendered.
@@ -201,53 +227,62 @@ export function AppShell({ children }: { children: ReactNode }) {
     { key: "3", mod: true, run: () => focusPane(responsePanel.current, responsePane.current) },
   ]);
 
-  // Restore the collapsed panes once, after the panels exist.
+  // Restore the collapsed panes once, after the panels exist, and seed the
+  // geometry ref with what was saved — otherwise the first drag of one pane
+  // would save a zero for the other and collapse it on the next launch.
   const restored = useRef(false);
   useEffect(() => {
     if (restored.current || !settings || !groupWidth) return;
     restored.current = true;
+    geometry.current = {
+      sidebar: settings.panes.sidebarWidth,
+      response: settings.panes.responseWidth,
+      sidebarCollapsed: settings.panes.sidebarCollapsed,
+      responseCollapsed: settings.panes.responseCollapsed,
+    };
     if (settings.panes.sidebarCollapsed) sidebarPanel.current?.collapse();
     if (settings.panes.responseCollapsed) responsePanel.current?.collapse();
   }, [settings, groupWidth]);
 
-  // Persisting the layout hangs off the group's "layout changed" callback
-  // rather than each panel's onResize, which does not fire when a separator
-  // is what moved. The sizes come from the callback's own argument, not from
-  // the panel handles: the handles still report the previous layout at this
+  // Persisting the layout hangs off each group's "layout changed" callback
+  // rather than each panel's onResize, which does not fire when a separator is
+  // what moved. The sizes come from the callback's own argument and not from
+  // the panel handles: getSize() still reports the previous layout at this
   // point, which persists every change one step behind.
-  //
-  // A collapsed pane is 0 wide, and recording that as its width would lose the
-  // size to expand back to, so only a real width is remembered.
-  const rememberLayout = useCallback(
+  const persist = useCallback(() => {
+    const g = geometry.current;
+    savePanes({
+      sidebarWidth: g.sidebar,
+      responseWidth: g.response,
+      sidebarCollapsed: g.sidebarCollapsed,
+      responseCollapsed: g.responseCollapsed,
+    });
+  }, [savePanes]);
+
+  const rememberSidebar = useCallback(
     (layout: Layout) => {
-      const element = group.current;
-      if (!element) return;
+      const pixels = panelPixels(group.current, layout, "sidebar");
+      if (pixels === null) return;
+      geometry.current.sidebarCollapsed = pixels === 0;
+      if (pixels > 0) geometry.current.sidebar = pixels;
+      persist();
+    },
+    [persist],
+  );
+
+  const rememberResponse = useCallback(
+    (layout: Layout) => {
       // On the diff route the response pane is not mounted at all, so the
       // layout has nothing to say about it. Persisting it here would record a
       // width of zero and the pane would come back collapsed.
       if (onDiffRef.current) return;
-      // A layout percentage is a share of what the panels have between them,
-      // which is the group minus its separators. Measuring the separators
-      // rather than assuming 1px keeps the round trip exact: without it the
-      // saved width drifts a pixel per restart.
-      let total = element.clientWidth;
-      for (const separator of element.querySelectorAll('[data-slot="resizable-handle"]')) {
-        total -= separator.getBoundingClientRect().width;
-      }
-      if (total <= 0) return;
-      const pixels = (id: string) => Math.round(((layout[id] ?? 0) / 100) * total);
-      const sidebarPixels = pixels("sidebar");
-      const responsePixels = pixels("response");
-      savePanes({
-        sidebarCollapsed: sidebarPixels === 0,
-        responseCollapsed: responsePixels === 0,
-        sidebarWidth: sidebarPixels > 0 ? sidebarPixels : widths.current.sidebar,
-        responseWidth: responsePixels > 0 ? responsePixels : widths.current.response,
-      });
-      if (sidebarPixels > 0) widths.current.sidebar = sidebarPixels;
-      if (responsePixels > 0) widths.current.response = responsePixels;
+      const pixels = panelPixels(innerGroup.current, layout, "response");
+      if (pixels === null) return;
+      geometry.current.responseCollapsed = pixels === 0;
+      if (pixels > 0) geometry.current.response = pixels;
+      persist();
     },
-    [savePanes],
+    [persist],
   );
 
   if (!settings) {
@@ -269,7 +304,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ResizablePanelGroup
           orientation="horizontal"
           className="h-full"
-          onLayoutChanged={rememberLayout}
+          onLayoutChanged={rememberSidebar}
         >
           <ResizablePanel
             id="sidebar"
@@ -293,33 +328,55 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <PaneHandle />
 
-          <ResizablePanel id="center" minSize={320}>
-            <div ref={centerPane} tabIndex={-1} className="flex h-full flex-col outline-none">
+          {/* Everything right of the sidebar: the tab strip, then the panes it
+              names. The minimum has to cover both inner panes, or a wide
+              sidebar could squeeze the inner group below their own minimums —
+              which the inner group cannot then honour. */}
+          <ResizablePanel id="documents" minSize={onDiff ? CENTER_MIN : CENTER_MIN + RESPONSE_MIN}>
+            <div className="flex h-full min-h-0 flex-col">
               <TabBar />
-              <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+
+              <div ref={innerGroup} className="min-h-0 flex-1">
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  className="h-full"
+                  onLayoutChanged={rememberResponse}
+                >
+                  <ResizablePanel id="center" minSize={CENTER_MIN}>
+                    <div
+                      ref={centerPane}
+                      tabIndex={-1}
+                      className="flex h-full flex-col outline-none"
+                    >
+                      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+                    </div>
+                  </ResizablePanel>
+
+                  {/* Screen 1b has no response pane: the diff takes the full
+                      width beside the sidebar. The panel is unmounted rather
+                      than collapsed, so its saved width survives — a collapse
+                      would persist as one. */}
+                  {onDiff ? null : (
+                    <>
+                      <PaneHandle />
+                      <ResizablePanel
+                        id="response"
+                        panelRef={responsePanel}
+                        defaultSize={responseWidth}
+                        minSize={RESPONSE_MIN}
+                        collapsible
+                        collapsedSize={0}
+                      >
+                        <div ref={responsePane} tabIndex={-1} className="h-full outline-none">
+                          <ResponsePane />
+                        </div>
+                      </ResizablePanel>
+                    </>
+                  )}
+                </ResizablePanelGroup>
+              </div>
             </div>
           </ResizablePanel>
-
-          {/* Screen 1b has no response pane: the diff takes the full width
-              beside the sidebar. The panel is unmounted rather than collapsed,
-              so its saved width survives — a collapse would persist as one. */}
-          {onDiff ? null : (
-            <>
-              <PaneHandle />
-              <ResizablePanel
-                id="response"
-                panelRef={responsePanel}
-                defaultSize={responseWidth}
-                minSize={RESPONSE_MIN}
-                collapsible
-                collapsedSize={0}
-              >
-                <div ref={responsePane} tabIndex={-1} className="h-full outline-none">
-                  <ResponsePane />
-                </div>
-              </ResizablePanel>
-            </>
-          )}
         </ResizablePanelGroup>
       </div>
 
@@ -366,6 +423,31 @@ export function AppShell({ children }: { children: ReactNode }) {
  * between panes, widened to a 7px hit area and lightened to --border-strong
  * while it is being used.
  */
+/**
+ * A panel's width in pixels, from a group's layout percentages.
+ *
+ * A layout percentage is a share of what the panels have between them, which
+ * is the group minus its separators. Measuring the separators rather than
+ * assuming 1px keeps the round trip exact: without it the saved width drifts a
+ * pixel per restart.
+ *
+ * `wrapper` is the div wrapping one group, and the query is scoped to that
+ * group's own direct children — the shell nests two groups, and a loose
+ * selector would count the other one's separator as well.
+ */
+function panelPixels(wrapper: HTMLDivElement | null, layout: Layout, id: string): number | null {
+  const group = wrapper?.querySelector(':scope > [data-slot="resizable-panel-group"]');
+  if (!(group instanceof HTMLElement)) return null;
+  let total = group.clientWidth;
+  for (const separator of group.querySelectorAll(
+    ':scope > [data-slot="resizable-handle"]',
+  )) {
+    total -= separator.getBoundingClientRect().width;
+  }
+  if (total <= 0) return null;
+  return Math.round(((layout[id] ?? 0) / 100) * total);
+}
+
 function PaneHandle() {
   return (
     <ResizableHandle className="w-px bg-border transition-colors after:w-[7px] hover:bg-border-strong data-[resizing]:bg-border-strong" />
