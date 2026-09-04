@@ -126,6 +126,7 @@ export function CommandPalette({
   onReveal,
   onCreate,
   onLeaveCollection,
+  onImport,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -135,6 +136,8 @@ export function CommandPalette({
   onCreate: (kind: "request" | "folder") => void;
   /** Opens another collection, or closes this one. Asks first if anything is unsaved. */
   onLeaveCollection: (action: "open" | "close") => void;
+  /** Chooses a Postman export and shows what importing it would do. */
+  onImport: () => void;
 }) {
   const navigate = useNavigate();
   const { tree, collection } = useCollection();
@@ -189,6 +192,7 @@ export function CommandPalette({
         version: buildLabel(build),
         onCreate,
         onLeaveCollection,
+        onImport,
         agentsEnabled: agents?.enabled ?? false,
         setAgentsEnabled,
         disconnectAgents,
@@ -203,6 +207,7 @@ export function CommandPalette({
       build,
       onCreate,
       onLeaveCollection,
+      onImport,
       agents?.enabled,
       setAgentsEnabled,
       disconnectAgents,
@@ -813,6 +818,7 @@ function buildCommands(context: {
   version: string;
   onCreate: (kind: "request" | "folder") => void;
   onLeaveCollection: (action: "open" | "close") => void;
+  onImport: () => void;
   agentsEnabled: boolean;
   setAgentsEnabled: (on: boolean) => Promise<void>;
   disconnectAgents: () => Promise<void>;
@@ -827,6 +833,7 @@ function buildCommands(context: {
     version,
     onCreate,
     onLeaveCollection,
+    onImport,
     agentsEnabled,
     setAgentsEnabled,
     disconnectAgents,
@@ -878,6 +885,18 @@ function buildCommands(context: {
         close();
         onLeaveCollection("open");
       },
+    },
+    {
+      // Reachable with a collection open, which the start screen's card is
+      // not: an export imported now goes *into* the collection as a folder,
+      // rather than becoming a collection of its own.
+      name: "Import from Postman…",
+      detail:
+        collection === ""
+          ? "convert an export into a new collection"
+          : "convert an export into a folder of this collection",
+      shortcut: hint("I"),
+      run: go(onImport),
     },
     {
       // The only way to reach the empty state once something is open — and

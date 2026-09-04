@@ -5,6 +5,8 @@ import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { hint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import type { Recent } from "@bindings/internal/settings";
+import { ImportDialog } from "@/components/shell/import-dialog";
+import { useImportFlow } from "@/hooks/use-import-flow";
 import { useCollection } from "@/state/collection-context";
 import { useRecents } from "@/state/use-recents";
 
@@ -19,6 +21,10 @@ import { useRecents } from "@/state/use-recents";
 export function EmptyState() {
   const { openViaDialog, open, error } = useCollection();
   const build = useBuildInfo();
+  // The start screen is the one place an import becomes a *new* collection,
+  // so it starts the flow itself: AppShell does not exist while this is on
+  // screen.
+  const { start: startImport, dialog: importDialog } = useImportFlow();
 
   return (
     <div className="flex min-h-0 flex-1 justify-center overflow-y-auto">
@@ -60,7 +66,7 @@ export function EmptyState() {
             shortcut={hint("I")}
             description="Convert a Postman collection or environment export into .http files. Nothing is uploaded."
             example="collection.json → *.http"
-            soon
+            onClick={() => void startImport()}
           />
           <StarterCard
             title="Start fresh"
@@ -89,6 +95,16 @@ export function EmptyState() {
           ) : null}
         </footer>
       </div>
+
+      <ImportDialog
+        {...importDialog}
+        onImported={(root) => {
+          // Go opened it already; the window has nothing to navigate to but
+          // the tree, which the collection change puts on screen anyway.
+          void root;
+        }}
+      />
+
     </div>
   );
 }

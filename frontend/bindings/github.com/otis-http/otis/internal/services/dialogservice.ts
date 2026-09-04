@@ -19,3 +19,21 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 export function OpenDirectory(): $CancellablePromise<string> {
     return $Call.ByID(2241080147);
 }
+
+/**
+ * OpenImportDestination shows the directory picker for where an import
+ * should land.
+ */
+export function OpenImportDestination(): $CancellablePromise<string> {
+    return $Call.ByID(1800079047);
+}
+
+/**
+ * OpenPostmanExport shows the native file picker for a Postman export.
+ * 
+ * Cancelling returns "" with no error, the same as OpenDirectory: a person
+ * declining is not a failure.
+ */
+export function OpenPostmanExport(): $CancellablePromise<string> {
+    return $Call.ByID(85323164);
+}

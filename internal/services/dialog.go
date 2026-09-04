@@ -38,3 +38,39 @@ func (s *DialogService) OpenDirectory() (string, error) {
 	}
 	return dialog.PromptForSingleSelection()
 }
+
+// OpenPostmanExport shows the native file picker for a Postman export.
+//
+// Cancelling returns "" with no error, the same as OpenDirectory: a person
+// declining is not a failure.
+func (s *DialogService) OpenPostmanExport() (string, error) {
+	dialog := s.app.Dialog.OpenFile().
+		SetTitle("Import from Postman").
+		SetMessage("Choose a Postman collection export").
+		SetButtonText("Choose").
+		CanChooseDirectories(false).
+		CanChooseFiles(true).
+		ResolvesAliases(true).
+		AddFilter("Postman export", "*.json")
+	if w := s.app.Window.Current(); w != nil {
+		dialog = dialog.AttachToWindow(w)
+	}
+	return dialog.PromptForSingleSelection()
+}
+
+// OpenImportDestination shows the directory picker for where an import
+// should land.
+func (s *DialogService) OpenImportDestination() (string, error) {
+	dialog := s.app.Dialog.OpenFile().
+		SetTitle("Import into").
+		SetMessage("Choose where to write the imported collection").
+		SetButtonText("Choose").
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		CanCreateDirectories(true).
+		ResolvesAliases(true)
+	if w := s.app.Window.Current(); w != nil {
+		dialog = dialog.AttachToWindow(w)
+	}
+	return dialog.PromptForSingleSelection()
+}

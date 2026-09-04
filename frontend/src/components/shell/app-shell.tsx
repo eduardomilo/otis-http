@@ -15,11 +15,13 @@ import {
   type CollectionAction,
 } from "@/components/shell/collection-switch-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
+import { ImportDialog } from "@/components/shell/import-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
 import type { TreeHandle } from "@/components/shell/tree";
 import { StatusBar } from "@/components/shell/status-bar";
 import { TabBar } from "@/components/shell/tab-bar";
+import { useImportFlow } from "@/hooks/use-import-flow";
 import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
 import { OtisEvent } from "@/lib/events.gen";
@@ -116,6 +118,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Leaving a collection closes every tab, and a draft lives only in the
   // window, so both ways out ask first when anything is unsaved.
   const [leaving, setLeaving] = useState<CollectionAction | null>(null);
+  // The same flow the start screen uses; here it lands a folder *inside* the
+  // open collection instead of becoming one.
+  const { start: startImport, dialog: importDialog } = useImportFlow();
   const dirtyCount = tabs.filter((tab) => tab.dirty).length;
 
   const runLeave = useCallback(
@@ -250,6 +255,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     // File menu's accelerator wins before the key reaches the window, and
     // binding it in both places would open two directory dialogs.
     ...(isMac() ? [] : [{ key: "o", mod: true, run: () => leaveCollection("open") }]),
+    // ⌘I, which screen 2b's card already advertises.
+    { key: "i", mod: true, run: () => void startImport() },
     { key: "p", mod: true, run: focusFilter },
     { key: "b", mod: true, run: () => togglePanel(sidebarPanel.current) },
     { key: "j", mod: true, run: () => togglePanel(responsePanel.current) },
@@ -487,6 +494,16 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
       />
 
+      <ImportDialog
+        {...importDialog}
+        onImported={(root, nodePath) => {
+          // Go has already opened or refreshed the collection, so the window
+          // only has to go and look at what arrived.
+          if (nodePath) void navigate({ to: "/f/$path", params: { path: nodePath } });
+          else void navigate({ to: "/" });
+        }}
+      />
+
       <CollectionSwitchDialog
         action={leaving}
         dirtyCount={dirtyCount}
@@ -509,6 +526,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         }}
         onCreate={(kind) => openCreate(kind, folderForNew())}
         onLeaveCollection={leaveCollection}
+        onImport={() => void startImport()}
       />
     </>
   );

@@ -1054,3 +1054,47 @@ so hopping between two repositories is close → pick from the start screen
 rather than one step. The recents are one keystroke further away than they
 could be, and adding a fourth palette section is a bigger decision than this
 fix.
+
+**9.25 Where a Postman import lands, which the design does not say.** Screen
+2b's third card is "Import from Postman · `⌘I` · collection.json → *.http" and
+§9.9 pointedly does *not* list it with Clone and Start fresh as out of the A–E
+plan — the converter has existed in `internal/importer/postman` all along, with
+`otis import postman --out` driving it. What the design does not say is where
+an import goes, and the CLI's answer is a required flag, which a card cannot
+have.
+
+**Two destinations, chosen by whether a collection is open:**
+
+| | |
+| --- | --- |
+| Nothing open | a new folder beside the export, named for the collection — `~/Downloads/Acme API.postman_collection.json` becomes `~/Downloads/acme-api/`, and that becomes the open collection. This is the start screen's case: importing is how you *get* a collection |
+| A collection open | a new folder **inside** it, so an export can be pulled into a collection you already have. `⌘I` and the palette's "Import from Postman…" reach this; the card cannot, because the card is only on screen when nothing is open |
+
+The second is the one worth stating, because it makes an import a write to
+somebody's existing collection. It behaves like anything else added to a
+folder: `.order` is written into the new directory, which is fresh so there is
+nothing to preserve (`FORMAT.md` §2.2), and **the parent's `.order` is not
+touched**, so the imported folder sorts alphabetically like a new request does.
+The write is held inside `CollectionService.Guard()` and announced with
+`Refresh()`, exactly as every other write Otis makes.
+
+**It plans before it writes, and shows the plan.** The importer already
+separates `Plan` from `Write`; this is what that separation is for. The dialog
+names the export, the collection, the counts, the destination as a path, and
+what the conversion had to skip or flag — and only then offers a button. §8.2
+asks every write to announce itself, and this is the largest write Otis makes:
+a directory of files somebody then has to review.
+
+**There is no "overwrite anyway".** A destination with files in it is refused
+with what is in the way named, and the fix is to choose elsewhere. The CLI's
+`--force` is for a person who typed a path and meant it, which is not the same
+as a button next to a folder full of a colleague's work. Go re-checks the
+destination on every read of the plan, including inside the commit, because a
+directory can gain files while a dialog is open — so the disabled button is a
+courtesy and the refusal is the safety.
+
+Environment exports are not wired up yet. `postman.Options` takes `EnvFiles`
+and the CLI's `--env` passes them, but the dialog offers no way to add one, so
+an import through the window converts the collection and not the environments
+beside it. The card's own description mentions "or environment export", so this
+is a gap with a promise in front of it.

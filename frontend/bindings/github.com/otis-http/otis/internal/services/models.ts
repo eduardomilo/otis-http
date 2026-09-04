@@ -694,6 +694,92 @@ export interface FolderVariable {
 }
 
 /**
+ * ImportNote is one line of the importer's report.
+ */
+export interface ImportNote {
+    /**
+     * Path is the file it concerns, relative to the import, or "" for the
+     * collection as a whole.
+     */
+    "path": string;
+    "detail": string;
+}
+
+/**
+ * ImportPlan is what an import would do, before it does any of it.
+ */
+export interface ImportPlan {
+    /**
+     * ID identifies the held plan for Commit.
+     */
+    "id": string;
+
+    /**
+     * Source is the export's path, for the dialog to name what it read.
+     */
+    "source": string;
+
+    /**
+     * CollectionName is the name Postman gave it.
+     */
+    "collectionName": string;
+    "requests": number;
+    "folders": number;
+    "environments": number;
+
+    /**
+     * Files is how many files would be written.
+     */
+    "files": number;
+
+    /**
+     * Destination is the absolute path that would receive it.
+     */
+    "destination": string;
+
+    /**
+     * Inside is true when Destination is within the open collection, which
+     * changes the wording and means the tree will refresh rather than the
+     * collection being replaced.
+     */
+    "inside": boolean;
+
+    /**
+     * NodePath is the destination relative to the open collection's root,
+     * set only when Inside.
+     */
+    "nodePath"?: string;
+
+    /**
+     * Blocked explains why this destination cannot be written, or is empty.
+     * The window shows it and keeps the Import button disabled; the fix is
+     * always to choose somewhere else, because overwriting a directory full
+     * of somebody's files is not something to offer behind a button.
+     */
+    "blocked"?: string;
+    "skipped": ImportNote[] | null;
+    "warnings": ImportNote[] | null;
+    "notes": ImportNote[] | null;
+}
+
+/**
+ * ImportResult is where an import ended up.
+ */
+export interface ImportResult {
+    /**
+     * Root is the collection that is now open.
+     */
+    "root": string;
+
+    /**
+     * NodePath is the imported folder within it, "" when the import became
+     * the collection itself.
+     */
+    "nodePath"?: string;
+    "files": number;
+}
+
+/**
  * KeychainState is what the window may say about the machine's credential
  * store.
  * 

@@ -567,6 +567,27 @@ lists the design decisions that are still open — do not resolve them silently.
   primitives in `components/ui/` may use `sm:`/`md:`/`lg:`, and only because a
   dialog is positioned against the viewport rather than inside a pane.
 
+- **A Postman import plans before it writes, and lands in one of two places.**
+  `internal/services/import.go` is the window's half of
+  `internal/importer/postman`, and it exists as a service rather than a
+  binding onto the importer because it holds a *plan* between the preview and
+  the write — the importer's `Plan`/`Write` split is what makes the dialog
+  possible. With no collection open an import becomes a new collection beside
+  the export; with one open it becomes a folder **inside** it, which means an
+  import is a write to somebody's collection and gets the same treatment as
+  any other: inside `CollectionService.Guard()`, announced with `Refresh()`,
+  and **the parent's `.order` untouched** so the new folder sorts
+  alphabetically (a test asserts it byte for byte). A destination with files in
+  it is refused rather than merged — `--force` is a CLI escape hatch for
+  someone who typed a path, not a button — and Go re-checks the destination on
+  every read of the plan, including inside `Commit`, because a directory can
+  gain files while a dialog is open. DESIGN-NOTES §9.25.
+- **`CollectionService.Open` emits `CollectionOpened` without the tree**, and
+  returns the tree to its caller instead. That is enough for the window, which
+  asked; it is not enough for anything in Go that opens a collection itself —
+  the sidebar stays empty until something re-walks. Such a caller follows
+  `Open` with `Refresh()`, which is the same "a write Otis makes announces
+  itself" mechanism used everywhere else.
 - **Leaving a collection goes through one guarded path.** Opening another
   collection or closing this one drops every open tab, and a draft lives only
   in the window, so both ask first when anything is unsaved

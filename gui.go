@@ -159,6 +159,10 @@ func runGUI(openPath string) {
 			// variables a run set are half of its Variables panel, and they
 			// live nowhere on disk (docs/FORMAT.md §4.5).
 			application.NewService(folderSvc),
+			// The Postman importer's window half. It plans first and writes
+			// only on a confirmation, which is why it is a service rather
+			// than a binding straight onto internal/importer/postman.
+			application.NewService(services.NewImportService(collections, dialogs)),
 			application.NewService(services.NewOrderService(collections)),
 			// The agent server. It starts nothing on its own: the listener
 			// and each capability are separate switches and all of them are
