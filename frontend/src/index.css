@@ -220,7 +220,7 @@
     --tab-bar-height: 34px;
     --status-bar-height: 26px;
     --row-height: 24px;
-    --method-gutter-width: 48px;
+    --method-gutter-width: 24px;
 }
 
 @layer base {
