@@ -1,9 +1,17 @@
-# The MCP server — proposal
+# The MCP server
 
-**Status: proposal. Nothing in this document is implemented.** It is written to
-be approved, rejected or argued with first, because the feature can send
-authenticated requests to production systems and the security design *is* the
-feature rather than a wrapper around it.
+**Status: implemented.** It was written as a proposal first — to be approved,
+rejected or argued with before any of it existed — because the feature can
+send authenticated requests to production systems and the security design *is*
+the feature rather than a wrapper around it. That is still how to read this
+document: it is the specification, and the code follows it.
+
+Two things moved between the proposal and the build, and both are marked where
+they happen: §6.3's elicitation became SEP-2322's return-and-retry, because
+mcp-go refuses server-initiated requests from protocol 2026-07-28; and §6.4
+gained the rule that an in-app answer is the only thing that satisfies a
+confirmation the window raised. §15's verification plan is the checklist the
+tests were written against.
 
 Read `VISION.md` §3 first. The line it draws under secrets is the constraint
 everything here bends around.

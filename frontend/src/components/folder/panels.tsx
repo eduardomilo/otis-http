@@ -384,8 +384,8 @@ export function ScriptsPanel({ doc }: { doc: FolderDocument }) {
       ) : null}
 
       <p className="mt-2 text-meta text-fg-faint">
-        Nothing runs yet — the script engine arrives in the next increment. These are the files as
-        they are on disk.
+        A hook runs inside a JavaScript realm with no filesystem, no network and no timers
+        (docs/FORMAT.md §9.3). Open one to read or edit it.
       </p>
     </Panel>
   );

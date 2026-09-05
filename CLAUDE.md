@@ -26,8 +26,10 @@ follows them, not the other way round.
   platform, and exactly where signing and notarization would go plus the
   secrets each would need. Authoritative for anything in `.github/workflows/`.
 - `docs/MCP.md` — the MCP server's tool surface and consent model.
-  **A proposal, not yet implemented and not yet approved.** Do not build any
-  part of it until it is; the security design is the feature.
+  **Implemented.** It was written as a proposal and approved before any of it
+  was built, which is why it reads like an argument; it is the specification
+  now, and the security design is the feature. Anything that changes what an
+  agent may do changes this document first.
 
 If one of these and the code disagree, that is a bug. §9 of DESIGN-NOTES.md
 lists the design decisions that are still open — do not resolve them silently.
