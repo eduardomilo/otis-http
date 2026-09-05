@@ -313,14 +313,19 @@ func TestSortedKeysDeterministic(t *testing.T) {
 	}
 }
 
-// An imported Postman script must not land with a name that makes Otis run it.
+// A script is a hook only if it was translated completely.
 //
-// It used to. `<slug>.post.js` beside `<slug>.http` is a hook (docs/FORMAT.md
-// §2.4), so every imported script executed on the first send and threw at the
-// first `pm.` it reached — while the header at the top of the file said "NOT
-// executed". This walks the imported collection with the real classifier
-// rather than matching names, because the classifier is the thing that decides.
-func TestImportedScriptsAreNotHooks(t *testing.T) {
+// This is the invariant the whole import-scripts feature turns on, and it
+// replaced a blunter one. Every imported script used to land as `<slug>.post.js`
+// beside `<slug>.http` — a hook (docs/FORMAT.md §2.4) — so all of them ran on
+// the first send and threw at the first `pm.` they reached, while the header
+// said "NOT executed". The fix then was to make no script a hook; the fix now
+// is to make a script a hook exactly when running it is safe.
+//
+// It walks the imported collection with the real classifier rather than
+// matching names, because the classifier is the thing that decides, and then
+// reads every hook to prove nothing untranslated is in one.
+func TestOnlyATranslatedScriptBecomesAHook(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{OutDir: dir}); err != nil {
 		t.Fatalf("Import: %v", err)
@@ -331,13 +336,26 @@ func TestImportedScriptsAreNotHooks(t *testing.T) {
 		t.Fatalf("walking the imported collection: %v", err)
 	}
 
-	scripts := 0
+	hooks, modules := 0, 0
 	var walk func(*collection.Node)
 	walk = func(node *collection.Node) {
 		if node.Kind == collection.KindScript {
-			scripts++
+			text := string(mustRead(t, node.Path))
 			if node.Hook {
-				t.Errorf("%s was imported as a hook; nothing untranslated may run", node.ID)
+				hooks++
+				// The header is prose about Postman, so only the code below
+				// it is checked — everything after the last header line.
+				code := text[strings.LastIndex(text, "//")+1:]
+				for _, forbidden := range []string{"pm.", "postman.", "require(", "setTimeout", "tests["} {
+					if strings.Contains(code, forbidden) {
+						t.Errorf("%s runs and still contains %q:\n%s", node.ID, forbidden, text)
+					}
+				}
+			} else {
+				modules++
+				if !strings.Contains(text, "Nothing runs this file") {
+					t.Errorf("%s is a module and does not say so:\n%s", node.ID, text)
+				}
 			}
 		}
 		for _, child := range node.Children {
@@ -346,31 +364,57 @@ func TestImportedScriptsAreNotHooks(t *testing.T) {
 	}
 	walk(loaded.Root)
 
-	if scripts == 0 {
-		t.Fatal("the fixture imported no scripts, so this test proves nothing")
+	// Both branches, or the test proves only half of the rule.
+	if hooks == 0 {
+		t.Error("nothing translated completely, so the hook branch is untested")
+	}
+	if modules == 0 {
+		t.Error("everything translated, so the module branch is untested")
 	}
 }
 
-// And the header points at the file the ported version belongs in, since that
-// is the step somebody has to take.
-func TestImportedScriptSaysWhereToPortIt(t *testing.T) {
+// A translated hook says what was substituted, and names the one substitution
+// that was a decision rather than a rename.
+func TestATranslatedHookSaysWhatChanged(t *testing.T) {
 	dir := t.TempDir()
 	if _, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{OutDir: dir}); err != nil {
 		t.Fatalf("Import: %v", err)
 	}
-	var found string
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.Contains(d.Name(), "postman-") {
-			return err
+	text := string(mustRead(t, filepath.Join(dir, "pets", "create-pet.post.js")))
+	for _, want := range []string{
+		"**This runs.**",
+		"vars.session.set",
+		"response.json",
+		// The scope decision, in the file, where the person who has to live
+		// with it will read it.
+		"vars.env.set",
+		"written to no file",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the header does not mention %q:\n%s", want, text)
 		}
-		found = path
-		return nil
-	})
-	if err != nil || found == "" {
-		t.Fatalf("no imported script found (%v)", err)
 	}
-	text := string(mustRead(t, found))
-	for _, want := range []string{"Nothing runs this file", "vars.session.set", "a file\n// named"} {
+	if strings.Contains(text, "pm.") {
+		t.Errorf("a translated hook still contains pm.:\n%s", text)
+	}
+}
+
+// And a module names the line that stopped it, since that is the step
+// somebody has to take.
+func TestAnUntranslatedModuleNamesWhatStoppedIt(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{OutDir: dir}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	text := string(mustRead(t, filepath.Join(dir, "pets", "get-pet.postman-post.js")))
+	for _, want := range []string{
+		"Nothing runs this file",
+		// The blocker, with its line and its reason.
+		"line 2, pm.expect",
+		"that is chai",
+		// And where the finished version goes.
+		"get-pet.post.js",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the header does not mention %q:\n%s", want, text)
 		}

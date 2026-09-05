@@ -402,10 +402,17 @@ func TestImportPostman(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("code = %d, stderr = %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "Wrote 24 files to") {
+	if !strings.Contains(stdout, "Wrote 26 files to") {
 		t.Errorf("stdout = %q", stdout)
 	}
-	for _, want := range []string{`Imported "Petstore API": 13 requests`, "Skipped (", "Needs attention (", "keychain references"} {
+	for _, want := range []string{
+		`Imported "Petstore API": 13 requests`, "Skipped (", "Needs attention (", "keychain references",
+		// Both halves of the script rule are visible in the report, because
+		// "which of my scripts will actually run" is the first thing anybody
+		// asks after an import (docs/FORMAT.md §7).
+		"translated and will run",
+		"imported as a module",
+	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("report missing %q:\n%s", want, stderr)
 		}

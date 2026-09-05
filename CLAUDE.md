@@ -132,7 +132,13 @@ lists the design decisions that are still open — do not resolve them silently.
   is written — and `curlCommand` beside it is **unexported on purpose**: with
   secrets it returns a resolved credential, which must never join a binding
   surface.
-- `internal/importer/postman/` — the Postman v2.1 importer.
+- `internal/importer/postman/` — the Postman v2.1 importer. `translate.go` is
+  the `pm` API → Otis script translation (docs/FORMAT.md §7), and the rule
+  that keeps it honest is that **a substitution is made only where the result
+  is exactly right**: `pm.expect` is chai and is left alone rather than
+  renamed to `expect`, because what decides a file's *name* is whether
+  anything untranslatable survived, and a plausible-but-wrong rename would be
+  a file that runs and throws.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
 - `internal/watch/` — the recursive filesystem watcher behind the live tree,
@@ -726,6 +732,19 @@ lists the design decisions that are still open — do not resolve them silently.
   every change to the dialog. A module's name is written as typed rather than
   slugged — it is also an import specifier — but a name that would lie
   (leading `_`, or a `.pre`/`.post` ending) is refused. DESIGN-NOTES §9.41.
+- **An imported Postman script is a hook only if it translated completely.**
+  `<slug>.post.js` beside `<slug>.http` is a hook (docs/FORMAT.md §2.4), and
+  every imported script used to land with a hook name while its header said
+  "NOT executed" — so all of them ran on the first send and threw at the first
+  `pm.` they reached. The rule now is the useful one rather than the blunt
+  one: complete → a hook, so it runs; incomplete → a `.postman-post.js`
+  module, so nothing does, with the blocking line named in the header.
+  `TestOnlyATranslatedScriptBecomesAHook` walks the imported collection with
+  the real classifier and reads every hook, and asserts *both* branches are
+  exercised — a fixture where everything translates would silently stop
+  testing half the rule. Every Postman variable setter becomes
+  `vars.session.set` and never `vars.env.set`, because the latter writes a
+  committed file.
 - **A new folder always gets a `_folder.http`.** Git does not track an empty
   directory, so a folder created without a file in it vanishes on the next
   clone or checkout and the collection silently differs between two people.

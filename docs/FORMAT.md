@@ -716,7 +716,7 @@ prefers explicit, boring files over clever ones.
 | folder | a directory; folder auth, variables and description go to its `_folder.http`. An otherwise empty folder gets a `_folder.http` with a comment so the directory exists. |
 | request | `<slug>.http`, one per file, with `# @name <original name>` first, then the description as `#` comments |
 | item order | `.order` in every directory, listing every child by exact name |
-| pre-request / test script | `_postman-pre.js` / `_postman-post.js` beside `_folder.http`, or `<slug>.postman-pre.js` / `<slug>.postman-post.js` beside a request. Raw and untranslated, and **named so that nothing runs it**: those are module names, not the hook names of §2.4, because a `pm.*` script that ran would throw on its first line. The header names the hook file a ported version belongs in. |
+| pre-request / test script | Translated, then named by whether the translation finished. Complete: the hook names of §2.4 — `_pre.js` / `_post.js` beside `_folder.http`, `<slug>.pre.js` / `<slug>.post.js` beside a request — so Otis runs it, which is the point. Incomplete: the module names `_postman-pre.js` / `<slug>.postman-post.js`, so **nothing runs it**, and the header names the line that stopped it and the hook file the finished version belongs in. See below. |
 | environment export | `env/<slug>.json`; variables of type `secret` become `{"$secret": "keychain"}` and their values are **not** imported |
 
 **Slugs.** Names are lower-cased; runs of anything other than ASCII letters
@@ -770,6 +770,29 @@ kept. Other `{{$...}}` forms are left as written and flagged.
 **Safety.** The importer refuses a non-empty output directory unless forced,
 never writes a value marked secret, and never writes `.order` for a
 directory it did not create.
+
+**Scripts are translated, and the name says whether it worked.** A Postman
+script is JavaScript against the `pm` API; an Otis script is JavaScript
+against §9's. Most of the distance between them is names: measured across
+three real exports — 84 scripts — the whole `pm` surface in use was a handful
+of identifiers, and **80 of the 84 translated completely**. The four that did
+not all reach for a library Postman bundles (`require('moment')`, `CryptoJS`),
+which §9.3 has no answer for and never will.
+
+A substitution is made **only where the result is exactly right**. Anything
+needing a shape change or a different assertion language is left as it was and
+becomes a blocker: `pm.expect(x).to.eql(y)` is chai, and renaming it to
+`expect` would produce code that looks translated and throws at run time. What
+decides the file's *name* is whether anything untranslatable survived, so a
+rename that produces plausible-but-wrong code would be a file that runs and
+fails.
+
+Every Postman variable setter becomes **`vars.session.set`** — never
+`vars.env.set`. Postman's scopes and §9.4's three lifetimes do not line up,
+and `vars.env.set` writes the active environment file, which is committed: an
+importer that generated code rewriting a committed file on every send would be
+its own kind of bug. Session is the recoverable direction and what a chained
+flow wants; the header in each translated file says the other call exists.
 
 ## 8. Command line
 

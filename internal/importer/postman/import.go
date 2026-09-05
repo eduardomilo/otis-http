@@ -476,21 +476,26 @@ func formEscape(s string) string {
 	return b.String()
 }
 
-// scripts writes untranslated Postman scripts next to their owner:
-// _postman-pre.js and _postman-post.js for folders (slug == ""),
-// <slug>.postman-pre.js and <slug>.postman-post.js for requests.
+// scripts writes each Postman script next to its owner, translated as far as
+// it safely can be (translate.go).
 //
-// **The name is chosen so the file does not run.** docs/FORMAT.md §2.4 makes
-// `_pre.js`, `_post.js` and `<slug>.pre.js` beside `<slug>.http` into *hooks*,
-// which Otis executes around every send. This function used to write exactly
-// those names while stamping "NOT executed" at the top of each file, so every
-// imported script ran on the first send and threw a ReferenceError at the
-// first `pm.` or `postman.` it reached — six of them in one real collection,
-// on every request, with the header insisting they were inert.
+// **The name it gets is the whole decision, and it turns on one thing: does
+// anything untranslatable survive?**
 //
-// `postman-pre` and `postman-post` are plain modules: nothing runs them unless
-// a hook imports one, which is what the header always claimed and what makes
-// the file safe to leave lying around until somebody ports it.
+//   - Nothing does — the file becomes a *hook*: `_pre.js` / `_post.js` for a
+//     folder, `<slug>.pre.js` / `<slug>.post.js` beside a request. Otis runs
+//     it, which is the point of importing a script at all.
+//   - Something does — the file becomes a *module*: `_postman-pre.js`,
+//     `<slug>.postman-post.js`. Nothing runs it until somebody finishes the
+//     port, and the header names the line that stopped it.
+//
+// The second branch is not caution for its own sake. An earlier version of
+// this function wrote hook names for *every* imported script while stamping
+// "NOT executed" at the top of each, so all of them ran on the first send and
+// threw at the first `pm.` they reached — six of them in one real collection,
+// on every request, with the header insisting they were inert. The
+// completeness check is what makes the hook branch safe, and it is why
+// Translate refuses to make a substitution whose result is merely plausible.
 func (p *planner) scripts(dir, slug, ownerName string, events []event) {
 	for _, ev := range events {
 		if ev.Script == nil {
@@ -509,20 +514,45 @@ func (p *planner) scripts(dir, slug, ownerName string, events []event) {
 		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		name := "_postman-" + file + ".js"
-		if slug != "" {
-			name = slug + ".postman-" + file + ".js"
-		}
-		rel := path.Join(dir, name)
 		if ev.Disabled {
-			p.rep().skip(rel, "disabled %s script for %q", kind, ownerName)
+			p.rep().skip(path.Join(dir, moduleName(slug, file)),
+				"disabled %s script for %q", kind, ownerName)
 			continue
 		}
-		content := fmt.Sprintf(untranslatedHeader, kind, ownerName, hookName(slug, file), code)
-		p.write(rel, content)
-		p.rep().warn(rel, "%s script for %q imported as a module; nothing runs it until you port it to %s",
-			kind, ownerName, hookName(slug, file))
+
+		out := Translate(code)
+		if out.Complete {
+			rel := path.Join(dir, hookName(slug, file))
+			p.write(rel, fmt.Sprintf(translatedHeader,
+				kind, ownerName, strings.Join(out.summary(), "\n"), out.Code))
+			p.rep().note(rel, "%s script for %q translated and will run", kind, ownerName)
+			continue
+		}
+
+		rel := path.Join(dir, moduleName(slug, file))
+		p.write(rel, fmt.Sprintf(untranslatedHeader,
+			kind, ownerName, blockerLines(out), hookName(slug, file), out.Code))
+		p.rep().warn(rel, "%s script for %q needs %s; imported as a module, so nothing runs it until you port it to %s",
+			kind, ownerName, out.Blockers[0].What, hookName(slug, file))
 	}
+}
+
+// moduleName is the name a script gets when it could not be finished: one
+// docs/FORMAT.md §2.4 makes a plain module, so nothing runs it.
+func moduleName(slug, phase string) string {
+	if slug == "" {
+		return "_postman-" + phase + ".js"
+	}
+	return slug + ".postman-" + phase + ".js"
+}
+
+// blockerLines is what the header says about why the file is not a hook.
+func blockerLines(t Translation) string {
+	var b strings.Builder
+	for _, blocker := range t.Blockers {
+		fmt.Fprintf(&b, "//   line %d, %s — %s\n", blocker.Line, blocker.What, blocker.Why)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // untranslatedHeader is what sits above an imported Postman script.
@@ -534,20 +564,43 @@ func (p *planner) scripts(dir, slug, ownerName string, events []event) {
 // Postman collection chains a flow, and `vars.session.set` is Otis' answer
 // (docs/FORMAT.md §4.5), so a collection that chained in Postman chains here
 // once these lines are translated.
-const untranslatedHeader = `// Untranslated Postman %s script for %q.
+const untranslatedHeader = `// Postman %s script for %q, translated as far as it goes.
 //
-// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
-// so the logic is not lost. To make it run, port what you need into a file
-// named %s, or into a {%% %%} block in the request itself.
+// **Nothing runs this file.** It is a plain ES module (docs/FORMAT.md §2.4),
+// because something in it has no Otis equivalent:
 //
-// The calls that usually matter:
+%s
 //
-//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
-//   pm.response.json()                       ->  response.json()
-//   pm.test("name", fn)                      ->  test("name", fn)
+// The rest was translated. Finish the port and rename the file to %s to make
+// Otis run it, or move what you need into a {%% %%} block in the request.
 //
 // A script gets a JavaScript realm and nothing else: no fetch, no require, no
 // filesystem, no timers (docs/FORMAT.md §9.3).
+
+%s
+`
+
+// translatedHeader sits above a script that came through whole.
+//
+// It says what changed rather than leaving the reader to diff against a
+// Postman export they may not have, and it names the one substitution that
+// was a *decision*: Postman's variable setters all write somewhere that
+// persists, and this writes a session value, which is written to no file at
+// all (docs/FORMAT.md §4.5). `vars.env.set` is the other call, and it changes
+// a committed file — which is why an importer does not reach for it.
+const translatedHeader = `// Postman %s script for %q, translated.
+//
+// **This runs.** It is a hook (docs/FORMAT.md §2.4), so Otis executes it
+// around the request it belongs to, exactly as Postman did.
+//
+// What was substituted:
+//
+%s
+//
+// A Postman variable set became vars.session.set: in memory, on this machine,
+// written to no file, and visible to every request in this folder and below
+// (docs/FORMAT.md §4.5). If you meant the value to persist, vars.env.set
+// writes the active environment file — and shows up in git.
 
 %s
 `

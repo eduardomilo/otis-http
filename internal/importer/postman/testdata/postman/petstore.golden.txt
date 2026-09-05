@@ -14,22 +14,20 @@ pets-2.http
 @baseUrl = https://petstore.example.com
 @user = alice
 === _postman-post.js ===
-// Untranslated Postman test script for "Petstore API".
+// Postman test script for "Petstore API", translated as far as it goes.
 //
-// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
-// so the logic is not lost. To make it run, port what you need into a file
-// named _post.js, or into a {% %} block in the request itself.
+// **Nothing runs this file.** It is a plain ES module (docs/FORMAT.md §2.4),
+// because something in it has no Otis equivalent:
 //
-// The calls that usually matter:
+//   line 1, pm.expect — that is chai; Otis' expect has toBe, toEqual and a handful more, with no chained `.to.have` (docs/FORMAT.md §9.9).
 //
-//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
-//   pm.response.json()                       ->  response.json()
-//   pm.test("name", fn)                      ->  test("name", fn)
+// The rest was translated. Finish the port and rename the file to _post.js to make
+// Otis run it, or move what you need into a {% %} block in the request.
 //
 // A script gets a JavaScript realm and nothing else: no fetch, no require, no
 // filesystem, no timers (docs/FORMAT.md §9.3).
 
-pm.test("fast", () => pm.expect(pm.response.responseTime).to.be.below(500));
+test("fast", () => pm.expect(response.timings.total).to.be.below(500));
 === env/petstore-dev.json ===
 {
   "baseUrl": "https://dev.petstore.example.com",
@@ -69,22 +67,20 @@ delete-pet.http
 # @auth bearer {{token}}
 @petsPath = /v2/pets
 === pets/_postman-pre.js ===
-// Untranslated Postman pre-request script for "Pets".
+// Postman pre-request script for "Pets", translated as far as it goes.
 //
-// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
-// so the logic is not lost. To make it run, port what you need into a file
-// named _pre.js, or into a {% %} block in the request itself.
+// **Nothing runs this file.** It is a plain ES module (docs/FORMAT.md §2.4),
+// because something in it has no Otis equivalent:
 //
-// The calls that usually matter:
+//   line 1, pm. — Otis has no equivalent for this call, or it needs a decision a table cannot make.
 //
-//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
-//   pm.response.json()                       ->  response.json()
-//   pm.test("name", fn)                      ->  test("name", fn)
+// The rest was translated. Finish the port and rename the file to _pre.js to make
+// Otis run it, or move what you need into a {% %} block in the request.
 //
 // A script gets a JavaScript realm and nothing else: no fetch, no require, no
 // filesystem, no timers (docs/FORMAT.md §9.3).
 
-pm.environment.set("requestId", pm.variables.replaceIn("{{$guid}}"));
+vars.session.set("requestId", pm.variables.replaceIn("{{$guid}}"));
 === pets/create-pet.http ===
 # @name Create pet
 POST {{baseUrl}}/v2/pets
@@ -96,6 +92,25 @@ Content-Type: application/json
   "tag": "dog",
   "createdAt": "{{$isoTimestamp}}"
 }
+=== pets/create-pet.post.js ===
+// Postman test script for "Create pet", translated.
+//
+// **This runs.** It is a hook (docs/FORMAT.md §2.4), so Otis executes it
+// around the request it belongs to, exactly as Postman did.
+//
+// What was substituted:
+//
+//   1 → response.json
+//   1 → vars.session.set
+//
+// A Postman variable set became vars.session.set: in memory, on this machine,
+// written to no file, and visible to every request in this folder and below
+// (docs/FORMAT.md §4.5). If you meant the value to persist, vars.env.set
+// writes the active environment file — and shows up in git.
+
+const pet = response.json();
+vars.session.set("petId", pet.id);
+console.log("petId", pet.id);
 === pets/delete-pet.http ===
 # @name Delete pet
 # @auth none
@@ -105,22 +120,20 @@ DELETE {{baseUrl}}/v2/pets/42
 @petId = 42
 GET {{baseUrl}}/v2/pets/{{petId}}
 === pets/get-pet.postman-post.js ===
-// Untranslated Postman test script for "Get pet".
+// Postman test script for "Get pet", translated as far as it goes.
 //
-// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
-// so the logic is not lost. To make it run, port what you need into a file
-// named get-pet.post.js, or into a {% %} block in the request itself.
+// **Nothing runs this file.** It is a plain ES module (docs/FORMAT.md §2.4),
+// because something in it has no Otis equivalent:
 //
-// The calls that usually matter:
+//   line 2, pm.expect — that is chai; Otis' expect has toBe, toEqual and a handful more, with no chained `.to.have` (docs/FORMAT.md §9.9).
 //
-//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
-//   pm.response.json()                       ->  response.json()
-//   pm.test("name", fn)                      ->  test("name", fn)
+// The rest was translated. Finish the port and rename the file to get-pet.post.js to make
+// Otis run it, or move what you need into a {% %} block in the request.
 //
 // A script gets a JavaScript realm and nothing else: no fetch, no require, no
 // filesystem, no timers (docs/FORMAT.md §9.3).
 
-pm.test("status is 200", function () {
+test("status is 200", function () {
     pm.response.to.have.status(200);
 });
 === pets/list-pets.http ===
@@ -152,6 +165,23 @@ Content-Disposition: form-data; name="photo"; filename="rex.jpg"
 graphql-search.http
 search.http
 search-2.http
+=== search/_pre.js ===
+// Postman pre-request script for "Search", translated.
+//
+// **This runs.** It is a hook (docs/FORMAT.md §2.4), so Otis executes it
+// around the request it belongs to, exactly as Postman did.
+//
+// What was substituted:
+//
+//   1 → vars.session.set
+//
+// A Postman variable set became vars.session.set: in memory, on this machine,
+// written to no file, and visible to every request in this folder and below
+// (docs/FORMAT.md §4.5). If you meant the value to persist, vars.env.set
+// writes the active environment file — and shows up in git.
+
+// Postman wrote this into the environment; Otis keeps it in the session.
+vars.session.set("searchStartedAt", new Date().toISOString());
 === search/graphql-search.http ===
 # @name GraphQL search
 POST {{baseUrl}}/graphql
@@ -170,7 +200,7 @@ GET {{baseUrl}}/v2/search/legacy
 # @name Search
 GET {{baseUrl}}/v2/search?q=rex&api_key={{apiKey}}
 === REPORT ===
-Imported "Petstore API": 13 requests, 3 folders, 1 environments, 24 files
+Imported "Petstore API": 13 requests, 3 folders, 1 environments, 26 files
 
 Skipped (7)
   - _folder.http: secret variable "legacyToken": move it to an environment as {"$secret": "keychain"}
@@ -183,19 +213,21 @@ Skipped (7)
 
 Needs attention (9)
   - _folder.http: basic password is a literal value in the collection; move it to an environment variable
-  - _postman-post.js: test script for "Petstore API" imported as a module; nothing runs it until you port it to _post.js
-  - pets/_postman-pre.js: pre-request script for "Pets" imported as a module; nothing runs it until you port it to _pre.js
-  - pets/get-pet.postman-post.js: test script for "Get pet" imported as a module; nothing runs it until you port it to get-pet.post.js
+  - _postman-post.js: test script for "Petstore API" needs pm.expect; imported as a module, so nothing runs it until you port it to _post.js
+  - pets/_postman-pre.js: pre-request script for "Pets" needs pm.; imported as a module, so nothing runs it until you port it to _pre.js
+  - pets/get-pet.postman-post.js: test script for "Get pet" needs pm.expect; imported as a module, so nothing runs it until you port it to get-pet.post.js
   - pets/upload-photo.http: form file "photo" points at /Users/alice/Pictures/rex.jpg, a path on the exporting machine; copy the file into the collection and fix the path
   - infra-aws/s3-object-literal-keys.http: AWS secret key was a literal in the export; replaced with {{awsSecretKey}}. Set it as a keychain secret, or switch to '@auth aws profile=<name>' to use your local AWS credentials
   - infra-aws/s3-object-literal-keys.http: AWS session token was a literal in the export; replaced with {{awsSessionToken}}
   - env/petstore-dev.json: secret variables written as keychain references; their values were NOT imported and must be stored in the keychain: token, apiKey
   - pets/_postman-pre.js: Postman dynamic variable {{$guid}} has no Otis equivalent and will be reported as unresolved
 
-Notes (7)
+Notes (9)
   - pets/create-pet.http: added Content-Type: application/json (Postman sets it implicitly)
+  - pets/create-pet.post.js: test script for "Create pet" translated and will run
   - pets/update-pet-form.http: added Content-Type: application/x-www-form-urlencoded (Postman sets it implicitly)
   - pets/upload-photo.http: added Content-Type: multipart/form-data (Postman sets it implicitly)
+  - search/_pre.js: pre-request script for "Search" translated and will run
   - search/graphql-search.http: added Content-Type: application/json (Postman sets it implicitly)
   - search/search.http: API key appended to the URL as api_key=...
   - infra-aws/_folder.http: AWS auth uses explicit keys; consider '@auth aws profile=<name>' so no key material lives in the collection
