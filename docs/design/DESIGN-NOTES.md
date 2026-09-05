@@ -461,13 +461,26 @@ inside it" — as pure functions; the component is listeners and styling.
 
 Three things the design leaves open, decided there:
 
-- **The ghost is moved off the tree.** The design draws it under the cursor,
-  where it covers the rows the drop is aimed at — including the insertion
-  line, the only thing saying where the row will land. The design review
-  called that out, so ours is pinned just outside the sidebar at the pointer's
-  height and follows it vertically. HTML5 drag-and-drop could not do this at
-  all: the browser draws its drag image under the cursor and does not offer
-  the choice, which is why the interaction is built on pointer events.
+- **The ghost trails the pointer, down and to the right** — 14px across, 12px
+  down, clamped so a drag near an edge cannot push it off the window.
+
+  It was *pinned outside the sidebar* at first, moving only vertically. The
+  design review's finding was real — a preview under the cursor covers the
+  rows the drop is aimed at, including the insertion line, which is the only
+  thing saying where the row will land — but that was the wrong answer to it.
+  A ghost that does not track the pointer horizontally reads as a rendering
+  bug rather than a considered choice, and it was reported as one: "the
+  dragged item is not positioned where the mouse pointer is, showing like
+  100px to the right, almost aligned to the beginning of the center panel."
+
+  The offset is the answer, and it is what every file manager does. Down and
+  right leaves the cursor tip, the row under it and the boundary above it
+  uncovered — the insertion line sits above the ghost's top edge and reads
+  clearly — while the ghost still looks attached to the hand moving it.
+
+  HTML5 drag-and-drop could do neither: the browser draws its drag image under
+  the cursor and does not offer the choice, which is why the interaction is
+  built on pointer events.
 - **One indicator at a time.** Between two rows it is the accent top border;
   on a folder row's middle 40% it is an accent ring on that folder and *no*
   line, because the drop appends into it rather than landing at a position.

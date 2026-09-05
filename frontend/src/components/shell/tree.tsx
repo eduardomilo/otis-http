@@ -333,7 +333,7 @@ export function Tree({
       </ContextMenuTrigger>
 
       <RowMenu node={menuTarget} onCreate={onCreate} />
-      {drag?.armed ? <DragGhost node={drag.node} x={drag.x} y={drag.y} scroller={scroller} /> : null}
+      {drag?.armed ? <DragGhost node={drag.node} x={drag.x} y={drag.y} /> : null}
     </ContextMenu>
   );
 }
@@ -347,35 +347,41 @@ function lineFor(drop: Drop | null, path: string): "above" | "below" | null {
 /**
  * The 216×24 ghost of screen 2a: a grip glyph, the method label and the name.
  *
- * Pinned just outside the sidebar at the pointer's height rather than under
- * the cursor. The design review's finding was that a preview under the cursor
- * hides the rows the drop is aimed at — including the insertion line, which is
- * the only thing telling you where the row will land — so it is moved clear of
- * the tree entirely and follows the pointer vertically. `pointer-events-none`
- * so it can never eat the drop.
+ * It follows the pointer, offset down and to the right.
+ *
+ * It used to be pinned just outside the sidebar at the pointer's height,
+ * moving only vertically — an answer to the design review's finding that a
+ * preview under the cursor hides the rows the drop is aimed at, including the
+ * insertion line. That is a real problem and this was the wrong fix: a ghost
+ * that does not track the pointer horizontally reads as a rendering bug, not
+ * as a considered choice. It was reported as one — "the dragged item is not
+ * positioned where the mouse pointer is, showing like 100px to the right".
+ *
+ * The offset is the actual answer to the original finding, and it is what
+ * every file manager does: down and right of the cursor leaves the pointer
+ * tip, the row it is over and the boundary above it uncovered, while the ghost
+ * still reads as attached to the hand moving it. `pointer-events-none` so it
+ * can never eat the drop.
  *
  * A portal because the scroller has `overflow-y: auto`: a fixed element inside
  * it is still clipped by it.
  */
-function DragGhost({
-  node,
-  x,
-  y,
-  scroller,
-}: {
-  node: Node;
-  x: number;
-  y: number;
-  scroller: React.RefObject<HTMLDivElement | null>;
-}) {
-  const box = scroller.current?.getBoundingClientRect();
-  // Just right of the sidebar, unless the sidebar is so wide that would leave
-  // the window — then just left of the pointer, which is the lesser evil.
-  const left = box ? Math.min(box.right + 8, window.innerWidth - 224) : x + 16;
+/** How far the ghost trails the pointer. Enough to leave the cursor tip and
+ *  the row boundary above it readable; small enough to stay attached. */
+const GHOST_OFFSET_X = 14;
+const GHOST_OFFSET_Y = 12;
+const GHOST_WIDTH = 216;
+const GHOST_HEIGHT = 24;
+
+function DragGhost({ node, x, y }: { node: Node; x: number; y: number }) {
+  // Clamped so a drag near the right or bottom edge does not push it off the
+  // window, where it would look like it had vanished mid-drag.
+  const left = Math.min(x + GHOST_OFFSET_X, window.innerWidth - GHOST_WIDTH - 8);
+  const top = Math.min(y + GHOST_OFFSET_Y, window.innerHeight - GHOST_HEIGHT - 8);
   return createPortal(
     <div
       aria-hidden
-      style={{ left, top: y - 12 }}
+      style={{ left, top }}
       className="pointer-events-none fixed z-50 flex h-6 w-[216px] items-center gap-1.5 rounded-sm border border-border-control bg-raised px-1.5 shadow-[0_8px_24px_rgba(0,0,0,.5)]"
     >
       <GripVertical className="size-3 shrink-0 text-fg-ghost" />
