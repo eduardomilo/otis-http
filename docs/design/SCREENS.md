@@ -275,8 +275,10 @@ credentials and progress; the Postman import flow and where its report is
 shown (Phase A produces a substantial one); what "Start fresh" scaffolds;
 where recents are stored, given the ban on browser storage.
 
-Two of the four entry points (Clone, Start fresh) are not in the A–E plan;
-see DESIGN-NOTES §9.9.
+All four entry points are built. Clone and Start fresh were the two outside
+the A–E plan (DESIGN-NOTES §9.9); §9.39 records what each does, including the
+`git init` in this screen's own example line that Otis deliberately does not
+run — the line reads `mkdir .requests` now.
 
 ---
 

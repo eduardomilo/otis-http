@@ -47,6 +47,8 @@ export const OtisEvent = {
   RunComplete: "run:complete",
   /** Emitted when a line was added to the activity log, or it was cleared. Payload: LogEntry, zero-valued for a clear. */
   LogAppended: "log:appended",
+  /** Emitted for each line git writes while cloning a repository into a new collection. Payload: the line, verbatim. */
+  CloneProgress: "clone:progress",
 } as const;
 
 export type OtisEventName = (typeof OtisEvent)[keyof typeof OtisEvent];

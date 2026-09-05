@@ -16,6 +16,7 @@ import * as RequestService from "./requestservice.js";
 import * as ScriptService from "./scriptservice.js";
 import * as SendService from "./sendservice.js";
 import * as SettingsService from "./settingsservice.js";
+import * as StartService from "./startservice.js";
 export {
     AppService,
     CollectionService,
@@ -31,7 +32,8 @@ export {
     RequestService,
     ScriptService,
     SendService,
-    SettingsService
+    SettingsService,
+    StartService
 };
 
 export {
@@ -88,6 +90,8 @@ export type {
     SendStarted,
     SentHeader,
     SentRequest,
+    StartDefaults,
+    StartResult,
     Timings,
     Tree,
     VariableRef,

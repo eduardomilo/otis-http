@@ -1579,6 +1579,51 @@ export interface SentRequest {
 }
 
 /**
+ * StartDefaults is what the two dialogs need before they can be drawn.
+ */
+export interface StartDefaults {
+    /**
+     * Parent is the directory the dialogs start pointing at: the last
+     * collection's own parent, so the second collection lands beside the
+     * first, and the home directory before there is one.
+     */
+    "parent": string;
+
+    /**
+     * Name is the conventional collection directory name.
+     */
+    "name": string;
+
+    /**
+     * CloneBlocked is why cloning is not possible on this machine, or "".
+     * The card is disabled and says this rather than failing on click.
+     */
+    "cloneBlocked": string;
+}
+
+/**
+ * StartResult is where a new collection landed.
+ */
+export interface StartResult {
+    /**
+     * Root is the collection that is now open.
+     */
+    "root": string;
+
+    /**
+     * NodePath is a node worth showing, relative to the root, or "" when
+     * there is nothing in particular to open.
+     */
+    "nodePath": string;
+
+    /**
+     * Note is a sentence for the window when the outcome needs one — a clone
+     * that worked but held no `.http` files, say. Empty on the ordinary path.
+     */
+    "note": string;
+}
+
+/**
  * Timings is the exchange broken down, in milliseconds. Zero means "not
  * observed" — DNS and connect are zero on a reused connection.
  */

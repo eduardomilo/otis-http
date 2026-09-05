@@ -89,6 +89,7 @@ func init() {
 	application.RegisterEvent[services.MCPResolved](events.MCPConfirmResolved)
 	application.RegisterEvent[services.MCPStatus](events.MCPChanged)
 	application.RegisterEvent[services.LogEntry](events.LogAppended)
+	application.RegisterEvent[string](events.CloneProgress)
 }
 
 // runGUI opens the window. openPath is a file or directory to show, or "" to
@@ -172,6 +173,13 @@ func runGUI(openPath string) {
 			// only on a confirmation, which is why it is a service rather
 			// than a binding straight onto internal/importer/postman.
 			application.NewService(services.NewImportService(collections, dialogs)),
+			// The two remaining cards on the start screen: creating an empty
+			// collection, and cloning a repository into one. It runs the
+			// user's own git in a subprocess and never holds a credential
+			// (internal/gitclone), and it does not run `git init` —
+			// internal/diff stays the only thing here that writes to a
+			// repository.
+			application.NewService(services.NewStartService(collections, dialogs, environmentSvc)),
 			application.NewService(services.NewScriptService(collections)),
 			application.NewService(services.NewOrderService(collections)),
 			// Where a failure with nowhere else to go ends up, so that a

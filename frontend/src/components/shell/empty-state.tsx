@@ -1,6 +1,8 @@
-
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { CloneDialog } from "@/components/shell/clone-dialog";
+import { NewCollectionDialog } from "@/components/shell/new-collection-dialog";
 import { buildLabel, useBuildInfo } from "@/hooks/use-build-info";
 import { hint } from "@/lib/platform";
 import { cn } from "@/lib/utils";
@@ -8,19 +10,34 @@ import type { Recent } from "@bindings/internal/settings";
 import { ImportDialog } from "@/components/shell/import-dialog";
 import { useImportFlow } from "@/hooks/use-import-flow";
 import { useCollection } from "@/state/collection-context";
+import { useLog } from "@/state/log-context";
 import { useRecents } from "@/state/use-recents";
+import { StartService } from "@bindings/internal/services";
+import type { StartDefaults } from "@bindings/internal/services";
 
 /**
  * First launch, no collection open (screen 2b).
  *
  * One 720px column: a headline, four starter cards in a 2x2 grid, the recent
- * list, and a footer. Only "Open folder" is wired — Clone and Start fresh are
- * not in the A–E plan at all (DESIGN-NOTES §9.9) and the Postman import,
- * which exists as a CLI command, has no GUI flow yet.
+ * list, and a footer. All four are wired — Clone and Start fresh were marked
+ * `soon` because neither was in the A–E plan (DESIGN-NOTES §9.9); §9.39 is
+ * what they turned out to be.
  */
 export function EmptyState() {
   const { openViaDialog, open, error } = useCollection();
   const build = useBuildInfo();
+  const { log } = useLog();
+  // What the two dialogs need before they can be drawn: where to start
+  // looking, the conventional folder name, and whether this machine has a git
+  // to clone with. Read once — none of it changes while this screen is up,
+  // because a collection opening is what replaces the screen.
+  const [defaults, setDefaults] = useState<StartDefaults | null>(null);
+  const [starting, setStarting] = useState<"new" | "clone" | null>(null);
+  useEffect(() => {
+    StartService.Defaults()
+      .then((value) => setDefaults(value ?? null))
+      .catch((cause: unknown) => log("Could not read the start defaults", String(cause)));
+  }, [log]);
   // The start screen is the one place an import becomes a *new* collection,
   // so it starts the flow itself: AppShell does not exist while this is on
   // screen.
@@ -57,9 +74,14 @@ export function EmptyState() {
           <StarterCard
             title="Clone repository"
             shortcut={hint("O", true)}
-            description="Clone a git repo and open its collection. Pulls and pushes work like any other checkout."
+            description={
+              defaults?.cloneBlocked ||
+              "Clone a git repo and open its collection. Your own git does the authenticating; Otis never asks for a password."
+            }
             example="git@github.com:org/api-requests.git"
-            soon
+            disabled={Boolean(defaults?.cloneBlocked)}
+            note={defaults?.cloneBlocked ? "no git" : undefined}
+            onClick={() => setStarting("clone")}
           />
           <StarterCard
             title="Import from Postman"
@@ -72,8 +94,8 @@ export function EmptyState() {
             title="Start fresh"
             shortcut={hint("N")}
             description="Create an empty collection folder with one example request and a local environment."
-            example="mkdir .requests && git init"
-            soon
+            example="mkdir .requests"
+            onClick={() => setStarting("new")}
           />
         </div>
 
@@ -105,17 +127,48 @@ export function EmptyState() {
         }}
       />
 
+      {/* Both of these open the collection in Go before they return, which is
+          what replaces this screen with the shell — so neither has anything
+          to navigate to. A note is the one thing worth carrying out: a clone
+          that worked but held no .http files has an outcome the tree cannot
+          explain by itself. */}
+      <NewCollectionDialog
+        open={starting === "new"}
+        defaults={defaults}
+        onClose={() => setStarting(null)}
+        onCreated={(result) => {
+          if (result.note) log(result.note, "");
+        }}
+      />
+      <CloneDialog
+        open={starting === "clone"}
+        defaults={defaults}
+        onClose={() => setStarting(null)}
+        onCloned={(result) => {
+          if (result.note) log(result.note, "");
+        }}
+      />
     </div>
   );
 }
 
+/**
+ * One starter card.
+ *
+ * `note` is the small label beside the shortcut. It used to be the word
+ * "soon", hard-coded, for the two cards that were not built; now that they
+ * are, the only thing that can disable a card is the machine — no git on
+ * PATH — and the label says which, because "soon" for something that is
+ * finished would be a lie about the app rather than a fact about the machine.
+ */
 function StarterCard({
   title,
   shortcut,
   description,
   example,
   highlighted,
-  soon,
+  disabled,
+  note,
   onClick,
 }: {
   title: string;
@@ -123,24 +176,25 @@ function StarterCard({
   description: string;
   example: string;
   highlighted?: boolean;
-  soon?: boolean;
+  disabled?: boolean;
+  note?: string;
   onClick?: () => void;
 }) {
   return (
     <button
       type="button"
-      disabled={soon}
+      disabled={disabled}
       onClick={onClick}
       className={cn(
         "flex flex-col gap-2 rounded-md border px-4 py-3.5 text-left",
         highlighted ? "border-primary" : "border-border-control",
-        soon ? "cursor-default opacity-60" : "hover:bg-control",
+        disabled ? "cursor-default opacity-60" : "hover:bg-control",
       )}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-result text-fg-emphasis">{title}</span>
         <span className="flex items-center gap-2">
-          {soon ? <span className="text-meta text-fg-faint">soon</span> : null}
+          {note ? <span className="text-meta text-fg-faint">{note}</span> : null}
           <span className="rounded-sm border border-border-control px-1 font-mono text-label text-fg-faint">
             {shortcut}
           </span>

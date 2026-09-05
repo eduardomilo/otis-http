@@ -16,6 +16,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "app:ready": string;
+            "clone:progress": string;
             "collection:changed": services$0.Tree;
             "collection:open-requested": void;
             "collection:opened": services$0.CollectionInfo;

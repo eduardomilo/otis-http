@@ -12,6 +12,19 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 /**
+ * OpenCollectionParent shows the directory picker for where a *new* collection
+ * should be created or cloned — the folder that will contain it, not the
+ * collection itself, which does not exist yet.
+ * 
+ * One picker for both of screen 2b's remaining cards. They ask the same
+ * question and the name is typed in the dialog either way, so a second
+ * method here would differ only in its title.
+ */
+export function OpenCollectionParent(): $CancellablePromise<string> {
+    return $Call.ByID(467015268);
+}
+
+/**
  * OpenDirectory shows the native directory picker and returns the chosen
  * absolute path. Cancelling returns "" with no error: the user declining is
  * not a failure, and every caller has to handle the empty string anyway.

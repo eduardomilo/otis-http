@@ -31,6 +31,7 @@ func TestRegistryCoversEveryConstant(t *testing.T) {
 		"MCPConfirmResolved":      MCPConfirmResolved,
 		"MCPChanged":              MCPChanged,
 		"LogAppended":             LogAppended,
+		"CloneProgress":           CloneProgress,
 	}
 	if len(Registry) != len(want) {
 		t.Fatalf("Registry has %d entries, want %d", len(Registry), len(want))

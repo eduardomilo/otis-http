@@ -74,3 +74,25 @@ func (s *DialogService) OpenImportDestination() (string, error) {
 	}
 	return dialog.PromptForSingleSelection()
 }
+
+// OpenCollectionParent shows the directory picker for where a *new* collection
+// should be created or cloned — the folder that will contain it, not the
+// collection itself, which does not exist yet.
+//
+// One picker for both of screen 2b's remaining cards. They ask the same
+// question and the name is typed in the dialog either way, so a second
+// method here would differ only in its title.
+func (s *DialogService) OpenCollectionParent() (string, error) {
+	dialog := s.app.Dialog.OpenFile().
+		SetTitle("Choose a location").
+		SetMessage("Choose the folder to create the collection in").
+		SetButtonText("Choose").
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		CanCreateDirectories(true).
+		ResolvesAliases(true)
+	if w := s.app.Window.Current(); w != nil {
+		dialog = dialog.AttachToWindow(w)
+	}
+	return dialog.PromptForSingleSelection()
+}

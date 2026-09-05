@@ -637,10 +637,11 @@ gives: `_folder.http` declares committed variables, and `vars.folder.set`
 reads as setting one of those. Screen 3a's Script API table is therefore one
 row different from what shipped.
 
-**9.9 Two features in the empty state are not in any phase.** "Clone
-repository" (git clone with credentials) and "Start fresh" (`mkdir` + `git
-init`) appear as first-class entry points on screen 2b but are not in the
-A–E plan.
+**9.9 Two features in the empty state are not in any phase — resolved in
+§9.39.** "Clone repository" (git clone with credentials) and "Start fresh"
+(`mkdir` + `git init`) appeared as first-class entry points on screen 2b and
+were not in the A–E plan. Both are built now; §9.39 records what each turned
+out to be, including the half of "Start fresh" that Otis does not do.
 
 **9.10 Minor: dead values in the source.** Two ternaries in the document
 resolve to the same value on both branches — the `lib` folder color in 3a
@@ -1577,3 +1578,77 @@ it; a panel about a row that is not on screen is a panel about nothing. The
 filter is cleared when the route moves to another environment, because a term
 typed against one file would otherwise open the next one already hiding most
 of it.
+
+**9.39 "Clone repository" and "Start fresh", the two cards that said `soon`.**
+Screen 2b draws four entry points and two of them were disabled, because
+neither was in the A–E plan (§9.9). What they turned out to be:
+
+**Start fresh writes three files and does not run `git init`.** The card's
+example line reads `mkdir .requests && git init`, and only the first half of
+that happens. `internal/git` is read-only and `internal/diff` is the only
+thing in Otis that writes to a repository; creating one would be a third
+writer, with no review in front of it, doing something that is one command in
+a terminal. A collection made inside a repository is versioned already, which
+is the common case, and one made outside is a directory of files — which
+VISION.md says is a perfectly good thing to be. The example line now reads
+`mkdir .requests`, and the dialog says so in a sentence rather than leaving it
+to be discovered when the changes view reports no repository.
+
+What it does write is `collection.Scaffold`: `_folder.http`, `env/local.json`
+and `example.http`, listed in the dialog before it happens (§8.2). Three
+decisions inside that:
+
+- **The `.http` files go through Go's serializer**, built as parsed models
+  rather than typed as strings. Otherwise the very first save of a brand-new
+  collection would reformat a file nobody had edited.
+- **The `_folder.http` declares nothing, and cannot.** Its first draft carried
+  commented-out examples — `# @auth bearer {{apiToken}}` — which is not a
+  comment: `@` after the marker is what *makes* a directive (FORMAT.md §3), so
+  every new collection would have shipped live auth pointed at a variable
+  nothing defines. The guidance is prose now, and a test parses the file and
+  asserts it declares no directives, no variables and no headers.
+- **The new environment is made active, and the example opens.** `{{baseUrl}}`
+  resolves to nothing otherwise, so the first thing a new collection did would
+  be to fail, with the fix sitting unselected in a menu nobody has found yet.
+  The example is shown through `CollectionService.OpenPath`, the same pending-
+  open the file association uses (§CLAUDE.md), because the start screen is
+  unmounted by the time there is a window to navigate.
+
+**Clone runs the user's own git in a subprocess, and Otis never sees a
+credential.** There is no password field on that dialog and there must never
+be one. Their SSH agent, `~/.gitconfig` and credential helper already know how
+to authenticate, so a private repository clones exactly as it does in their
+terminal — and a Go git library would mean the opposite, with Otis collecting
+and holding a token, which is the line VISION.md draws under secrets.
+
+The subprocess also **cannot prompt**, which matters more than it sounds: a
+GUI app has no terminal, so a `git` that decided to ask for a password would
+block forever with nothing on screen. `GIT_TERMINAL_PROMPT=0` and ssh's
+`BatchMode=yes` turn the worst available outcome — a silent hang — into an
+immediate failure that says to clone it in a terminal and use Open folder.
+`ext::` URLs are refused outright: that transport runs a command the URL
+names, and a clone URL is exactly the sort of string that arrives by paste.
+
+git's output is streamed to the dialog as `clone:progress`, because a clone of
+anything real takes long enough that an empty dialog looks broken. Nothing is
+kept: the last six lines are on screen and they go with the dialog. A failed
+or cancelled clone removes the half-written directory, because the next thing
+a person does is try the same name again.
+
+Afterwards the collection is looked for *inside* the clone
+(`collection.FindWithin`), one level down and no deeper. `FindRoot` walks up
+from a file, which is the wrong question here; a repository whose whole
+content is the collection answers immediately, and `.requests` beside the code
+is the other case worth handling. A clone with nothing collection-shaped in it
+still opens, with a sentence in the activity log saying what was and was not
+found.
+
+**The two dialogs are the first non-`ui/` components with an `sm:` in them.**
+`DialogContent` caps itself at `sm:max-w-sm`, so widening it takes an `sm:` of
+its own; three labelled fields and an absolute path do not fit in 384px. The
+constraint that reserves breakpoints for `components/ui/` is about layouts
+inside a resizable pane, and a dialog is measured against the viewport — which
+is the exemption the constraint already names. They also set
+`grid-cols-[minmax(0,1fr)]`: the primitive is a grid, an implicit track is
+`auto`, and an `auto` track grows to its content, so an absolute path made the
+row wider than the panel and painted outside it instead of wrapping.

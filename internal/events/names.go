@@ -180,6 +180,15 @@ const (
 	// something is going wrong.
 	LogAppended = "log:appended"
 
+	// CloneProgress is emitted for each line git writes while cloning a
+	// repository into a new collection. Payload: the line, verbatim.
+	//
+	// Its own event and not the activity log: the log is where a failure
+	// goes and is per-session, while this is a running commentary that stops
+	// meaning anything the moment the dialog closes. Nothing is kept — the
+	// window shows the last lines and drops them with the dialog.
+	CloneProgress = "clone:progress"
+
 	// MCPChanged is emitted when the agent server's state changed: enabled,
 	// disabled, a capability flipped, a client connected, or a call recorded.
 	// Payload: services.MCPStatus.
@@ -226,4 +235,5 @@ var Registry = []Entry{
 	{"RunResult", RunResult, "Emitted as each request in a folder run finishes. Payload: RunResult."},
 	{"RunComplete", RunComplete, "Emitted when a folder run ends, however it ended. Payload: RunComplete."},
 	{"LogAppended", LogAppended, "Emitted when a line was added to the activity log, or it was cleared. Payload: LogEntry, zero-valued for a clear."},
+	{"CloneProgress", CloneProgress, "Emitted for each line git writes while cloning a repository into a new collection. Payload: the line, verbatim."},
 }

@@ -109,6 +109,14 @@ lists the design decisions that are still open — do not resolve them silently.
   the boundary, and a tool cannot reach what is not on it — which is how
   docs/MCP.md §12's "not exposed, on purpose" list is enforced rather than
   remembered.
+- `internal/gitclone/` — `git clone` in a subprocess, and nothing else. It is
+  not part of `internal/git` on purpose: that package is read-only and says
+  so, and the claim is about the collection you have open. Cloning runs the
+  **user's own git**, so their SSH agent and credential helper authenticate
+  and no credential passes through Otis — and it is configured so git *cannot
+  prompt* (`GIT_TERMINAL_PROMPT=0`, ssh `BatchMode=yes`), because a GUI app
+  has no terminal and a prompt there is a silent hang. `ext::` URLs are
+  refused: that transport runs a command the URL names.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -126,6 +134,11 @@ lists the design decisions that are still open — do not resolve them silently.
   everybody's prettier config in a diff. It also says what a script *is*
   (folder hook, request hook, module), which comes entirely from its name
   (docs/FORMAT.md §2.4).
+- `internal/services/start.go` — screen 2b's other two cards: `Create` writes
+  `collection.Scaffold` into a new directory and opens it, `Clone` runs
+  `internal/gitclone` and opens the collection it finds inside the checkout.
+  It does **not** run `git init` — `internal/diff` stays the only thing here
+  that writes to a repository (DESIGN-NOTES §9.39).
 - `internal/services/log.go` — the activity log: what Otis tried and could
   not do, so that a failure has somewhere to go. `LogEntry` has a message, a
   source and the error, and nowhere to put a payload — same reasoning as
@@ -165,7 +178,9 @@ lists the design decisions that are still open — do not resolve them silently.
     `activity-log` (the status bar's log popover, §9.33) and
     `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
-    it). One component per file, named after it.
+    it), and screen 2b's other two entry points — `new-collection-dialog`,
+    `clone-dialog` and the `location-field` they share (§9.39). One component
+    per file, named after it.
   - `components/script/` — the centre pane for `/s/$path`: `script-editor`, a
     CodeMirror in `javascript` mode over the file's text, with a header
     saying in a sentence what runs it. DESIGN-NOTES §9.34.
@@ -219,7 +234,9 @@ lists the design decisions that are still open — do not resolve them silently.
     `http-file` (immutable edits to a parsed `.http` model), `variables`
     (`{{name}}` tokenizing and styling), `query` (the URL's query string as
     table rows), `json` (pretty-printing a body that contains references),
-    `format` (durations, byte sizes and status-code colours), `json-tokens`
+    `errors` (a rejected binding call as a sentence, without the bridge's
+    `RuntimeError:` in front of it), `format` (durations, byte sizes and
+    status-code colours), `json-tokens`
     (colouring a line of JSON that Go already indented), `drag` (where a
     dragged row would land, as pure functions), `fuzzy` (the palette's
     matcher, which returns matched character *positions* rather than a boolean,
@@ -653,6 +670,16 @@ lists the design decisions that are still open — do not resolve them silently.
   (docs/FORMAT.md §2.2). `order.go` remains the only writer.
   `TestCreatingARequestOrFolderDoesNotTouchTheOrderFile` asserts the file is
   *byte*-identical through both.
+- **A scaffolded `_folder.http` may not contain a directive, even a
+  commented one.** `collection.Scaffold` is what a new collection is created
+  with, and its first draft carried `# @auth bearer {{apiToken}}` as an
+  "example" — which is a live directive, because `@` after the comment marker
+  is exactly what makes one (docs/FORMAT.md §3). Every new collection would
+  have sent `Authorization: Bearer` at a variable nothing defines.
+  `TestScaffoldDeclaresNothing` parses the file and asserts it declares no
+  directives, no variables and no headers; `TestScaffoldRoundTrips` asserts
+  every `.http` it writes re-serializes byte for byte, because a scaffold one
+  space off canonical form is a diff on somebody's first save.
 - **A new folder always gets a `_folder.http`.** Git does not track an empty
   directory, so a folder created without a file in it vanishes on the next
   clone or checkout and the collection silently differs between two people.
@@ -680,8 +707,15 @@ lists the design decisions that are still open — do not resolve them silently.
   *viewport* rule, so on a 1512px window it split into two columns while the
   centre pane was 735px wide — leaving the left column ~275px and clipping its
   fields. It is `@container` plus `@min-[800px]:` now. Only the shadcn
-  primitives in `components/ui/` may use `sm:`/`md:`/`lg:`, and only because a
-  dialog is positioned against the viewport rather than inside a pane.
+  primitives in `components/ui/` may use `sm:`/`md:`/`lg:` — with one
+  exception, and it is the same exemption: a **dialog's own width**, wherever
+  it is set. `DialogContent` caps itself at `sm:max-w-sm`, so a dialog that
+  needs to be wider has to out-specify that with an `sm:` of its own; a dialog
+  is measured against the viewport and never sits inside a pane.
+  `new-collection-dialog` and `clone-dialog` are the two. They also set
+  `grid-cols-[minmax(0,1fr)]`, because the primitive is a grid and an implicit
+  `auto` track grows to its content — an absolute path made the row wider than
+  the panel and painted outside it.
 
 - **A Postman import plans before it writes, and lands in one of two places.**
   `internal/services/import.go` is the window's half of
