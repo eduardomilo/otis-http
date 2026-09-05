@@ -15,7 +15,7 @@ import (
 	"github.com/otis-http/otis/internal/resolve"
 )
 
-// Capability is one of the three switches, all off by default
+// Capability is one of the four switches, all off by default
 // (docs/MCP.md §3).
 type Capability string
 
@@ -23,15 +23,22 @@ const (
 	CapRead  Capability = "read"
 	CapRun   Capability = "run"
 	CapWrite Capability = "write"
+	// CapSession grants set_session_variable and nothing else (§8.1). It is
+	// separate from CapRun although chaining a flow is what it is for: a
+	// session value outranks the committed layer it sits beside
+	// (docs/FORMAT.md §4.2), so granting it is a different decision from
+	// granting sends, and refusable on its own.
+	CapSession Capability = "session"
 )
 
 // Grants is what the person has turned on, per machine. It is never read from
 // the collection: whether *you* let an agent drive your machine is not a fact
 // about the repository.
 type Grants struct {
-	Read  bool
-	Run   bool
-	Write bool
+	Read    bool
+	Run     bool
+	Write   bool
+	Session bool
 	// AlwaysConfirmSends makes every send ask, including against an
 	// environment marked "allow". On by default (docs/MCP.md §4 rule 4).
 	//
@@ -50,6 +57,8 @@ func (g Grants) Holds(c Capability) bool {
 		return g.Run
 	case CapWrite:
 		return g.Write
+	case CapSession:
+		return g.Session
 	}
 	return false
 }

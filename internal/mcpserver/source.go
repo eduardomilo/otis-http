@@ -59,6 +59,51 @@ type Source interface {
 	TestResults(sendID string) (TestsView, *mcp.Redactor, error)
 }
 
+// A Sessions is the boundary for docs/MCP.md 8.1's session write.
+//
+// Separate from Source for the reason every boundary here is separate: it is
+// reachable only while the SESSION capability is granted, and an interface a
+// tool cannot see is a tool that cannot be written by accident.
+//
+// Both methods gather the evidence rule 1 needs and hand it to
+// mcp.CheckSessionWrite. Both, and not just the write: the check runs at
+// *redeem* against the scope as it stands then, so a name that became defined
+// between the two phases is refused.
+type Sessions interface {
+	// SessionTarget describes what a proposed write would do, without doing
+	// it: what it would shadow, and how many requests below would resolve it.
+	// Rule 1's refusal comes back as an error when the name is taken.
+	SessionTarget(folder, name string) (SessionTargetView, *mcp.Redactor, error)
+
+	// SetSessionVariable writes it, re-checking rule 1 first.
+	SetSessionVariable(folder, name, value string) (SessionSetView, *mcp.Redactor, error)
+}
+
+// SessionTargetView is set_session_variable's phase 1.
+type SessionTargetView struct {
+	Folder string `json:"folder"`
+	Name   string `json:"name"`
+	// Reaches is how many requests in that folder and below would resolve the
+	// name - the blast radius, and an exact count like every other count in
+	// Otis.
+	Reaches int `json:"reaches"`
+	// Environment is the active environment's name, "" for none. It is what
+	// the confirmation names.
+	Environment string `json:"environment"`
+	// Agents is the environment's committed $otis.agents policy, which is
+	// where a "deny" comes from. It travels with the target so the decision
+	// stays a pure function over evidence rather than a second lookup.
+	Agents string `json:"-"`
+}
+
+// SessionSetView is set_session_variable's phase 2.
+type SessionSetView struct {
+	Set    bool   `json:"set"`
+	Folder string `json:"folder"`
+	Name   string `json:"name"`
+	Scope  string `json:"scope"`
+}
+
 // A Grantor answers what the agent is currently allowed to do.
 //
 // Separate from Source because the grants change while the server runs — the

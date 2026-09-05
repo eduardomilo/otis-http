@@ -38,6 +38,9 @@ type Options struct {
 	// nowhere to happen, and every call needing one fails — which is the
 	// correct behaviour, not a reason to fall back to the client.
 	Asker Asker
+	// Sessions is the SESSION boundary (docs/MCP.md §8.1). Nil means the tool
+	// is not offered at all.
+	Sessions Sessions
 	// Audit is where every call is recorded. Required: a server that cannot
 	// record is not one this package will start.
 	Audit *mcp.Log
@@ -48,12 +51,13 @@ type Options struct {
 
 // A Server is the loopback MCP listener and the tools on it.
 type Server struct {
-	source Source
-	sender Sender
-	writer Writer
-	asker  Asker
-	grants Grantor
-	audit  *mcp.Log
+	source   Source
+	sender   Sender
+	writer   Writer
+	sessions Sessions
+	asker    Asker
+	grants   Grantor
+	audit    *mcp.Log
 
 	auth    *mcp.Auth
 	limits  *mcp.Limiter
@@ -91,6 +95,7 @@ func New(opts Options) (*Server, error) {
 		source:       opts.Source,
 		sender:       opts.Sender,
 		writer:       opts.Writer,
+		sessions:     opts.Sessions,
 		asker:        opts.Asker,
 		grants:       opts.Grants,
 		audit:        opts.Audit,

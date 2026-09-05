@@ -27,6 +27,10 @@ var rates = map[Capability]rate{
 	CapRead:  {perSecond: 10, burst: 30},
 	CapRun:   {perSecond: 1, burst: 5},
 	CapWrite: {perSecond: 2, burst: 10},
+	// SESSION is paced like RUN rather than like WRITE: a session write is
+	// what a flow does between sends, so its natural rate is the send rate,
+	// and each one asks a person anyway.
+	CapSession: {perSecond: 1, burst: 5},
 }
 
 // A Limiter is the token buckets for one running app.

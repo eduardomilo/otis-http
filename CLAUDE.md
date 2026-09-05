@@ -397,6 +397,30 @@ lists the design decisions that are still open — do not resolve them silently.
   error**, because an error can carry a resolved URL and a resolved URL can
   carry a credential in a query parameter; with no redactor the framework
   substitutes a fixed message rather than guessing that the error was safe.
+- **A session write may not take a name the collection defines.**
+  docs/FORMAT.md §4.2 puts a session value *above* the folder's own
+  `_folder.http`, every `_folder.http` above it, and the environment — so an
+  unconstrained `set_session_variable` would be an environment write by
+  another name, and it would defeat §5's review gate without touching a file:
+  a committed, clean, credential-bearing request would go wherever the agent
+  pointed it with `git status` reporting nothing. `mcp.CheckSessionWrite`
+  refuses any name those three scopes declare, and `agentBridge.SessionTarget`
+  gathers exactly those three and no more — a request file's own `@var` and a
+  `_folder.http` nearer the request both *outrank* a session value, so
+  refusing them would be friction with no safety. It is a rule and not a
+  dialog because §13 says a dialog is only as good as its reading. The check
+  runs again inside `SetSessionVariable`, because a person's decision happens
+  between the two. docs/MCP.md §8.1.
+- **A session write always asks, and `"allow"` does not skip it.** A session
+  value is in no file, so git cannot vouch for it, so it is permanently
+  unreviewed — and §5's rule is that anything unreviewed asks a person in
+  Otis' own window. `mcp.DecideSessionWrite` has no Proceed path for that
+  reason.
+- **`SendService.setSessionValue` is unexported and has one caller.** Wails
+  binds every exported method to the window, and the window has no business
+  setting a session variable: a person edits `_folder.http`, which is
+  reviewable, and a run sets one through a script. The agent bridge is the
+  exception §8.1 argues for, gated by a capability, a rule and a person.
 - **Nothing sends on one tool call, and the intent is bound to a fingerprint.**
   `send_request` and `run_folder` without an intent preview and send nothing;
   with the intent handed back they go on to ask a person. Being universal is

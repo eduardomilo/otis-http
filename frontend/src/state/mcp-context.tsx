@@ -47,7 +47,7 @@ interface MCPContextValue {
   resolvedReason: string | null;
   answer: (id: string, approve: boolean) => Promise<void>;
   setEnabled: (on: boolean) => Promise<void>;
-  setCapability: (name: "read" | "run" | "write", on: boolean) => Promise<void>;
+  setCapability: (name: "read" | "run" | "write" | "session", on: boolean) => Promise<void>;
   setAlwaysConfirmSends: (on: boolean) => Promise<void>;
   setPersistAuditLog: (on: boolean) => Promise<void>;
   disconnect: () => Promise<void>;

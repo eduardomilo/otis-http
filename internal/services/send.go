@@ -654,6 +654,23 @@ func (s *SendService) SessionVars() []resolve.SessionValue {
 	return out
 }
 
+// setSessionValue writes one session variable.
+//
+// Unexported, and it has exactly one caller: the agent bridge's
+// SetSessionVariable (docs/MCP.md §8.1). It is not on SendService's exported
+// surface because Wails would bind it to the window, and the window has no
+// business setting one — a person edits `_folder.http`, which is reviewable,
+// and a run sets a session value through a script. The comment on SessionVars
+// above says there is no setter; this is the exception §8.1 argues for, gated
+// by a capability, a rule and a person.
+func (s *SendService) setSessionValue(v resolve.SessionValue) {
+	if v.At.IsZero() {
+		v.At = time.Now()
+	}
+	s.vars.Set(v)
+	s.emit(events.SessionVarsChanged, nil)
+}
+
 // SessionScope returns the variables a run set for one scope and owner: a
 // folder's node ID, or an environment's name (docs/FORMAT.md §4.5).
 //

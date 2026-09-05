@@ -356,6 +356,7 @@ func sendOf(p Prepared) mcp.Send {
 // confirmationFor is what a person is shown.
 func (s *Server) confirmationFor(toolName string, ctx context.Context, p Prepared) Confirmation {
 	return Confirmation{
+		Kind:        ConfirmSend,
 		Tool:        toolName,
 		Client:      s.clientName(ctx),
 		Path:        p.Path,

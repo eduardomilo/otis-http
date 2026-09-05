@@ -103,7 +103,7 @@ export function AgentChip() {
 
           <DropdownMenuSeparator className="my-2 bg-border" />
 
-          {/* The three capabilities. All off by default; each is its own
+          {/* The four capabilities. All off by default; each is its own
               deliberate act. */}
           <p className="text-meta text-fg-faint">What agents may do</p>
           <div className="mt-1.5 flex flex-col gap-1.5">
@@ -128,6 +128,12 @@ export function AgentChip() {
               checked={status.write}
               disabled={Boolean(status.writeBlocked)}
               onChange={(on) => void setCapability("write", on)}
+            />
+            <Switch
+              label="Set session variables"
+              hint="To chain a flow. It cannot use a name your collection defines, and you are asked every time."
+              checked={status.session}
+              onChange={(on) => void setCapability("session", on)}
             />
           </div>
 

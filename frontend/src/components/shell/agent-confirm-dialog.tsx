@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { methodColor } from "@/lib/method";
 import { cn } from "@/lib/utils";
-import { useMCP } from "@/state/mcp-context";
+import { useMCP, type AgentConfirmation } from "@/state/mcp-context";
 import { DiffService } from "@bindings/internal/services";
 import type { FileDiff } from "@bindings/internal/diff";
 
@@ -92,6 +92,15 @@ export function AgentConfirmDialog() {
         </DialogContent>
       </Dialog>
     );
+  }
+
+  // A session write is a different question and gets its own dialog. It is
+  // not a variant of the send dialog with the URL blanked out: there is no
+  // method, no host and nothing to put in the button that names a
+  // destination, and a dialog that rendered those as empty would be a dialog
+  // asking about a send that is not happening.
+  if (confirmation.kind === "session") {
+    return <SessionConfirm confirmation={confirmation} answer={answer} refuseRef={refuseRef} />;
   }
 
   const danger = confirmation.danger;
@@ -268,4 +277,96 @@ function DiffInDialog({ path, file }: { path: string; file: FileDiff | null }) {
 
 function capitalize(text: string): string {
   return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+/**
+ * An agent setting a session variable (docs/MCP.md §8.1).
+ *
+ * The three things worth reading are the value, the name and the reach, so
+ * they are what the box holds. **The reach is the point**: a session value
+ * outranks the folder's settings and the environment for every request below
+ * it, and "12 requests" is the difference between advancing a flow and
+ * changing what a folder means.
+ *
+ * There is no danger variant. Rule 1 already refused every name that could
+ * redirect a request, in Go, before this dialog was raised — so the dangerous
+ * case does not reach a person at all, which is the shape §13 asks for: a
+ * dialog is only as good as its reading, so the unreadable case is a refusal
+ * instead.
+ */
+function SessionConfirm({
+  confirmation,
+  answer,
+  refuseRef,
+}: {
+  confirmation: AgentConfirmation;
+  answer: (id: string, approve: boolean) => Promise<void>;
+  refuseRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  const reaches = confirmation.reaches ?? 0;
+  return (
+    <Dialog open onOpenChange={(open) => !open && void answer(confirmation.id, false)}>
+      <DialogContent className="max-w-[520px] rounded-md border border-border-strong bg-raised p-4">
+        <DialogTitle className="text-ui text-fg-emphasis">
+          An agent wants to set a session variable
+        </DialogTitle>
+        <p className="mt-1 text-meta text-fg-dim">
+          {confirmation.client || "An MCP client"} asked, via{" "}
+          <span className="font-mono">{confirmation.tool}</span>.
+        </p>
+
+        <div className="mt-3 rounded-sm border border-border bg-inset p-3">
+          <div className="flex items-baseline gap-2">
+            <span className="shrink-0 font-mono text-ui text-fg">
+              {"{{"}
+              {confirmation.variable}
+              {"}}"}
+            </span>
+            <span className="shrink-0 text-meta text-fg-faint">=</span>
+            <span className="min-w-0 break-all font-mono text-ui text-fg-secondary">
+              {confirmation.value}
+            </span>
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
+            <dt className="text-fg-faint">folder</dt>
+            <dd className="truncate font-mono text-fg-secondary">
+              {confirmation.path ? `${confirmation.path}/` : "the collection root"}
+            </dd>
+            <dt className="text-fg-faint">reaches</dt>
+            <dd className={reaches > 0 ? "text-fg-secondary" : "text-fg-faint"}>
+              {reaches} {reaches === 1 ? "request" : "requests"} in that folder and below
+            </dd>
+            <dt className="text-fg-faint">environment</dt>
+            <dd className="font-mono text-fg-secondary">
+              {confirmation.environment || <span className="text-fg-faint">none</span>}
+            </dd>
+            <dt className="text-fg-faint">written</dt>
+            <dd className="text-fg-secondary">
+              nowhere — memory only, gone when the collection closes
+            </dd>
+          </dl>
+        </div>
+
+        <p className="mt-3 text-meta text-fg-dim">{capitalize(confirmation.reason)}.</p>
+
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button
+            ref={refuseRef}
+            type="button"
+            onClick={() => void answer(confirmation.id, false)}
+            className="h-6 rounded-md border border-border-control bg-control px-2.5 text-ui text-fg-secondary hover:bg-selected"
+          >
+            Refuse
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void answer(confirmation.id, true)}
+            className="h-6 rounded-md bg-primary px-2.5 text-ui text-primary-foreground hover:bg-primary/90"
+          >
+            Set {confirmation.variable}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

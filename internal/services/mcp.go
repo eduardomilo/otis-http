@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -128,10 +129,11 @@ type MCPStatus struct {
 	// Enabled is the listener; Running is whether it actually came up.
 	Enabled bool `json:"enabled"`
 	Running bool `json:"running"`
-	// Read, Run and Write are the three capabilities.
-	Read  bool `json:"read"`
-	Run   bool `json:"run"`
-	Write bool `json:"write"`
+	// Read, Run, Write and Session are the four capabilities.
+	Read    bool `json:"read"`
+	Run     bool `json:"run"`
+	Write   bool `json:"write"`
+	Session bool `json:"session"`
 	// AlwaysConfirmSends is §4 rule 4, on by default.
 	AlwaysConfirmSends bool `json:"alwaysConfirmSends"`
 	PersistAuditLog    bool `json:"persistAuditLog"`
@@ -167,7 +169,7 @@ func (s *MCPService) Status() (MCPStatus, error) {
 
 func (s *MCPService) statusFrom(m settings.MCP) MCPStatus {
 	status := MCPStatus{
-		Enabled: m.Enabled, Read: m.Read, Run: m.Run, Write: m.Write,
+		Enabled: m.Enabled, Read: m.Read, Run: m.Run, Write: m.Write, Session: m.Session,
 		AlwaysConfirmSends: m.AlwaysConfirmSends(),
 		PersistAuditLog:    m.PersistAuditLog(),
 		Recent:             []mcp.Entry{},
@@ -215,7 +217,7 @@ func (s *MCPService) SetEnabled(on bool) (MCPStatus, error) {
 		// Turning the listener off turns the capabilities off with it, for
 		// the same reason the kill switch does: coming back should not be
 		// enough to be driving the collection again.
-		current.MCP.Read, current.MCP.Run, current.MCP.Write = false, false, false
+		current.MCP.Read, current.MCP.Run, current.MCP.Write, current.MCP.Session = false, false, false, false
 	}
 	if err := s.settings.Set(current); err != nil {
 		return MCPStatus{}, err
@@ -255,6 +257,8 @@ func (s *MCPService) SetCapability(name string, on bool) (MCPStatus, error) {
 			}
 		}
 		current.MCP.Write = on
+	case mcp.CapSession:
+		current.MCP.Session = on
 	default:
 		return MCPStatus{}, fmt.Errorf("unknown capability %q", name)
 	}
@@ -403,7 +407,8 @@ func (s *MCPService) start() (mcp.Endpoint, error) {
 	bridge := s.bridge()
 	server, err := mcpserver.New(mcpserver.Options{
 		Source: bridge, Sender: bridge, Writer: bridge, Asker: bridge,
-		Grants: bridge, Audit: log,
+		Sessions: bridge,
+		Grants:   bridge, Audit: log,
 	})
 	if err != nil {
 		return mcp.Endpoint{}, err
@@ -452,19 +457,21 @@ func (s *agentBridge) Grants() mcp.Grants {
 	}
 	return mcp.Grants{
 		Read: current.MCP.Read, Run: current.MCP.Run, Write: current.MCP.Write,
+		Session:            current.MCP.Session,
 		AlwaysConfirmSends: current.MCP.AlwaysConfirmSends(),
 	}
 }
 
-// RevokeAll turns all three capabilities off, which is what makes the kill
-// switch final rather than a pause.
+// RevokeAll turns every capability off, which is what makes the kill switch
+// final rather than a pause. Every one: a capability added later and forgotten
+// here would survive the switch, which is the one thing it must not do.
 func (s *agentBridge) RevokeAll() error {
 	current, err := s.settings.Get()
 	if err != nil {
 		return err
 	}
 	current.MCP.Enabled = false
-	current.MCP.Read, current.MCP.Run, current.MCP.Write = false, false, false
+	current.MCP.Read, current.MCP.Run, current.MCP.Write, current.MCP.Session = false, false, false, false
 	return s.settings.Set(current)
 }
 
@@ -1147,3 +1154,123 @@ var (
 	_ mcpserver.Asker   = (*agentBridge)(nil)
 	_ mcpserver.Grantor = (*agentBridge)(nil)
 )
+
+// --- mcpserver.Sessions (docs/MCP.md §8.1) ------------------------------
+
+// SessionTarget describes what a proposed session write would do, and applies
+// rule 1.
+//
+// The evidence it gathers is exactly the set of scopes a session value at that
+// folder can outrank (docs/FORMAT.md §4.2): the folder's own `_folder.http`,
+// every `_folder.http` above it, and the active environment. A request file's
+// own `@var` and a `_folder.http` nearer the request both *beat* a session
+// value, so neither is gathered and neither refuses — refusing them would
+// block a session `petId` in a folder because one request declares
+// `@petId = 42`, which is friction bought for no safety.
+//
+// The decision itself is mcp.CheckSessionWrite. This function is the evidence.
+func (s *agentBridge) SessionTarget(folder, name string) (mcpserver.SessionTargetView, *mcp.Redactor, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return mcpserver.SessionTargetView{}, mcp.NoSecrets(), err
+	}
+	node := loaded.Find(folder)
+	if node == nil || node.Kind != collection.KindFolder {
+		return mcpserver.SessionTargetView{}, mcp.NoSecrets(),
+			fmt.Errorf("%s is not a folder in this collection", displayPath(folder))
+	}
+
+	envName := s.displayEnv("")
+	var env *resolve.Environment
+	if envName != "" {
+		if env, err = resolve.LoadEnvironment(loaded.Dir, envName); err != nil {
+			return mcpserver.SessionTargetView{}, mcp.NoSecrets(), err
+		}
+	}
+
+	if err := mcp.CheckSessionWrite(
+		mcp.SessionWrite{Folder: folder, Name: name},
+		outrankableDefinitions(node, env),
+	); err != nil {
+		return mcpserver.SessionTargetView{}, mcp.NoSecrets(), err
+	}
+
+	view := mcpserver.SessionTargetView{
+		Folder:      folder,
+		Name:        name,
+		Reaches:     requestsBelow(node),
+		Environment: envName,
+	}
+	if env != nil {
+		view.Agents = string(env.Meta.Agents)
+	}
+	return view, mcp.NoSecrets(), nil
+}
+
+// SetSessionVariable writes the value, re-checking rule 1 first.
+//
+// Re-checking rather than trusting SessionTarget: the two run in different
+// calls with a person's decision in between, and a `_folder.http` saved while
+// the dialog was up would otherwise be overridden by a value approved against
+// a scope that no longer exists.
+func (s *agentBridge) SetSessionVariable(folder, name, value string) (mcpserver.SessionSetView, *mcp.Redactor, error) {
+	if _, _, err := s.SessionTarget(folder, name); err != nil {
+		return mcpserver.SessionSetView{}, mcp.NoSecrets(), err
+	}
+	s.sends.setSessionValue(resolve.SessionValue{
+		Scope: resolve.SessionFolder,
+		Owner: folder,
+		Name:  name,
+		Value: value,
+		// Origin is the whole account of a value that is in no file
+		// (docs/FORMAT.md §4.5), and "an agent set this" is the part of that
+		// account a person most needs. It is not a node path, which is why
+		// the field is documented as a request *or* what set it.
+		Origin: "an agent, via set_session_variable",
+	})
+	return mcpserver.SessionSetView{
+		Set: true, Folder: folder, Name: name, Scope: string(resolve.SessionFolder),
+	}, mcp.NoSecrets(), nil
+}
+
+// outrankableDefinitions is every committed declaration a session value at
+// this folder would outrank: the `@var`s of this folder's `_folder.http` and
+// of every folder above it, then the active environment's values.
+func outrankableDefinitions(folder *collection.Node, env *resolve.Environment) []mcp.Definition {
+	var out []mcp.Definition
+	for node := folder; node != nil; node = node.Parent {
+		if node.Settings == nil {
+			continue
+		}
+		for _, entry := range node.Settings.Requests {
+			for _, v := range entry.Variables {
+				out = append(out, mcp.Definition{
+					Name:   v.Name,
+					Source: fmt.Sprintf("%s:%d", path.Join(node.ID, collection.FolderFileName), v.Line),
+				})
+			}
+		}
+	}
+	if env != nil {
+		for name := range env.Values {
+			out = append(out, mcp.Definition{Name: name, Source: env.Path})
+		}
+	}
+	return out
+}
+
+// requestsBelow counts the requests a folder's session value would reach: the
+// folder's own and every one under it. Exact, like every count in Otis
+// (DESIGN-NOTES §8.5) — it is the blast radius the confirmation states.
+func requestsBelow(folder *collection.Node) int {
+	total := 0
+	for _, child := range folder.Children {
+		switch child.Kind {
+		case collection.KindRequest:
+			total++
+		case collection.KindFolder:
+			total += requestsBelow(child)
+		}
+	}
+	return total
+}

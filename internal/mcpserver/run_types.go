@@ -235,6 +235,13 @@ type Updated struct {
 // is involved — "not 'allow?', the whole value of a confirmation is in what it
 // says".
 type Confirmation struct {
+	// Kind says which question this is, because two different things now ask
+	// one: a send, and a session write (docs/MCP.md §8.1). The window draws
+	// them differently — a send names a host, a session write names a
+	// variable — and a dialog that guessed from which fields were empty
+	// would be one field away from drawing the wrong one.
+	Kind ConfirmKind `json:"kind"`
+
 	// Tool and Client name who is asking.
 	Tool   string `json:"tool"`
 	Client string `json:"client"`
@@ -266,4 +273,22 @@ type Confirmation struct {
 	ID string `json:"id"`
 	// ExpiresAt is when it refuses itself.
 	ExpiresAt string `json:"expiresAt"`
+
+	// Variable, Value and Reaches are the session write's own fields
+	// (ConfirmSession). Value is the agent's own literal — nothing from the
+	// keychain can reach here — and Reaches is how many requests in that
+	// folder and below would resolve the name, which is the blast radius.
+	Variable string `json:"variable,omitempty"`
+	Value    string `json:"value,omitempty"`
+	Reaches  int    `json:"reaches,omitempty"`
 }
+
+// ConfirmKind discriminates the two things that ask a person.
+type ConfirmKind string
+
+const (
+	// ConfirmSend is a request about to go on the wire.
+	ConfirmSend ConfirmKind = "send"
+	// ConfirmSession is a session variable about to be set (§8.1).
+	ConfirmSession ConfirmKind = "session"
+)

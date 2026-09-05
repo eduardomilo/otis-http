@@ -18,6 +18,9 @@ import * as httpfile$0 from "../httpfile/models.js";
 import * as mcp$0 from "../mcp/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as mcpserver$0 from "../mcpserver/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as resolve$0 from "../resolve/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -851,6 +854,15 @@ export interface LogEntry {
  */
 export interface MCPConfirmation {
     /**
+     * Kind says which question this is, because two different things now ask
+     * one: a send, and a session write (docs/MCP.md §8.1). The window draws
+     * them differently — a send names a host, a session write names a
+     * variable — and a dialog that guessed from which fields were empty
+     * would be one field away from drawing the wrong one.
+     */
+    "kind": mcpserver$0.ConfirmKind;
+
+    /**
      * Tool and Client name who is asking.
      */
     "tool": string;
@@ -893,6 +905,16 @@ export interface MCPConfirmation {
      * ExpiresAt is when it refuses itself.
      */
     "expiresAt": string;
+
+    /**
+     * Variable, Value and Reaches are the session write's own fields
+     * (ConfirmSession). Value is the agent's own literal — nothing from the
+     * keychain can reach here — and Reaches is how many requests in that
+     * folder and below would resolve the name, which is the blast radius.
+     */
+    "variable"?: string;
+    "value"?: string;
+    "reaches"?: number;
 }
 
 /**
@@ -918,11 +940,12 @@ export interface MCPStatus {
     "running": boolean;
 
     /**
-     * Read, Run and Write are the three capabilities.
+     * Read, Run, Write and Session are the four capabilities.
      */
     "read": boolean;
     "run": boolean;
     "write": boolean;
+    "session": boolean;
 
     /**
      * AlwaysConfirmSends is §4 rule 4, on by default.

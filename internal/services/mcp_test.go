@@ -50,6 +50,7 @@ func TestTheAgentServiceExposesOnlyTheWindowsAPI(t *testing.T) {
 func TestTheBridgeCarriesTheBoundaries(t *testing.T) {
 	typ := reflect.TypeOf(&agentBridge{})
 	for _, name := range []string{
+		"SessionTarget", "SetSessionVariable",
 		"Collection", "ListRequests", "GetRequest", "ListEnvironments",
 		"SessionVariables", "LastResponse", "TestResults",
 		"Prepare", "Send", "FolderPlan", "RunFolder",

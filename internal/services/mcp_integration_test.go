@@ -20,6 +20,7 @@ import (
 	"github.com/otis-http/otis/internal/events"
 	"github.com/otis-http/otis/internal/mcp"
 	"github.com/otis-http/otis/internal/mcpserver"
+	"github.com/otis-http/otis/internal/resolve"
 	"github.com/otis-http/otis/internal/secrets"
 	"github.com/otis-http/otis/internal/settings"
 )
@@ -688,4 +689,198 @@ func TestOpeningTheFirstCollectionDoesNotDisconnect(t *testing.T) {
 	if status.Running || status.Read {
 		t.Errorf("switching collections did not disconnect: %+v", status)
 	}
+}
+
+// --- docs/MCP.md §8.1: the session write ---------------------------------
+
+// sessionFixture is a collection whose environment defines the host and the
+// credential, and whose folder file defines one variable — the three shapes
+// rule 1 has to refuse — plus two requests that chain on a name nothing
+// defines, which is the shape it has to allow.
+func sessionFixture(t *testing.T) *agentFixture {
+	t.Helper()
+	return agentApp(t, map[string]string{
+		"env/qa.json":           `{"apiHost": "https://api.qa.test", "apiKey": {"$secret": "keychain"}}`,
+		"flow/_folder.http":     "@stage = qa\n",
+		"flow/create.http":      "POST {{apiHost}}/things\n",
+		"flow/get.http":         "GET {{apiHost}}/things/{{thingId}}\n",
+		"flow/sub/_folder.http": "# nested\n",
+		"flow/sub/nested.http":  "GET {{apiHost}}/nested\n",
+	}, secrets.NewMemory())
+}
+
+// §15.33 — rule 1 is a rule, not a dialog. Every name a session value could
+// outrank is refused, each naming where it is defined, and **nobody is asked**:
+// this is the case with no floor under a misread, so it never reaches a person.
+func TestSessionWriteRefusesEveryNameItCouldOutrank(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapSession)
+
+	for name, where := range map[string]string{
+		"apiHost": "env/qa.json",       // the host — the redirect this rule exists for
+		"apiKey":  "env/qa.json",       // the credential
+		"stage":   "flow/_folder.http", // the folder's own committed variable
+	} {
+		out, isErr := f.call(client, "set_session_variable", map[string]any{
+			"folder": "flow", "name": name, "value": "https://evil.test",
+		})
+		if !isErr {
+			t.Errorf("%s: the set was allowed: %s", name, out)
+			continue
+		}
+		if !strings.Contains(out, where) {
+			t.Errorf("%s: refusal does not name %s: %s", name, where, out)
+		}
+	}
+	if asked := f.asked(); len(asked) != 0 {
+		t.Errorf("a refusal asked a person %d times: %+v", len(asked), asked)
+	}
+	// And nothing was set.
+	if got := f.sends.SessionVars(); len(got) != 0 {
+		t.Errorf("session = %+v, want empty", got)
+	}
+}
+
+// A name above the folder is refused too — a session value at `flow/sub`
+// outranks `flow/_folder.http` as well as its own.
+func TestSessionWriteRefusesANameDefinedAbove(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapSession)
+
+	out, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow/sub", "name": "stage", "value": "prod",
+	})
+	if !isErr || !strings.Contains(out, "flow/_folder.http") {
+		t.Errorf("a name defined above was not refused: %s", out)
+	}
+}
+
+// §15.34 — the name a flow actually chains on goes through, in two phases,
+// and a person is asked in the window every time.
+func TestSessionWriteAsksAPersonAndThenSets(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapSession)
+
+	// Phase 1 sets nothing and asks nobody.
+	preview, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_1",
+	})
+	if isErr {
+		t.Fatalf("preview refused: %s", preview)
+	}
+	if len(f.sends.SessionVars()) != 0 || len(f.asked()) != 0 {
+		t.Fatal("phase 1 set a value or asked a person")
+	}
+	// It reports the blast radius: three requests are under flow/.
+	if !strings.Contains(preview, `"reaches":3`) {
+		t.Errorf("preview does not report the reach: %s", preview)
+	}
+	intent := intentFrom(t, preview)
+
+	// Phase 2 asks, and the person says yes.
+	f.answer = true
+	out, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_1", "intent": intent,
+	})
+	if isErr {
+		t.Fatalf("the set failed: %s", out)
+	}
+
+	asked := f.asked()
+	if len(asked) != 1 {
+		t.Fatalf("asked %d times, want once", len(asked))
+	}
+	if asked[0].Kind != mcpserver.ConfirmSession {
+		t.Errorf("confirmation kind = %q, want session", asked[0].Kind)
+	}
+	if asked[0].Variable != "thingId" || asked[0].Value != "thing_1" || asked[0].Reaches != 3 {
+		t.Errorf("the dialog does not describe the write: %+v", asked[0])
+	}
+
+	values := f.sends.SessionScope(resolve.SessionFolder, "flow")
+	if len(values) != 1 || values[0].Name != "thingId" || values[0].Value != "thing_1" {
+		t.Fatalf("session = %+v, want thingId=thing_1 for flow/", values)
+	}
+	// Provenance is the whole account of a value in no file.
+	if !strings.Contains(values[0].Origin, "agent") {
+		t.Errorf("origin = %q, want it to say an agent set it", values[0].Origin)
+	}
+}
+
+// A refusal in the window sets nothing.
+func TestSessionWriteRefusedInTheWindowSetsNothing(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapSession)
+
+	preview, _ := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_1",
+	})
+	f.answer = false
+	out, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_1",
+		"intent": intentFrom(t, preview),
+	})
+	if !isErr {
+		t.Errorf("a refused set reported success: %s", out)
+	}
+	if got := f.sends.SessionVars(); len(got) != 0 {
+		t.Errorf("session = %+v, want empty after a refusal", got)
+	}
+}
+
+// The tool is not offered at all without its own grant, and RUN does not
+// imply it.
+func TestSessionWriteNeedsItsOwnGrant(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapRun)
+
+	out, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "x",
+	})
+	if !isErr {
+		t.Fatalf("RUN alone allowed a session write: %s", out)
+	}
+	if len(f.sends.SessionVars()) != 0 {
+		t.Error("a value was set without the grant")
+	}
+}
+
+// §15.35 — the fingerprint binds the intent to the value, so an agent cannot
+// preview a harmless set and redeem a different one.
+func TestSessionIntentIsBoundToTheValue(t *testing.T) {
+	f := sessionFixture(t)
+	f.activate(t, "qa")
+	client := f.connect(mcp.CapSession)
+
+	preview, _ := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_1",
+	})
+	f.answer = true
+	out, isErr := f.call(client, "set_session_variable", map[string]any{
+		"folder": "flow", "name": "thingId", "value": "thing_2",
+		"intent": intentFrom(t, preview),
+	})
+	if !isErr {
+		t.Fatalf("an intent taken for one value was spent on another: %s", out)
+	}
+	if got := f.sends.SessionVars(); len(got) != 0 {
+		t.Errorf("session = %+v, want empty", got)
+	}
+}
+
+// intentFrom digs the intent out of a phase-1 result.
+func intentFrom(t *testing.T, preview string) string {
+	t.Helper()
+	var body struct {
+		Intent string `json:"intent"`
+	}
+	if err := json.Unmarshal([]byte(preview), &body); err != nil || body.Intent == "" {
+		t.Fatalf("no intent in the preview (%v): %s", err, preview)
+	}
+	return body.Intent
 }

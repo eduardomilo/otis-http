@@ -76,10 +76,15 @@ type MCP struct {
 	// separate from granting any capability.
 	Enabled bool `json:"enabled"`
 
-	// Read, Run and Write are the three capabilities, all off by default.
-	Read  bool `json:"read"`
-	Run   bool `json:"run"`
-	Write bool `json:"write"`
+	// Read, Run, Write and Session are the four capabilities, all off by
+	// default. Session grants set_session_variable and nothing else
+	// (docs/MCP.md §8.1); it is separate from Run because a session value
+	// outranks the committed layer beside it, so granting it is a different
+	// decision from granting sends.
+	Read    bool `json:"read"`
+	Run     bool `json:"run"`
+	Write   bool `json:"write"`
+	Session bool `json:"session"`
 
 	// NeverConfirmSends inverts §4 rule 4's `alwaysConfirmSends`, which is
 	// **on by default** — every agent send asks until somebody turns it off,

@@ -13,10 +13,8 @@ gained the rule that an in-app answer is the only thing that satisfies a
 confirmation the window raised. §15's verification plan is the checklist the
 tests were written against.
 
-**One section is still a proposal: §8.1**, the SESSION capability and
-`set_session_variable`. It is written the way the rest of this document was
-written — to be argued with before it exists — and §15's items 33–36 are the
-tests it does not have yet. Everything else here is built.
+§8.1's SESSION capability and `set_session_variable` were the last part added,
+written as a proposal and approved before any of it existed, like the rest.
 
 Read `VISION.md` §3 first. The line it draws under secrets is the constraint
 everything here bends around.
@@ -630,11 +628,20 @@ That is §5's own opening scenario reached without writing a file.
 
 So the tool exists under three rules, in this order.
 
-**Rule 1 — it may not shadow anything.** A set is **refused** when the name
-already resolves at the target folder through any committed scope: a `@var` in
-a request file, a `@var` in any `_folder.http` at or above it, or the active
-environment. The refusal names what it would have shadowed
-(`"apiHost" is defined by env/staging.json; a session value would override it`).
+**Rule 1 — it may not shadow anything it could outrank.** A set is **refused**
+when the name is declared by the target folder's own `_folder.http`, by any
+`_folder.http` above it, or by the active environment. The refusal names what
+it would have shadowed
+(`"apiHost" is defined by env/Qa3.json; a session value would override it`).
+
+Those three are exactly the scopes a session value at that folder *can*
+outrank, and the list is complete rather than cautious. §4.2 puts a request
+file's own `@var` above every session value, and a `_folder.http` nearer the
+request above a session value set further up — so neither is reachable from
+here and neither is refused. Being precise matters in both directions: a rule
+that also refused request-level `@var`s would block a session `petId` in a
+folder because one request happens to declare `@petId = 42`, which is friction
+bought for no safety at all.
 
 This is a rule and not a dialog, deliberately. §13 says a dialog is only as
 good as its reading, and this is the case where a misread has no floor under
@@ -1370,9 +1377,8 @@ Tests may not touch the network (`CLAUDE.md`), so 5 and 6 run against an
 
 ---
 
-**1–32 are built and tested.** **33–36 are not**: §8.1 is the one part of this
-document still at the proposal stage, written the same way the rest was —
-to be approved, changed or rejected before any of it exists. Implement it in
-the order §15 tests it, starting with 33, because rule 1 is the part whose
-absence would be unrecoverable.
+**All of it is built and tested.** 33–36 arrived with §8.1 and are in
+`internal/mcp/session_test.go` (rule 1 and rule 2 as pure decisions) and
+`internal/services/mcp_integration_test.go` (the tool, end to end, over a real
+loopback listener).
 

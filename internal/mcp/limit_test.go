@@ -11,9 +11,10 @@ import (
 // a send is not recoverable and a write is.
 func TestTheRatesAreTheOnesInTheDocument(t *testing.T) {
 	want := map[Capability]rate{
-		CapRead:  {perSecond: 10, burst: 30},
-		CapRun:   {perSecond: 1, burst: 5},
-		CapWrite: {perSecond: 2, burst: 10},
+		CapRead:    {perSecond: 10, burst: 30},
+		CapRun:     {perSecond: 1, burst: 5},
+		CapWrite:   {perSecond: 2, burst: 10},
+		CapSession: {perSecond: 1, burst: 5},
 	}
 	if len(rates) != len(want) {
 		t.Fatalf("got %d capabilities with rates, want %d", len(rates), len(want))

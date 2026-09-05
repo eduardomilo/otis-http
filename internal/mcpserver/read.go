@@ -32,6 +32,9 @@ func (s *Server) registerAll() {
 	if s.writer != nil {
 		s.registerWrite()
 	}
+	if s.sessions != nil {
+		s.registerSession()
+	}
 }
 
 func (s *Server) registerRead() {

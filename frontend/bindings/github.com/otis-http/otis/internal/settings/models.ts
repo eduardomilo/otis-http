@@ -24,11 +24,16 @@ export interface MCP {
     "enabled": boolean;
 
     /**
-     * Read, Run and Write are the three capabilities, all off by default.
+     * Read, Run, Write and Session are the four capabilities, all off by
+     * default. Session grants set_session_variable and nothing else
+     * (docs/MCP.md §8.1); it is separate from Run because a session value
+     * outranks the committed layer beside it, so granting it is a different
+     * decision from granting sends.
      */
     "read": boolean;
     "run": boolean;
     "write": boolean;
+    "session": boolean;
 
     /**
      * NeverConfirmSends inverts §4 rule 4's `alwaysConfirmSends`, which is
