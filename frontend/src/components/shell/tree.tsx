@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { dropAt, parentOf, reorderedPaths, type Drop } from "@/lib/drag";
+import { errorText } from "@/lib/errors";
 import { methodColor, methodGutter } from "@/lib/method";
 import { canManage, type NodeAction } from "@/components/shell/node-actions";
 import { nodeLink, nodeParentPath } from "@/lib/paths";
@@ -31,7 +32,8 @@ import {
 } from "@/lib/tree";
 import { cn } from "@/lib/utils";
 import type { Node, Tree as CollectionTree } from "@bindings/internal/services";
-import { CollectionService, LogService } from "@bindings/internal/services";
+import { CollectionService, LogService, SendService } from "@bindings/internal/services";
+import { useEnvironments } from "@/state/environment-context";
 import { useOrder } from "@/state/order-context";
 import { useTabs } from "@/state/tabs-context";
 
@@ -100,7 +102,7 @@ export function Tree({
   /** Filled in with the reveal handle, for the palette's ⇧↵. */
   revealRef?: React.RefObject<TreeHandle | null>;
   /** Opens the create dialog, in the folder the menu was opened on. */
-  onCreate: (kind: "request" | "folder" | "script", folder: string) => void;
+  onCreate: (kind: "request" | "folder" | "script" | "curl", folder: string) => void;
   onManage: (action: NodeAction, node: Node) => void;
 }) {
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
@@ -667,7 +669,10 @@ function GitDot({ node }: { node: Node }) {
  */
 function report(work: Promise<unknown>, what: string): void {
   void work.catch((err: unknown) =>
-    LogService.Record("error", "window", `Could not ${what}`, String(err)),
+    // errorText, not String: the bridge puts `RuntimeError:` in front of a
+    // message that was written for a person, and the activity log is the
+    // artefact that gets read and pasted into a bug report.
+    LogService.Record("error", "window", `Could not ${what}`, errorText(err)),
   );
 }
 
@@ -677,10 +682,15 @@ function RowMenu({
   onManage,
 }: {
   node: Node | null;
-  onCreate: (kind: "request" | "folder" | "script", folder: string) => void;
+  onCreate: (kind: "request" | "folder" | "script" | "curl", folder: string) => void;
   onManage: (action: NodeAction, node: Node) => void;
 }) {
   const { setMode } = useOrder();
+  const { active: activeEnv, activeEnvironment } = useEnvironments();
+  // A secret lives in an environment, so an environment with none means the
+  // command cannot carry one and the second copy item would be the first
+  // under a different name.
+  const hasSecrets = (activeEnvironment?.secrets ?? 0) > 0;
   const folder = node?.kind === "folder" ? node : null;
   // Creating from a *request* row means creating beside it, which is what
   // aiming at it implies. From a folder row it means inside it.
@@ -703,6 +713,9 @@ function RowMenu({
       <ContextMenuItem onSelect={() => onCreate("script", target)}>
         New script in {target === "" ? "the root" : `${target}/`}…
       </ContextMenuItem>
+      <ContextMenuItem onSelect={() => onCreate("curl", target)}>
+        New request from cURL in {target === "" ? "the root" : `${target}/`}…
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
         disabled={!node}
@@ -716,6 +729,32 @@ function RowMenu({
       >
         Copy path
       </ContextMenuItem>
+      {/* The request as it will be *sent* — inherited headers, the
+          environment's values, the header an @auth line becomes — because a
+          command built from the file would carry {{baseUrl}} and would not
+          run (DESIGN-NOTES §9.43). Masked by default; the second item is the
+          one that carries a credential and says so, and it is offered only
+          when the active environment has a secret to carry. */}
+      {node?.kind === "request" ? (
+        <>
+          <ContextMenuItem
+            onSelect={() =>
+              report(SendService.CopyAsCurl(node.path, activeEnv, false), "copy as cURL")
+            }
+          >
+            Copy as cURL
+          </ContextMenuItem>
+          {hasSecrets ? (
+            <ContextMenuItem
+              onSelect={() =>
+                report(SendService.CopyAsCurl(node.path, activeEnv, true), "copy as cURL")
+              }
+            >
+              Copy as cURL, with secrets
+            </ContextMenuItem>
+          ) : null}
+        </>
+      ) : null}
       {/* Screen 2a's Folder options. It lives in the folder's own menu rather
           than in the folder view, because `.order` is not a shared setting: it
           does not live in `_folder.http`, it does not cascade, and a panel

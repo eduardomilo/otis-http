@@ -45,6 +45,18 @@ export function Create(folderPath: string, name: string): $CancellablePromise<st
 }
 
 /**
+ * CreateFromCurl writes a command into a new request and returns its node path.
+ * 
+ * The command is parsed again here rather than taking the plan's text from the
+ * window: a plan is a preview, and the file Otis writes is always the output
+ * of Go's own serializer over Go's own model (CLAUDE.md). The typed name wins
+ * over the derived one, and it names the file too, exactly as Create does.
+ */
+export function CreateFromCurl(folderPath: string, name: string, command: string): $CancellablePromise<string> {
+    return $Call.ByID(2001962153, folderPath, name, command);
+}
+
+/**
  * Delete removes the request at nodePath.
  * 
  * There is no confirmation parameter: unlike discarding a hunk, which is one
@@ -87,6 +99,17 @@ export function Duplicate(nodePath: string): $CancellablePromise<string> {
  */
 export function Load(nodePath: string, envName: string): $CancellablePromise<$models.Document> {
     return $Call.ByID(932910215, nodePath, envName);
+}
+
+/**
+ * PlanCurl parses a command and reports what importing it would write.
+ * 
+ * It never fails: a command that cannot be parsed comes back as a Problem,
+ * because this runs on every keystroke in a paste box and a rejected promise
+ * per character is not an error report, it is noise.
+ */
+export function PlanCurl(command: string): $CancellablePromise<$models.CurlPlan> {
+    return $Call.ByID(2356332962, command);
 }
 
 /**

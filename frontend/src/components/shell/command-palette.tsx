@@ -134,7 +134,7 @@ export function CommandPalette({
   /** ⇧↵: show where a request lives, without opening it. */
   onReveal: (path: string) => void;
   /** Opens the create dialog, in the folder the shell decides is current. */
-  onCreate: (kind: "request" | "folder" | "script") => void;
+  onCreate: (kind: "request" | "folder" | "script" | "curl") => void;
   /** Opens another collection, or closes this one. Asks first if anything is unsaved. */
   onLeaveCollection: (action: "open" | "close") => void;
   /** Chooses a Postman export and shows what importing it would do. */
@@ -818,7 +818,7 @@ function buildCommands(context: {
   firstEnvironment: string;
   clearSessionVars: () => Promise<void>;
   version: string;
-  onCreate: (kind: "request" | "folder" | "script") => void;
+  onCreate: (kind: "request" | "folder" | "script" | "curl") => void;
   onLeaveCollection: (action: "open" | "close") => void;
   onImport: () => void;
   agentsEnabled: boolean;
@@ -864,6 +864,12 @@ function buildCommands(context: {
       detail: "a folder hook, a request hook, or a module",
       hidden: collection === "",
       run: go(() => onCreate("script")),
+    },
+    {
+      name: "Import from cURL",
+      detail: "paste a command; it is parsed here and sent nowhere",
+      hidden: collection === "",
+      run: go(() => onCreate("curl")),
     },
     {
       name: "Show changes",

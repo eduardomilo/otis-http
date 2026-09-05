@@ -1768,3 +1768,49 @@ and an empty value now says `empty` rather than being an invisible cell.
 Secrets are untouched: they already have Copy and Replace chips, which look
 like what they are, and their value is not editable in place by design (§9.12).
 
+**9.43 cURL, in both directions.** Two features and one body of knowledge —
+which flag means which part of a request — so `internal/curl` holds `Parse`
+and `Format` together. The pair is also what makes either testable: a command
+that survives `Format` then `Parse` unchanged is a command whose meaning was
+understood twice.
+
+**Copy as cURL copies the request as it will be *sent*.** Not the file. A
+command built from the file would carry `{{baseUrl}}`, none of the inherited
+headers, and no `Authorization` at all — a command that does not run, and a
+lie about what Otis does. So it is built from `httpclient.Prepare`'s output,
+the same value the sender is about to put on the wire.
+
+Which makes secrets the decision. There are two honest answers and they are
+offered as two menu items, in words, at the moment the choice is made:
+**Copy as cURL** masks, so it can go into an issue and will not run;
+**Copy as cURL, with secrets** runs and carries a credential. The second is
+shown only when the active environment has one, since a secret lives in an
+environment and otherwise the item is the first under a longer name. The value
+goes to the clipboard **from Go** and never crosses the binding — the path
+`EnvironmentService.CopySecretValue` established (§9.12), for the same reason.
+
+Scripts do not run: a pre-request hook can change the request, but running
+somebody's script as the side effect of a *copy* is worse than the
+discrepancy, and a hook may set session variables. Where there is one the
+command says so in a trailing comment.
+
+**Import from cURL previews the file, not a summary of it.** What a person
+agrees to is what lands on disk, so the preview is the output of Go's parser
+and Go's serializer — the two things that will actually run. A command that
+will not parse is a *problem* and not a thrown error, because this runs on
+every keystroke of a paste box and half a command is that field's normal
+state.
+
+Anything not translated becomes a `#` comment in the file — the pattern the
+Postman importer set for an auth type it cannot express. A pasted command is
+somebody's working example; refusing the whole of it because of `-k` would
+throw away the ninety per cent that does translate. `-u` becomes `@auth basic`
+because it is not a header in the source, `-G` moves the data into the query
+string, `--max-time` becomes `@timeout`, and cookie/agent/referer become the
+headers they already are.
+
+One deliberate infidelity, recorded because it is a choice: **`-L`'s absence
+is ignored.** curl does not follow redirects by default and Otis does, so a
+strict reading would put `@no-redirect` on almost every imported request —
+recording curl's default as though it were the author's decision. What was
+pasted is a request; how it treats a 302 is now a choice the person can make.

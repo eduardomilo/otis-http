@@ -168,6 +168,38 @@ export interface Counts {
 }
 
 /**
+ * CurlPlan is what an imported command would become, before it is written.
+ * 
+ * The `.http` **text** rather than a parsed model: what a person needs to
+ * agree to is the file, and showing them a rendering of a model would be
+ * showing them something one serializer away from the truth. This is the
+ * output of the same serializer that will write it.
+ */
+export interface CurlPlan {
+    /**
+     * Name is the display name derived from the URL, which the dialog
+     * prefills and the person can change.
+     */
+    "name": string;
+
+    /**
+     * Text is the file as it will be written.
+     */
+    "text": string;
+
+    /**
+     * Notes are the parts of the command that were not translated. They are
+     * in Text as comments too; this is for showing them separately.
+     */
+    "notes": string[] | null;
+
+    /**
+     * Problem is why the command cannot be imported, or "".
+     */
+    "problem": string;
+}
+
+/**
  * Document is one request file as the editor needs it: the parsed model it
  * edits, the raw text it was parsed from, and everything the file inherits
  * with the provenance of each piece.

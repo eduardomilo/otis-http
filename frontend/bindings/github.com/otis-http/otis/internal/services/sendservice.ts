@@ -51,6 +51,39 @@ export function ClearSessionVars(): $CancellablePromise<void> {
 }
 
 /**
+ * CopyAsCurl puts the request on the clipboard as a `curl` command.
+ * 
+ * # Why the sender and not the editor
+ * 
+ * What is worth copying is the request as it will actually be *sent*:
+ * inherited headers, the environment's values, the `Authorization` an
+ * `@auth` line becomes. A command built from the file would carry
+ * `{{baseUrl}}` and none of the inheritance, which is a command that does not
+ * run and a lie about what Otis does.
+ * 
+ * # Secrets
+ * 
+ * `withSecrets` is a decision only the caller can make, so it is a parameter
+ * and not a policy here. Masked, the command is safe to paste into an issue
+ * and will not run; unmasked it runs and carries a credential. Both are
+ * legitimate and the window offers them as two separate items, so the choice
+ * is made by the person, in words, at the moment they make it.
+ * 
+ * The value goes to the clipboard **from Go** and never crosses the binding
+ * (CLAUDE.md), which is the same path `EnvironmentService.CopySecretValue`
+ * takes and for the same reason.
+ * 
+ * Scripts do not run. A pre-request hook can change the request, so a command
+ * built without running one can differ from what a send would produce — but
+ * running somebody's script as a side effect of a copy is worse, and a hook
+ * may write session variables or hit the network through nothing at all.
+ * Where there is one, the command says so in a comment.
+ */
+export function CopyAsCurl(nodePath: string, envName: string, withSecrets: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2969851553, nodePath, envName, withSecrets);
+}
+
+/**
  * Discard frees a response's body. The window calls it when the tab that was
  * showing it closes.
  */

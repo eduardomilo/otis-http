@@ -117,6 +117,20 @@ lists the design decisions that are still open — do not resolve them silently.
   prompt* (`GIT_TERMINAL_PROMPT=0`, ssh `BatchMode=yes`), because a GUI app
   has no terminal and a prompt there is a silent hang. `ext::` URLs are
   refused: that transport runs a command the URL names.
+- `internal/curl/` — `curl` in both directions: `Parse` turns a pasted command
+  into an `httpfile.Request`, `Format` turns a prepared `httpclient.Request`
+  into a command. One package because it is one body of knowledge — which flag
+  means which part of a request — and because the pair is what makes either
+  testable. It **never masks**: what a command may carry is the caller's
+  decision (DESIGN-NOTES §9.43).
+- `internal/services/curl.go` — the window's half of both. `PlanCurl` previews
+  the file an import would write and never fails, because it runs on every
+  keystroke of a paste box; `CreateFromCurl` parses again and writes through
+  the same serializer. `SendService.CopyAsCurl` builds the command from
+  `httpclient.Prepare`'s output — the request as it will be *sent*, not as it
+  is written — and `curlCommand` beside it is **unexported on purpose**: with
+  secrets it returns a resolved credential, which must never join a binding
+  surface.
 - `internal/importer/postman/` — the Postman v2.1 importer.
 - `internal/events/` — the name of every Go → frontend event, and the generator
   for the TypeScript mirror. See "Events" below.
@@ -179,8 +193,9 @@ lists the design decisions that are still open — do not resolve them silently.
     tree's context menu, and the two dialogs two of them need, §9.32),
     `activity-log` (the status bar's log popover, §9.33), `collection-row`
     (the collection root above the tree, §9.40), `create-script-dialog`
-    (which asks what should run a `.js` rather than what to call it, §9.41)
-    and
+    (which asks what should run a `.js` rather than what to call it, §9.41),
+    `import-curl-dialog` (which previews the file a pasted command will
+    write, §9.43) and
     `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
     it), and screen 2b's other two entry points — `new-collection-dialog`,
@@ -685,6 +700,16 @@ lists the design decisions that are still open — do not resolve them silently.
   directives, no variables and no headers; `TestScaffoldRoundTrips` asserts
   every `.http` it writes re-serializes byte for byte, because a scaffold one
   space off canonical form is a diff on somebody's first save.
+- **"Copy as cURL" is the request as it will be *sent*, and masking is a
+  parameter.** It is built from `httpclient.Prepare`'s output, so it carries
+  the environment's values, the inherited headers and the `Authorization` an
+  `@auth` line becomes — a command built from the file would carry
+  `{{baseUrl}}` and would not run. Whether it carries a secret is the
+  caller's decision and not a policy in the service: the window offers two
+  menu items so the choice is made by a person, in words. The command reaches
+  the clipboard **from Go** (`app.Clipboard.SetText`), and
+  `SendService.curlCommand`, which returns it as a string, is unexported for
+  the reason every such value is.
 - **A script is classified, not named.** `ScriptService.Create` takes a
   *kind* — folder hook, request hook, module — and derives the file name from
   docs/FORMAT.md §2.4, because the name is the whole of what decides the kind

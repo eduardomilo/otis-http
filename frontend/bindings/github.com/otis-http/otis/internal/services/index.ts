@@ -53,6 +53,7 @@ export type {
     CommitResult,
     Cookie,
     Counts,
+    CurlPlan,
     Document,
     EnvironmentDocument,
     EnvironmentRow,

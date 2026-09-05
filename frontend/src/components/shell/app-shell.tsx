@@ -16,6 +16,7 @@ import {
 } from "@/components/shell/collection-switch-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
 import { CreateScriptDialog } from "@/components/shell/create-script-dialog";
+import { ImportCurlDialog } from "@/components/shell/import-curl-dialog";
 import { NodeActionDialogs, type NodeAction, type NodeTarget } from "@/components/shell/node-actions";
 import { ImportDialog } from "@/components/shell/import-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
@@ -173,6 +174,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // *classified*, and the two dialogs ask different questions
   // (DESIGN-NOTES §9.41).
   const [creatingScript, setCreatingScript] = useState<string | null>(null);
+  // And the folder a pasted cURL command lands in. Same shape and the same
+  // reason: what these dialogs ask for is not a name (DESIGN-NOTES §9.43).
+  const [importingCurl, setImportingCurl] = useState<string | null>(null);
   // The row the context menu is renaming or deleting. Duplicate needs no
   // dialog, so it never lands here.
   const [managing, setManaging] = useState<NodeTarget | null>(null);
@@ -224,9 +228,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     return "";
   };
 
-  const openCreate = useCallback((kind: CreateKind | "script", folder: string) => {
+  const openCreate = useCallback((kind: CreateKind | "script" | "curl", folder: string) => {
     if (kind === "script") {
       setCreatingScript(folder);
+      return;
+    }
+    if (kind === "curl") {
+      setImportingCurl(folder);
       return;
     }
     setCreating({ kind, folder });
@@ -596,6 +604,16 @@ export function AppShell({ children }: { children: ReactNode }) {
           if (routeDocument?.path === path) void navigate({ to: "/" });
         }}
         onError={(message, detail) => log(message, detail)}
+      />
+
+      <ImportCurlDialog
+        folder={importingCurl}
+        onClose={() => setImportingCurl(null)}
+        onCreated={(nodePath) => {
+          if (!nodePath) return;
+          openTab(nodePath, "request", { activate: true });
+          void navigate(nodeLink("request", nodePath));
+        }}
       />
 
       <CreateScriptDialog
