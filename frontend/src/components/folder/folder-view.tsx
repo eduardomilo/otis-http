@@ -31,10 +31,16 @@ import { useRuns, type Run } from "@/state/run-context";
  * what the tab chooses. On Overview that is the README, which is why there is
  * no separate Docs tab — the documentation *is* the overview.
  *
- * On the other tabs the left column is the same panel again, at full width,
- * where its rows have room to breathe. That is a deliberate duplication: the
+ * On the other tabs the left column is the editor for that setting, at full
+ * width, and the panels stay beside it. That duplication is deliberate: the
  * design draws all four panels beside the README, and dropping them from the
  * other tabs would mean losing the glance while you edit one of them.
+ *
+ * It only works while they are *beside* it. Below 800px the two columns stack,
+ * and a glance underneath the thing it describes is not a glance — it is a
+ * second, read-only copy of what you are editing, which is what "the Variables
+ * tab shows the Overview in the background" turned out to be. So off the
+ * two-column layout the panels belong to Overview alone.
  */
 
 type Tab = "overview" | "auth" | "variables" | "scripts" | "headers";
@@ -154,16 +160,27 @@ export function FolderView({ path }: { path: string }) {
           </div>
 
           <aside className="min-h-0 overflow-auto">
+            {/* The run is not part of the glance and never duplicates the
+                column beside it, so it shows whatever the width. */}
             {run ? <RunPanel run={run} /> : null}
-            <AuthPanel doc={doc} index={index} onEdit={() => setTab("auth")} />
-            <VariablesPanel
-              doc={doc}
-              index={index}
-              onClearSession={clearSession}
-              onAdd={() => setTab("variables")}
-            />
-            <ScriptsPanel doc={doc} />
-            <HeadersPanel doc={doc} index={index} />
+            {/* The four panels are the glance *beside* the editor. Below the
+                split there is nothing to be beside: they stack under it, and
+                what had been a glance becomes a second, read-only copy of the
+                thing being edited — two "Variables" headings, one of them
+                inert. So off the two-column layout they belong to Overview,
+                where the left column is the README and they are the only
+                statement of what the folder does. */}
+            <div className={cn(tab !== "overview" && "hidden @min-[800px]:block")}>
+              <AuthPanel doc={doc} index={index} onEdit={() => setTab("auth")} />
+              <VariablesPanel
+                doc={doc}
+                index={index}
+                onClearSession={clearSession}
+                onAdd={() => setTab("variables")}
+              />
+              <ScriptsPanel doc={doc} />
+              <HeadersPanel doc={doc} index={index} />
+            </div>
           </aside>
         </div>
       </Tabs>
