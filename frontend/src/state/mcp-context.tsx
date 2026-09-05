@@ -51,7 +51,12 @@ interface MCPContextValue {
   setAlwaysConfirmSends: (on: boolean) => Promise<void>;
   setPersistAuditLog: (on: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
-  clientBlock: () => Promise<string>;
+  /**
+   * Puts the client configuration on the clipboard. Go writes it: the block
+   * carries a bearer token and the webview's clipboard API does not work
+   * from a custom scheme anyway (MCPService.CopyClientBlock).
+   */
+  copyClientBlock: () => Promise<boolean>;
   /** The last failure from a switch, for the popover to show. */
   error: string | null;
   clearError: () => void;
@@ -144,7 +149,16 @@ export function MCPProvider({ children }: { children: ReactNode }) {
         }
         void refresh();
       },
-      clientBlock: async () => (await MCPService.ClientBlock()) ?? "",
+      copyClientBlock: async () => {
+        setError(null);
+        try {
+          await MCPService.CopyClientBlock();
+          return true;
+        } catch (cause) {
+          setError(String(cause));
+          return false;
+        }
+      },
       error,
       clearError: () => setError(null),
     }),

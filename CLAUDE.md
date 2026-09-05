@@ -287,6 +287,15 @@ lists the design decisions that are still open — do not resolve them silently.
   name must also be registered in `main.go` with `application.RegisterEvent[T]`;
   use `application.Void` for an event with no payload — registering `any` and
   emitting `nil` panics inside Wails.
+- **The clipboard is written from Go, never from the window.**
+  `navigator.clipboard.writeText` needs a secure context and a user activation
+  the webview agrees with, and the packaged app serves from a custom scheme —
+  it rejects, and a `catch` around it makes a button that does nothing and
+  says nothing. `app.Clipboard.SetText` is the way: `CollectionService.CopyPath`,
+  `EnvironmentService.CopySecretValue`, `AppService.CopyVersion` and
+  `MCPService.CopyClientBlock`. Three of those copy a credential or a path
+  that the window has no other reason to hold, which is the second reason.
+  DESIGN-NOTES §9.12.
 - **The frontend never touches disk, network, git or secrets.** If the window
   needs something from the machine, it goes through a Go service.
 - **A README is rendered, never injected.** `components/folder/markdown` uses

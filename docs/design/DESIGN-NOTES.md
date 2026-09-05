@@ -668,6 +668,19 @@ never becomes pixels. The "Remove from keychain" confirmation says so, because
 the value being unrecoverable-by-reading is the thing that makes removal
 different from every other destructive action in the app.
 
+*A second credential, later, and the same answer.* The agent chip's "Copy
+client config" copies a block containing the MCP bearer token, and it was
+written the other way round: Go returned the string and the window called
+`navigator.clipboard.writeText`. It did nothing at all. That API needs a
+secure context and a user activation the webview agrees with, and Otis' window
+is a WKWebView serving from a custom scheme — the promise rejects, and the
+`catch` swallowed it, so the button was inert with no explanation. It is
+`MCPService.CopyClientBlock` now: Go writes the clipboard, the token never
+crosses the binding, and a refusal lands in the popover's error line. **No
+component in this app writes the clipboard itself** — `CopyPath`,
+`CopySecretValue` and `CopyVersion` were all already Go-side, and this was the
+one exception.
+
 **9.14 Screen 1b draws no per-hunk controls, and heads its two hunks two
 different ways.** The diff view's file-level controls are drawn exactly —
 `Stage`, a vertical rule, `Discard changes…` in red — but the per-hunk Stage

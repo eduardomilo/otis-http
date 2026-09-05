@@ -39,7 +39,7 @@ export function AgentChip() {
     setAlwaysConfirmSends,
     setPersistAuditLog,
     disconnect,
-    clientBlock,
+    copyClientBlock,
     error,
   } = useMCP();
   const [copied, setCopied] = useState(false);
@@ -154,14 +154,14 @@ export function AgentChip() {
             <Button
               type="button"
               onClick={async () => {
-                try {
-                  const block = await clientBlock();
-                  await navigator.clipboard.writeText(block);
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1500);
-                } catch {
-                  setCopied(false);
-                }
+                // Go writes the clipboard and reports whether it took. The
+                // window used to do it with navigator.clipboard, which
+                // rejects from a custom scheme — so the button did nothing
+                // at all, silently. A refusal now lands in the popover's
+                // error line like every other one.
+                if (!(await copyClientBlock())) return;
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
               }}
               className="h-6 rounded-md border border-border-control bg-control px-2 text-ui text-fg-secondary hover:bg-selected"
             >

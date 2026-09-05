@@ -341,18 +341,40 @@ func (s *MCPService) Answer(id string, approve bool) error {
 	return nil
 }
 
-// ClientBlock is the configuration to paste into an MCP client, the same block
-// `otis mcp config` prints.
-func (s *MCPService) ClientBlock() (string, error) {
+// CopyClientBlock puts the configuration an MCP client needs on the system
+// clipboard — the same block `otis mcp config` prints.
+//
+// **Go writes the clipboard, and the block never crosses the binding.** Two
+// reasons, and either alone would be enough.
+//
+// The first is that it works. `navigator.clipboard.writeText` needs a secure
+// context and a user activation the webview agrees with, and Otis' window is
+// a WKWebView serving from a custom scheme: the call rejects, and the button
+// did nothing at all. Every other copy in this app already goes through
+// `app.Clipboard.SetText` for exactly this reason — CollectionService.CopyPath
+// and EnvironmentService.CopySecretValue both do.
+//
+// The second is that the block contains a **bearer token**. Handing it to the
+// window to put on the clipboard would mean a live credential in the webview
+// whose only use was to leave again; the popover deliberately never displays
+// it. This is DESIGN-NOTES §9.12's Reveal-became-Copy applied to the one other
+// credential Otis holds.
+func (s *MCPService) CopyClientBlock() error {
 	path, err := mcp.DefaultEndpointPath()
 	if err != nil {
-		return "", err
+		return err
 	}
 	endpoint, err := mcp.ReadEndpoint(path)
 	if err != nil {
-		return "", fmt.Errorf("the agent server is not running")
+		return fmt.Errorf("the agent server is not running")
 	}
-	return endpoint.ClientBlock(), nil
+	if s.app == nil {
+		return errors.New("no window to copy from")
+	}
+	if !s.app.Clipboard.SetText(endpoint.ClientBlock()) {
+		return errors.New("the clipboard refused the text")
+	}
+	return nil
 }
 
 // --- Lifecycle ----------------------------------------------------------

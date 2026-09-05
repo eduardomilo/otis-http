@@ -24,7 +24,7 @@ func TestTheAgentServiceExposesOnlyTheWindowsAPI(t *testing.T) {
 	allowed := []string{
 		// What the indicator and its popover need.
 		"Status", "SetEnabled", "SetCapability", "SetAlwaysConfirmSends",
-		"SetPersistAuditLog", "Disconnect", "Answer", "ClientBlock",
+		"SetPersistAuditLog", "Disconnect", "Answer", "CopyClientBlock",
 		// Wails' own lifecycle hooks.
 		"ServiceStartup", "ServiceShutdown",
 	}
