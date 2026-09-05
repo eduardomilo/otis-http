@@ -3,12 +3,14 @@ import { forwardRef, useMemo, useState } from "react";
 import { ChangesList } from "@/components/diff/changes-list";
 import { EnvironmentList } from "@/components/environment/environment-list";
 import { OrderStrip } from "@/components/shell/order-strip";
+import { type NodeAction } from "@/components/shell/node-actions";
 import { Tree, type TreeHandle } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
 import { hint } from "@/lib/platform";
 import { filterTree } from "@/lib/tree";
 import { verbatimText } from "@/lib/text-input";
 import { useCollection } from "@/state/collection-context";
+import type { Node } from "@bindings/internal/services";
 
 /**
  * The sidebar: a filter input and the request tree (DESIGN-NOTES §4.1, 10px
@@ -30,8 +32,9 @@ export const Sidebar = forwardRef<
     revealRef?: React.RefObject<TreeHandle | null>;
     /** Opens the create dialog for a folder in the tree. */
     onCreate: (kind: "request" | "folder", folder: string) => void;
+    onManage: (action: NodeAction, node: Node) => void;
   }
->(function Sidebar({ activePath, environment, diff, revealRef, onCreate }, filterRef) {
+>(function Sidebar({ activePath, environment, diff, revealRef, onCreate, onManage }, filterRef) {
   const { tree } = useCollection();
   const [query, setQuery] = useState("");
 
@@ -88,6 +91,7 @@ export const Sidebar = forwardRef<
           activePath={activePath}
           revealRef={revealRef}
           onCreate={onCreate}
+          onManage={onManage}
         />
       ) : (
         <p className="px-1 py-2 text-meta text-fg-faint">Reading the collection…</p>

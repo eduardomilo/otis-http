@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/otis-http/otis/internal/collection"
 	"github.com/otis-http/otis/internal/httpfile"
 	"github.com/otis-http/otis/internal/importer/postman"
 	"github.com/otis-http/otis/internal/resolve"
@@ -579,4 +580,164 @@ func TestSaveDropsARowNobodyNamed(t *testing.T) {
 	if strings.Contains(saved.Raw, "typed by nobody") || strings.Contains(saved.Raw, "likewise") {
 		t.Errorf("the value of a nameless row was written:\n%s", saved.Raw)
 	}
+}
+
+// Renaming changes both halves of a request's identity at once: the file it
+// lives in and the name the tree shows.
+func TestRenameRequestMovesTheFileAndTheName(t *testing.T) {
+	root := inheritanceFixture(t)
+	s := newRequestService(t, root)
+
+	got, err := s.Rename("orders/create-order.http", "Place order")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if got != "orders/place-order.http" {
+		t.Fatalf("nodePath = %q, want orders/place-order.http", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "orders", "create-order.http")); !os.IsNotExist(err) {
+		t.Error("the old file is still there")
+	}
+	body := readFile(t, filepath.Join(root, "orders", "place-order.http"))
+	if !strings.Contains(body, "# @name Place order") {
+		t.Errorf("the new name is not in the file:\n%s", body)
+	}
+
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := loaded.Find(got)
+	if node == nil || node.Name != "Place order" {
+		t.Errorf("the tree does not show the new name: %+v", node)
+	}
+}
+
+// A rename keeps the request where it was in a manually ordered folder, by
+// rewriting the one line that named it — and leaves the rest of the file,
+// comments included, exactly as it was.
+func TestRenameRequestKeepsItsPlaceInTheOrder(t *testing.T) {
+	root := inheritanceFixture(t)
+	order := "# Mine, by hand.\n\ncreate-order.http\ncancel-order.http\n"
+	write(t, filepath.Join(root, "orders", ".order"), order)
+	s := newRequestService(t, root)
+
+	if _, err := s.Rename("orders/create-order.http", "Place order"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	got := readFile(t, filepath.Join(root, "orders", ".order"))
+	want := "# Mine, by hand.\n\nplace-order.http\ncancel-order.http\n"
+	if got != want {
+		t.Errorf(".order = %q, want %q", got, want)
+	}
+}
+
+// A folder that never had a `.order` must not acquire one because something
+// in it was renamed: alphabetical is what it already was.
+func TestRenameRequestDoesNotCreateAnOrderFile(t *testing.T) {
+	root := inheritanceFixture(t)
+	s := newRequestService(t, root)
+
+	if _, err := s.Rename("orders/create-order.http", "Place order"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "orders", ".order")); !os.IsNotExist(err) {
+		t.Error("a rename created a .order file")
+	}
+}
+
+// Otis does not rewrite a file it could not read, and half of a rename is
+// rewriting the file.
+func TestRenameRefusesAFileThatDidNotParse(t *testing.T) {
+	root := inheritanceFixture(t)
+	write(t, filepath.Join(root, "orders", "broken.http"), "GET\n:::\n")
+	s := newRequestService(t, root)
+
+	if _, err := s.Rename("orders/broken.http", "Fixed"); err == nil {
+		t.Error("Rename rewrote a file that did not parse")
+	}
+}
+
+// The duplicate's label and its file name always agree, however many copies
+// there are — two rows reading the same thing is what a duplicate most needs
+// not to produce.
+func TestDuplicateRequestNamesTheCopyOnce(t *testing.T) {
+	root := inheritanceFixture(t)
+	s := newRequestService(t, root)
+
+	first, err := s.Duplicate("orders/create-order.http")
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if first != "orders/create-order-copy.http" {
+		t.Fatalf("first copy = %q, want orders/create-order-copy.http", first)
+	}
+	second, err := s.Duplicate("orders/create-order.http")
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if second != "orders/create-order-copy-2.http" {
+		t.Fatalf("second copy = %q, want orders/create-order-copy-2.http", second)
+	}
+
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{first: "Create order copy", second: "Create order copy 2"} {
+		node := loaded.Find(path)
+		if node == nil || node.Name != want {
+			t.Errorf("%s is named %q, want %q", path, nodeName(node), want)
+		}
+	}
+
+	// The body came with it.
+	original := readFile(t, filepath.Join(root, "orders", "create-order.http"))
+	copied := readFile(t, filepath.Join(root, "orders", "create-order-copy.http"))
+	if !strings.Contains(copied, `{"currency": "{{currency}}"}`) || copied == original {
+		t.Errorf("the copy is not the original with a new name:\n%s", copied)
+	}
+}
+
+// Duplicating does not touch `.order`, the same as creating: the copy is
+// unlisted and sorts alphabetically after the listed entries.
+func TestDuplicateDoesNotTouchTheOrderFile(t *testing.T) {
+	root := inheritanceFixture(t)
+	order := "# Mine.\ncreate-order.http\n"
+	write(t, filepath.Join(root, "orders", ".order"), order)
+	s := newRequestService(t, root)
+
+	if _, err := s.Duplicate("orders/create-order.http"); err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, "orders", ".order")); got != order {
+		t.Errorf(".order = %q, want it byte-identical: %q", got, order)
+	}
+}
+
+// Deleting takes the `.order` line with it. A line naming a file that is not
+// there warns on every walk from then on, and the user did not leave it.
+func TestDeleteRequestDropsItsOrderLine(t *testing.T) {
+	root := inheritanceFixture(t)
+	write(t, filepath.Join(root, "orders", ".order"), "# Mine.\ncreate-order.http\ncancel-order.http\n")
+	s := newRequestService(t, root)
+
+	if err := s.Delete("orders/create-order.http"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "orders", "create-order.http")); !os.IsNotExist(err) {
+		t.Error("the file is still there")
+	}
+	got := readFile(t, filepath.Join(root, "orders", ".order"))
+	want := "# Mine.\ncancel-order.http\n"
+	if got != want {
+		t.Errorf(".order = %q, want %q", got, want)
+	}
+}
+
+func nodeName(n *collection.Node) string {
+	if n == nil {
+		return "<missing>"
+	}
+	return n.Name
 }

@@ -16,6 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { dropAt, parentOf, reorderedPaths, type Drop } from "@/lib/drag";
 import { methodColor, methodGutter } from "@/lib/method";
+import { canManage, type NodeAction } from "@/components/shell/node-actions";
 import { nodeLink, nodeParentPath } from "@/lib/paths";
 import { fileManagerName } from "@/lib/platform";
 import {
@@ -30,7 +31,7 @@ import {
 } from "@/lib/tree";
 import { cn } from "@/lib/utils";
 import type { Node, Tree as CollectionTree } from "@bindings/internal/services";
-import { CollectionService } from "@bindings/internal/services";
+import { CollectionService, LogService } from "@bindings/internal/services";
 import { useOrder } from "@/state/order-context";
 import { useTabs } from "@/state/tabs-context";
 
@@ -91,6 +92,7 @@ export function Tree({
   activePath,
   revealRef,
   onCreate,
+  onManage,
 }: {
   tree: CollectionTree;
   filter: ReadonlySet<string> | undefined;
@@ -99,6 +101,7 @@ export function Tree({
   revealRef?: React.RefObject<TreeHandle | null>;
   /** Opens the create dialog, in the folder the menu was opened on. */
   onCreate: (kind: "request" | "folder", folder: string) => void;
+  onManage: (action: NodeAction, node: Node) => void;
 }) {
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
   const [menuTarget, setMenuTarget] = useState<Node | null>(null);
@@ -332,7 +335,7 @@ export function Tree({
         </div>
       </ContextMenuTrigger>
 
-      <RowMenu node={menuTarget} onCreate={onCreate} />
+      <RowMenu node={menuTarget} onCreate={onCreate} onManage={onManage} />
       {drag?.armed ? <DragGhost node={drag.node} x={drag.x} y={drag.y} /> : null}
     </ContextMenu>
   );
@@ -658,25 +661,30 @@ function GitDot({ node }: { node: Node }) {
 }
 
 /**
- * The tree's context menu. Reveal and Copy path work; the rest are the
- * design's implied items, disabled until the write path exists — Otis does not
- * write to a collection before Phase C.
+ * The tree's context menu.
  */
 /**
- * Logs a failed menu action. There is nowhere to show it yet — the design has
- * no toast — but a clipboard or file manager that refuses should not fail in
- * complete silence.
+ * Sends a failed menu action to the activity log.
+ *
+ * It used to go to `console.error`, in a webview whose console nobody opens,
+ * with a comment saying there was nowhere else for it — a clipboard or file
+ * manager that refuses should not fail in complete silence. There is
+ * somewhere now (`components/shell/activity-log`).
  */
 function report(work: Promise<unknown>, what: string): void {
-  void work.catch((err: unknown) => console.error(`[otis] could not ${what}:`, err));
+  void work.catch((err: unknown) =>
+    LogService.Record("error", "window", `Could not ${what}`, String(err)),
+  );
 }
 
 function RowMenu({
   node,
   onCreate,
+  onManage,
 }: {
   node: Node | null;
   onCreate: (kind: "request" | "folder", folder: string) => void;
+  onManage: (action: NodeAction, node: Node) => void;
 }) {
   const { setMode } = useOrder();
   const folder = node?.kind === "folder" ? node : null;
@@ -733,9 +741,27 @@ function RowMenu({
         </>
       ) : null}
       <ContextMenuSeparator />
-      <ContextMenuItem disabled>Rename…</ContextMenuItem>
-      <ContextMenuItem disabled>Duplicate</ContextMenuItem>
-      <ContextMenuItem disabled>Delete…</ContextMenuItem>
+      {/* Disabled for a script row and for the collection root: a `.js` file
+          beside a folder is not a request, and the root is the directory
+          somebody chose in a file dialog — neither is Otis' to rename or
+          remove. `canManage` is the same check the service makes, said once
+          here so the menu does not offer what Go will refuse. */}
+      <ContextMenuItem disabled={!canManage(node)} onSelect={() => node && onManage("rename", node)}>
+        Rename…
+      </ContextMenuItem>
+      <ContextMenuItem
+        disabled={!canManage(node)}
+        onSelect={() => node && onManage("duplicate", node)}
+      >
+        Duplicate
+      </ContextMenuItem>
+      <ContextMenuItem
+        disabled={!canManage(node)}
+        onSelect={() => node && onManage("delete", node)}
+        className="text-destructive data-[disabled]:text-destructive"
+      >
+        Delete…
+      </ContextMenuItem>
     </ContextMenuContent>
   );
 }

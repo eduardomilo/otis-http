@@ -554,3 +554,33 @@ func folderLabel(folder *collection.Node) string {
 	}
 	return folder.ID + "/"
 }
+
+// renameInOrder and dropFromOrder keep a folder's `.order` in step when
+// something in it is renamed or deleted.
+//
+// They live here, unexported, because this file is the only writer of a
+// `.order` and that is a property worth being able to check by reading one
+// file. They are not an exception to docs/FORMAT.md §2.2's "never rewritten
+// except by an explicit reorder": neither writes an order, and neither brings
+// a `.order` into being. They edit the single line that named the thing the
+// user just renamed or deleted, in a file that already existed and already
+// listed it — and only that line, so every comment and every other entry's
+// spelling survives (collection.EditOrderLine).
+//
+// The alternative was to leave the line alone, and it is worse in both
+// directions: a rename would drop the request to the bottom of the folder
+// because its new name is unlisted, and a delete would leave a line naming
+// nothing, which warns on every walk from then on. Neither is something the
+// user did.
+
+// renameInOrder rewrites the line naming `from` to name `to`.
+func renameInOrder(folder *collection.Node, from, to string) error {
+	_, err := collection.EditOrderLine(folder.Path, from, to)
+	return err
+}
+
+// dropFromOrder removes the line naming `name`, if there is one.
+func dropFromOrder(folder *collection.Node, name string) error {
+	_, err := collection.EditOrderLine(folder.Path, name, "")
+	return err
+}

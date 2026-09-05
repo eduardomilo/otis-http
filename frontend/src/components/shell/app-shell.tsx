@@ -15,6 +15,7 @@ import {
   type CollectionAction,
 } from "@/components/shell/collection-switch-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
+import { NodeActionDialogs, type NodeAction, type NodeTarget } from "@/components/shell/node-actions";
 import { ImportDialog } from "@/components/shell/import-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
 import { Sidebar } from "@/components/shell/sidebar";
@@ -26,7 +27,8 @@ import { useKeymap } from "@/hooks/use-keymap";
 import { useRouteDocument } from "@/hooks/use-route-document";
 import { OtisEvent } from "@/lib/events.gen";
 import { isMac } from "@/lib/platform";
-import { CollectionService } from "@bindings/internal/services";
+import { CollectionService, FolderService, RequestService } from "@bindings/internal/services";
+import type { Node } from "@bindings/internal/services";
 import { nodeLink, nodeParentPath } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
 import { findNode } from "@/lib/tree";
@@ -35,6 +37,7 @@ import { useDocuments } from "@/state/documents-context";
 import { useDiff } from "@/state/diff-context";
 import { useOrder } from "@/state/order-context";
 import { useEnvironments } from "@/state/environment-context";
+import { useLog } from "@/state/log-context";
 import { useRuns } from "@/state/run-context";
 import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
@@ -75,7 +78,7 @@ const RESPONSE_DEFAULT_FRACTION = 0.4;
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
-  const { closeActive, reopenLastClosed, openTab, tabs } = useTabs();
+  const { closeActive, closeTab, reopenLastClosed, openTab, tabs } = useTabs();
   const { saveActive } = useDocuments();
   const { send } = useSends();
   const { tree, openViaDialog, close: closeCollection } = useCollection();
@@ -83,6 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { overview } = useDiff();
   const { undo: undoOrder } = useOrder();
   const { runFor, start } = useRuns();
+  const { log } = useLog();
   const routeDocument = useRouteDocument();
   // Read inside rememberResponse, which is registered once and must not be
   // re-created every time the route changes.
@@ -147,6 +151,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // What the create dialog is making, and where. Null when it is closed.
   const [creating, setCreating] = useState<{ kind: CreateKind; folder: string } | null>(null);
+  // The row the context menu is renaming or deleting. Duplicate needs no
+  // dialog, so it never lands here.
+  const [managing, setManaging] = useState<NodeTarget | null>(null);
   // The whole pane geometry, held here because it is now spread over two
   // nested groups: the sidebar's callback never sees the response pane's size
   // and vice versa, so each writes its own half in and then saves all of it.
@@ -194,6 +201,35 @@ export function AppShell({ children }: { children: ReactNode }) {
   const openCreate = useCallback((kind: CreateKind, folder: string) => {
     setCreating({ kind, folder });
   }, []);
+
+  /**
+   * The tree's Rename…, Duplicate and Delete….
+   *
+   * Duplicate acts immediately and opens what it made: it writes a file whose
+   * name is derived rather than typed, so there is nothing to ask and nothing
+   * a dialog could add. The other two open theirs.
+   */
+  const manage = useCallback(
+    (action: NodeAction, node: Node) => {
+      if (action !== "duplicate") {
+        setManaging({ action, node });
+        return;
+      }
+      const kind = node.kind === "folder" ? "folder" : "request";
+      const work =
+        kind === "folder"
+          ? FolderService.Duplicate(node.path)
+          : RequestService.Duplicate(node.path);
+      void work
+        .then((path) => {
+          if (!path) return;
+          openTab(path, kind, { activate: true });
+          void navigate(nodeLink(kind, path));
+        })
+        .catch((cause: unknown) => log(`Could not duplicate ${node.path}`, String(cause)));
+    },
+    [log, navigate, openTab],
+  );
 
   const toggleDiff = useCallback(() => {
     if (onDiffRef.current) {
@@ -394,6 +430,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 diff={onDiff}
                 revealRef={treeHandle}
                 onCreate={openCreate}
+          onManage={manage}
               />
             </div>
           </ResizablePanel>
@@ -480,6 +517,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           it, and a dialog that only existed on one route would be one an
           agent could get past by asking while you were on another. */}
       <AgentConfirmDialog />
+
+      {/* Rename and Delete from the tree's context menu. Duplicate is not
+          here: it has no dialog (see `manage` above). */}
+      <NodeActionDialogs
+        target={managing}
+        onClose={() => setManaging(null)}
+        onRenamed={(from, to, node) => {
+          // The tab pointed at a file that no longer exists, so it would
+          // close itself on the next walk anyway — closing it here means the
+          // renamed request comes back in the same position rather than at
+          // the end of the strip.
+          const kind = node.kind === "folder" ? "folder" : "request";
+          closeTab(from);
+          openTab(to, kind, { activate: true });
+          void navigate(nodeLink(kind, to));
+        }}
+        onDeleted={(path) => {
+          // A tab whose file is gone closes itself once the tree catches up,
+          // but the *route* does not: staying on /r/<deleted> would leave the
+          // centre pane showing an error about a file the user just removed.
+          closeTab(path);
+          if (routeDocument?.path === path) void navigate({ to: "/" });
+        }}
+        onError={(message, detail) => log(message, detail)}
+      />
 
       <CreateDialog
         kind={creating?.kind ?? null}

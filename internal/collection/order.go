@@ -179,3 +179,65 @@ func RemoveOrder(dir string) error {
 	}
 	return err
 }
+
+// EditOrderLine renames or removes the .order line naming `from`.
+//
+// `to` is the entry's new exact key, or "" to drop the line. It reports
+// whether a line was found; a directory with no .order file is not an error
+// and not a match, which is the common case — most folders are alphabetical
+// and have nothing to keep in step.
+//
+// It is a line edit rather than a rewrite, so every comment, every blank line
+// and every other entry's spelling survives. That matters more here than
+// anywhere else `.order` is written: this is the one path that touches the
+// file without the user having asked for a reorder, and the whole point of
+// docs/FORMAT.md §2.2's "never rewritten" rule is that Otis does not put a
+// file in somebody's diff that they did not change. One line changes, and it
+// is the line that named the thing they renamed.
+//
+// A line written in §2.2's bare convenience form (`create` for
+// `create.http`) is matched and replaced with the exact key, because that is
+// what Otis always writes.
+//
+// The caller holds the write guard.
+func EditOrderLine(dir, from, to string) (bool, error) {
+	path := filepath.Join(dir, OrderFileName)
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	found := false
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		text := strings.TrimSpace(strings.TrimPrefix(line, "\ufeff"))
+		if found || text == "" || strings.HasPrefix(text, "#") || !orderLineNames(text, from) {
+			out = append(out, line)
+			continue
+		}
+		found = true
+		if to != "" {
+			out = append(out, to)
+		}
+	}
+	if !found {
+		return false, nil
+	}
+	return true, os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644)
+}
+
+// orderLineNames reports whether an .order line names the entry whose exact
+// key is `key`, by the matching rules of docs/FORMAT.md §2.2.
+func orderLineNames(line, key string) bool {
+	if line == key {
+		return true
+	}
+	if strings.HasSuffix(line, "/") || strings.HasSuffix(line, RequestExt) {
+		return false
+	}
+	return line+RequestExt == key || line+"/" == key
+}

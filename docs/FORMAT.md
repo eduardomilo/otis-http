@@ -296,6 +296,17 @@ arrival has to have a position) and the source's (the departure has to leave
 the list). A source folder that had no `.order` does not acquire one: its
 remaining entries are alphabetical, which is what they already were.
 
+Renaming or deleting an entry edits **the one line that named it**, and only
+when there is a `.order` and it is listed there. A rename replaces the name in
+place, so the entry keeps its position; a delete removes the line. Neither
+writes an order, neither reformats the file, and neither brings a `.order`
+into being — a folder that never had one does not acquire one because
+something in it was renamed. This is not an exception to the rule above so
+much as its purpose: without it a rename would silently drop the request to
+the bottom of the folder (its new name being unlisted) and a delete would
+leave a line naming nothing, which warns on every walk from then on. Neither
+is something the user did.
+
 ### 2.3 Folder settings (`_folder.http`)
 
 `_folder.http` uses the request-file syntax (section 1) and normally holds

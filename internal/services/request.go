@@ -524,3 +524,267 @@ func writeFileAtomic(target string, data []byte) error {
 	}
 	return os.Rename(name, target)
 }
+
+// Rename gives the request at nodePath a new name and returns its new node
+// path, which the caller navigates to.
+//
+// It changes both halves of a request's identity, and does so together: the
+// `# @name` directive becomes what was typed, and the file is renamed to that
+// name's slug. That is deliberate symmetry with Create, which writes both from
+// one typed name for the same reason — the file name and the tree label are
+// two views of the same thing, and a rename that moved only one of them would
+// leave a `place-order.http` called "Create order" that nobody meant. The
+// dialog shows both lines before it happens (DESIGN-NOTES §8.2).
+//
+// A file that did not parse is refused rather than renamed, because half of
+// this operation is rewriting its contents and Otis does not rewrite a file it
+// could not read — the same stance the folder settings editor takes.
+//
+// It keeps `.order` in step, and only in step: if the folder has one and the
+// entry is listed, that one line is rewritten so the request stays where it
+// was. A folder with no `.order` does not acquire one.
+func (s *RequestService) Rename(nodePath, name string) (string, error) {
+	_, node, err := s.requestNode(nodePath)
+	if err != nil {
+		return "", err
+	}
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", fmt.Errorf("a request needs a name")
+	}
+	if node.Broken {
+		return "", fmt.Errorf("%s did not parse, so Otis will not rewrite it: %s", displayPath(nodePath), node.Error)
+	}
+	parent := node.Parent
+	if parent == nil {
+		return "", fmt.Errorf("%s has no folder", displayPath(nodePath))
+	}
+
+	raw, err := os.ReadFile(node.Path)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", displayPath(nodePath), err)
+	}
+	file, err := httpfile.ParseString(string(raw))
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", displayPath(nodePath), err)
+	}
+	setRequestName(file, trimmed)
+
+	used, err := namesInUse(parent.Path)
+	if err != nil {
+		return "", err
+	}
+	current := strings.TrimSuffix(filepath.Base(node.Path), collection.RequestExt)
+	delete(used, current)
+	base := collection.UniqueName(used, collection.Slug(trimmed), "request")
+	target := filepath.Join(parent.Path, base+collection.RequestExt)
+
+	release := s.collections.Guard().Writing(
+		node.Path, target, parent.Path, filepath.Join(parent.Path, collection.OrderFileName))
+	err = writeFileAtomic(node.Path, []byte(file.String()))
+	if err == nil && target != node.Path {
+		if err = os.Rename(node.Path, target); err == nil {
+			err = renameInOrder(parent, entryKey(node), base+collection.RequestExt)
+		}
+	}
+	release()
+	if err != nil {
+		return "", fmt.Errorf("renaming %s: %w", displayPath(nodePath), err)
+	}
+	if err := s.collections.Refresh(); err != nil {
+		return "", err
+	}
+	return path.Join(parent.ID, base+collection.RequestExt), nil
+}
+
+// Duplicate copies the request at nodePath into the same folder and returns
+// the copy's node path.
+//
+// The copy is "<name> copy", and "<name> copy 2" if that is taken, with the
+// file named for the slug of whichever it settled on — so the label in the
+// tree and the name on disk never disagree, however many times it is used.
+//
+// Like Create it does not touch `.order`: the copy is unlisted and sorts
+// alphabetically after the listed entries, which is the whole mechanism
+// (docs/FORMAT.md §2.2).
+func (s *RequestService) Duplicate(nodePath string) (string, error) {
+	_, node, err := s.requestNode(nodePath)
+	if err != nil {
+		return "", err
+	}
+	parent := node.Parent
+	if parent == nil {
+		return "", fmt.Errorf("%s has no folder", displayPath(nodePath))
+	}
+	raw, err := os.ReadFile(node.Path)
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", displayPath(nodePath), err)
+	}
+
+	used, err := namesInUse(parent.Path)
+	if err != nil {
+		return "", err
+	}
+	label, base := copyName(used, node.Name)
+
+	// A file that did not parse is copied verbatim: it cannot carry a new
+	// @name, and refusing to duplicate it would be refusing the one operation
+	// that lets somebody keep the broken original while they repair a copy.
+	text := string(raw)
+	if !node.Broken {
+		if file, err := httpfile.ParseString(text); err == nil {
+			setRequestName(file, label)
+			text = file.String()
+		}
+	}
+
+	target := path.Join(parent.ID, base+collection.RequestExt)
+	if _, err := s.write(target, "", text); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+// Delete removes the request at nodePath.
+//
+// There is no confirmation parameter: unlike discarding a hunk, which is one
+// of several things the diff view's buttons do and which had to be
+// unreachable by accident, this method's name is the whole of what it does.
+// The dialog in front of it is the safety, and it says whether git still has
+// a copy.
+//
+// It drops the entry from the folder's `.order` when one lists it, for the
+// same reason a rename rewrites the line: a `.order` naming a file that is not
+// there produces a warning on every walk (docs/FORMAT.md §2.2), and the user
+// did not leave it behind — Otis did.
+func (s *RequestService) Delete(nodePath string) error {
+	_, node, err := s.requestNode(nodePath)
+	if err != nil {
+		return err
+	}
+	return removeNode(s.collections, node)
+}
+
+// removeNode deletes a node's file or directory and tidies the parent's
+// `.order`. Shared by RequestService.Delete and FolderService.Delete, which
+// is why it is a function over the collection service rather than a method on
+// either: deleting a folder and deleting a request differ only in what
+// `RemoveAll` finds there.
+func removeNode(collections *CollectionService, node *collection.Node) error {
+	parent := node.Parent
+	paths := []string{node.Path}
+	if parent != nil {
+		paths = append(paths, parent.Path, filepath.Join(parent.Path, collection.OrderFileName))
+	}
+	release := collections.Guard().Writing(paths...)
+	err := os.RemoveAll(node.Path)
+	if err == nil && parent != nil {
+		err = dropFromOrder(parent, entryKey(node))
+	}
+	release()
+	if err != nil {
+		return fmt.Errorf("deleting %s: %w", displayPath(node.ID), err)
+	}
+	return collections.Refresh()
+}
+
+// requestNode resolves a node path to a request in the cached walk.
+func (s *RequestService) requestNode(nodePath string) (*collection.Collection, *collection.Node, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return nil, nil, err
+	}
+	node := loaded.Find(nodePath)
+	if node == nil {
+		return nil, nil, fmt.Errorf("%s is not in the collection", displayPath(nodePath))
+	}
+	if node.Kind != collection.KindRequest {
+		return nil, nil, fmt.Errorf("%s is not a request", displayPath(nodePath))
+	}
+	return loaded, node, nil
+}
+
+// setRequestName writes `# @name` on the entry the editor shows — the first
+// with a request line, or the first entry in a file that has none.
+//
+// A replaced directive keeps its line number, which holds its position in the
+// preamble, so renaming does not move the line. A new one has none and is
+// written after whatever the file already had, which is the same rule every
+// other directive Otis adds follows (see the serializer's preamble ordering).
+func setRequestName(file *httpfile.File, name string) {
+	entry := (*httpfile.Request)(nil)
+	for _, r := range file.Requests {
+		if r.HasRequestLine() {
+			entry = r
+			break
+		}
+	}
+	if entry == nil {
+		if len(file.Requests) == 0 {
+			return
+		}
+		entry = file.Requests[0]
+	}
+	kept := make([]httpfile.Directive, 0, len(entry.Directives)+1)
+	line, style := 0, "#"
+	for _, d := range entry.Directives {
+		if d.Name == "name" {
+			if line == 0 {
+				line, style = d.Line, d.Style
+			}
+			continue
+		}
+		kept = append(kept, d)
+	}
+	entry.Directives = append(kept, httpfile.Directive{Style: style, Name: "name", Value: name, Line: line})
+	// The "###" title is the other place a name can live (§1.4). Leaving it
+	// would mean the file still says the old name in a second spelling, and
+	// @name wins — so a title that was the name is cleared rather than left
+	// to contradict the directive.
+	if entry.Title != "" {
+		entry.Title = ""
+	}
+}
+
+// namesInUse is every base name already taken in a directory: file names
+// without their .http suffix, and directory names. Both, because a request
+// and a folder cannot share one.
+func namesInUse(dir string) (map[string]bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", dir, err)
+	}
+	used := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		used[strings.TrimSuffix(entry.Name(), collection.RequestExt)] = true
+	}
+	return used, nil
+}
+
+// copyName names a duplicate: "<name> copy", then "<name> copy 2", "copy 3"
+// and so on until the slug is free, returning both the label and the slug.
+//
+// Both together, because they have to agree. Naming the file with
+// UniqueName's -2 suffix while the label stayed "<name> copy" would put two
+// rows reading the same thing in the tree, which is exactly what a duplicate
+// most needs not to do.
+func copyName(used map[string]bool, name string) (label, base string) {
+	if strings.TrimSpace(name) == "" {
+		name = "request"
+	}
+	for i := 1; ; i++ {
+		label = name + " copy"
+		if i > 1 {
+			label = fmt.Sprintf("%s copy %d", name, i)
+		}
+		base = collection.Slug(label)
+		if base == "" {
+			base = collection.UniqueName(used, "", "request-copy")
+			return label, base
+		}
+		if !used[base] {
+			used[base] = true
+			return label, base
+		}
+	}
+}

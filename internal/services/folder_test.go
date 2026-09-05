@@ -526,3 +526,93 @@ func TestCreateFolderWillNotClaimTheEnvDirectory(t *testing.T) {
 		t.Errorf("Create made a folder called %q, which is the environment directory", got)
 	}
 }
+
+// Renaming a folder renames its directory: a folder has no `# @name`, its
+// name is the directory's name (docs/FORMAT.md §2.1).
+func TestRenameFolder(t *testing.T) {
+	svc, _, collections, root := newFolderService(t)
+
+	got, err := svc.Rename("orders", "Placements")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if got != "placements" {
+		t.Fatalf("nodePath = %q, want placements", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "orders")); !os.IsNotExist(err) {
+		t.Error("the old directory is still there")
+	}
+	// Everything inside came with it, subfolders included.
+	if _, err := os.Stat(filepath.Join(root, "placements", "fixtures", "seed-order.http")); err != nil {
+		t.Errorf("the contents did not move: %v", err)
+	}
+	loaded, err := collections.Loaded()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Find("placements") == nil {
+		t.Error("the renamed folder is not in the tree")
+	}
+}
+
+func TestRenameFolderRefusesTheCollectionRoot(t *testing.T) {
+	svc, _, _, _ := newFolderService(t)
+	if _, err := svc.Rename("", "Anything"); err == nil {
+		t.Error("Rename accepted the collection root")
+	}
+}
+
+// A duplicate is the whole subtree, `.order` files included: the copy holds
+// the same entries, so it holds the same arrangement of them.
+func TestDuplicateFolderCopiesEverythingInside(t *testing.T) {
+	svc, _, _, root := newFolderService(t)
+	write(t, filepath.Join(root, "orders", "fixtures", ".order"), "# Mine.\nseed-order.http\n")
+
+	got, err := svc.Duplicate("orders")
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if got != "orders-copy" {
+		t.Fatalf("nodePath = %q, want orders-copy", got)
+	}
+	for _, rel := range []string{
+		filepath.Join("orders-copy", "_folder.http"),
+		filepath.Join("orders-copy", "create-order.http"),
+		filepath.Join("orders-copy", "fixtures", "seed-order.http"),
+		filepath.Join("orders-copy", "fixtures", ".order"),
+	} {
+		if _, err := os.Stat(filepath.Join(root, rel)); err != nil {
+			t.Errorf("%s did not come with the copy: %v", rel, err)
+		}
+	}
+	// The original is untouched.
+	if _, err := os.Stat(filepath.Join(root, "orders", "create-order.http")); err != nil {
+		t.Errorf("the original lost a file: %v", err)
+	}
+}
+
+// Deleting a folder takes everything in it, and takes its line out of the
+// parent's `.order`.
+func TestDeleteFolderAndItsOrderLine(t *testing.T) {
+	svc, _, _, root := newFolderService(t)
+	write(t, filepath.Join(root, ".order"), "# Mine.\norders/\nlib/\n")
+
+	if err := svc.Delete("orders"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "orders")); !os.IsNotExist(err) {
+		t.Error("the directory is still there")
+	}
+	got := readFile(t, filepath.Join(root, ".order"))
+	want := "# Mine.\nlib/\n"
+	if got != want {
+		t.Errorf(".order = %q, want %q", got, want)
+	}
+}
+
+func TestDeleteFolderRefusesTheCollectionRoot(t *testing.T) {
+	svc, _, _, _ := newFolderService(t)
+	if err := svc.Delete(""); err == nil {
+		t.Error("Delete accepted the collection root")
+	}
+}

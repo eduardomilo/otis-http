@@ -694,3 +694,155 @@ func countLines(text string) int {
 	}
 	return n
 }
+
+// Rename renames the folder at nodePath and returns its new node path.
+//
+// A folder has no `# @name`: its name *is* the directory's name
+// (docs/FORMAT.md §2.1), so this renames the directory and nothing else. The
+// typed name is slugged the same way Create slugs it, so a folder named from
+// the dialog and a folder renamed from it land on the same spelling.
+//
+// The parent's `.order` keeps the folder's position when it lists it, and a
+// parent with no `.order` does not acquire one.
+func (s *FolderService) Rename(nodePath, name string) (string, error) {
+	_, node, err := s.folder(nodePath)
+	if err != nil {
+		return "", err
+	}
+	parent := node.Parent
+	if parent == nil {
+		return "", errors.New("the collection root is the collection's own directory; rename it outside Otis")
+	}
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", errors.New("a folder needs a name")
+	}
+
+	used, err := namesInUse(parent.Path)
+	if err != nil {
+		return "", err
+	}
+	delete(used, filepath.Base(node.Path))
+	base := collection.UniqueName(used, collection.Slug(trimmed), "folder")
+	target := filepath.Join(parent.Path, base)
+	if target == node.Path {
+		return node.ID, nil
+	}
+
+	release := s.collections.Guard().Writing(
+		node.Path, target, parent.Path, filepath.Join(parent.Path, collection.OrderFileName))
+	err = os.Rename(node.Path, target)
+	if err == nil {
+		err = renameInOrder(parent, entryKey(node), base+"/")
+	}
+	release()
+	if err != nil {
+		return "", fmt.Errorf("renaming %s: %w", displayPath(nodePath), err)
+	}
+	if err := s.collections.Refresh(); err != nil {
+		return "", err
+	}
+	return path.Join(parent.ID, base), nil
+}
+
+// Duplicate copies the folder at nodePath, with everything inside it, into
+// the same parent and returns the copy's node path.
+//
+// Everything inside it includes each subfolder's `.order`: the copy holds the
+// same entries, so it holds the same arrangement of them. The *parent's*
+// `.order` is untouched, like every other creation — the new folder is
+// unlisted and sorts alphabetically after the listed ones (§2.2).
+func (s *FolderService) Duplicate(nodePath string) (string, error) {
+	_, node, err := s.folder(nodePath)
+	if err != nil {
+		return "", err
+	}
+	parent := node.Parent
+	if parent == nil {
+		return "", errors.New("the collection root cannot be duplicated from inside itself")
+	}
+
+	used, err := namesInUse(parent.Path)
+	if err != nil {
+		return "", err
+	}
+	_, base := copyName(used, node.Name)
+	target := filepath.Join(parent.Path, base)
+
+	release := s.collections.Guard().Writing(node.Path, target, parent.Path)
+	err = copyTree(node.Path, target)
+	release()
+	if err != nil {
+		// A half-written copy is worse than none: the tree would show a
+		// folder that is missing whatever the copy did not reach.
+		_ = os.RemoveAll(target)
+		return "", fmt.Errorf("duplicating %s: %w", displayPath(nodePath), err)
+	}
+	if err := s.collections.Refresh(); err != nil {
+		return "", err
+	}
+	return path.Join(parent.ID, base), nil
+}
+
+// Delete removes the folder at nodePath and everything in it.
+//
+// The collection root is refused: deleting it would delete the collection out
+// from under the window, and a directory somebody chose in a file dialog is
+// not Otis' to remove.
+func (s *FolderService) Delete(nodePath string) error {
+	_, node, err := s.folder(nodePath)
+	if err != nil {
+		return err
+	}
+	if node.Parent == nil {
+		return errors.New("the collection root cannot be deleted from inside it")
+	}
+	return removeNode(s.collections, node)
+}
+
+// copyTree copies a directory recursively. It copies regular files and
+// directories and nothing else: a symlink in a collection is not something
+// Otis knows how to duplicate, and following one would copy whatever it
+// pointed at into the repository.
+func copyTree(from, to string) error {
+	info, err := os.Stat(from)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return copyFile(from, to, info.Mode())
+	}
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(from)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		src, dst := filepath.Join(from, entry.Name()), filepath.Join(to, entry.Name())
+		switch {
+		case entry.IsDir():
+			if err := copyTree(src, dst); err != nil {
+				return err
+			}
+		case entry.Type().IsRegular():
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if err := copyFile(src, dst, info.Mode()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func copyFile(from, to string, mode os.FileMode) error {
+	data, err := os.ReadFile(from)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(to, data, mode.Perm())
+}
