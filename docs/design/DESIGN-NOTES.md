@@ -1175,6 +1175,9 @@ The root is still not a tree row, and that stays as the design has it: the
 collection's name is in the title strip, and the palette and the Auth tab are
 the ways in. What was wrong was that neither worked.
 
+*(Superseded in part by §9.40: those two remained the only ways in, and that
+turned out to be the rest of the problem.)*
+
 **9.27 "Edit environments" led nowhere when there were none.** A collection
 with no `env/*.json` had no way to make its first environment. The command
 palette's "Edit environments" was `hidden` in exactly that case, and the title
@@ -1652,3 +1655,39 @@ is the exemption the constraint already names. They also set
 `grid-cols-[minmax(0,1fr)]`: the primitive is a grid, an implicit track is
 `auto`, and an `auto` track grows to its content, so an absolute path made the
 row wider than the panel and painted outside it instead of wrapping.
+
+**9.40 The collection root was reachable and still not findable.** §9.26 fixed
+the two routes to the root folder view — the command palette's "Open the
+collection root" and the Auth tab's "Edit in the collection root" — and left
+them as the only two, because the design says the root is not a tree row and
+its name belongs in the title strip. Reported again: still hard to find.
+
+That is the design being right about the *drawing* and wrong about the
+*affordance*. Every other folder in this app opens its shared settings by
+being clicked in the sidebar. The one folder that holds settings for
+everything below it is the one folder with no row — so the rule a person
+learns in the first minute does not reach it, and the two things that do
+reach it are a palette they have to know the name of and a button that only
+appears on a request that happens to inherit auth.
+
+Two ways in now, both at the place the design already put the collection's
+identity:
+
+**A row above the tree**, and deliberately *not* a tree row: no chevron, no
+drag, no context menu, and no indent level of its own, so the tree below still
+starts at depth 0 and nothing shifts. It carries the collection's display name
+— the title strip's name, not the directory's, so `~/code/acme-api/.requests`
+reads `acme-api` in both places — the `+` marker a folder row uses for "this
+one has a `_folder.http`" (§9.7), and the word `settings`, because the row has
+exactly one job and nothing else in the sidebar explains what a folder view is
+for. When the root's folder view is what the centre pane shows it takes the
+selected treatment a tree row takes, or two rows would look selected at once.
+
+**The collection's name in the title strip is a link** to the same place. It
+is the thing you point at when you think "the collection", it was inert, and
+the strip is the window's drag handle so it opts out with `no-drag` the way
+the agent chip does.
+
+The design's sentence still holds — the root is not a row *in the tree*, and
+the flattening in `lib/tree.ts` is untouched. What changed is that the
+sidebar now has one row that is not part of the tree, sitting above it.

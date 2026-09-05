@@ -462,6 +462,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Sidebar
                 ref={filterInput}
                 activePath={routeDocument?.path ?? ""}
+                // "" is the root's node path *and* what activePath falls back
+                // to when no document is open at all, so the kind has to come
+                // with it or the collection row would look selected on an
+                // empty centre pane.
+                rootActive={routeDocument?.kind === "folder" && routeDocument.path === ""}
                 environment={environment}
                 diff={onDiff}
                 revealRef={treeHandle}

@@ -175,7 +175,8 @@ lists the design decisions that are still open — do not resolve them silently.
     under the tree), `agent-chip` (the MCP indicator and its popover,
     DESIGN-NOTES §9.22), `node-actions` (Rename…/Duplicate/Delete… from the
     tree's context menu, and the two dialogs two of them need, §9.32),
-    `activity-log` (the status bar's log popover, §9.33) and
+    `activity-log` (the status bar's log popover, §9.33), `collection-row`
+    (the collection root above the tree, §9.40) and
     `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
     it), and screen 2b's other two entry points — `new-collection-dialog`,
@@ -776,6 +777,12 @@ lists the design decisions that are still open — do not resolve them silently.
   Anything reading `match.params.path` must default it to `""`, because the
   root route has no path param — two places assumed otherwise and one of them
   failed three frames away from the cause. DESIGN-NOTES §9.26.
+  It is reached from the sidebar's `collection-row` and from the collection's
+  name in the title strip, which are the two things in the window that look
+  like rows and are not tree nodes: §9.26 made the route *work* and left the
+  palette and an Auth tab button as the only ways in, which is not the same as
+  findable (§9.40). `lib/tree.ts` is untouched — the root is still not
+  flattened into the tree, and the row sits above it.
 - **A sidebar that replaces the request tree carries the way back.** The
   environment list and the changes list each swap the tree out, and neither
   screen in the design draws anything that returns — so with no document tab

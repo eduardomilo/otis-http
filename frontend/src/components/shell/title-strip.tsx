@@ -1,5 +1,8 @@
+import { Link } from "@tanstack/react-router";
+
 import { AgentChip } from "@/components/shell/agent-chip";
 import { EnvironmentChip } from "@/components/shell/environment-chip";
+import { nodeLink } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,7 +39,19 @@ export function TitleStrip({
       <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-2">
         {name ? (
           <>
-            <span className="truncate text-ui text-fg-muted">{name}</span>
+            {/* The name opens the collection root's folder view — its shared
+                auth, headers and variables. The design puts the collection's
+                identity here and the root is not a tree row, so the name is
+                the obvious thing to click and did nothing (§9.40). The strip
+                is the window's drag handle, hence `no-drag`. */}
+            <Link
+              {...nodeLink("folder", "")}
+              title="Shared settings for the whole collection"
+              style={{ "--wails-draggable": "no-drag" } as React.CSSProperties}
+              className="truncate rounded-sm px-1 text-ui text-fg-muted hover:bg-control hover:text-fg-emphasis"
+            >
+              {name}
+            </Link>
             <span className="text-fg-faint">·</span>
             <span className="truncate font-mono text-ui text-fg-dim">{path}</span>
           </>

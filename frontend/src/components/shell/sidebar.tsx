@@ -1,6 +1,7 @@
 import { forwardRef, useMemo, useState } from "react";
 
 import { ChangesList } from "@/components/diff/changes-list";
+import { CollectionRow } from "@/components/shell/collection-row";
 import { EnvironmentList } from "@/components/environment/environment-list";
 import { OrderStrip } from "@/components/shell/order-strip";
 import { type NodeAction } from "@/components/shell/node-actions";
@@ -26,6 +27,8 @@ export const Sidebar = forwardRef<
   HTMLInputElement,
   {
     activePath: string;
+    /** Whether the centre pane is showing the collection root's folder view. */
+    rootActive: boolean;
     environment?: string | null;
     diff?: boolean;
     /** Filled in with the tree's reveal handle, for the palette's ⇧↵. */
@@ -34,8 +37,11 @@ export const Sidebar = forwardRef<
     onCreate: (kind: "request" | "folder", folder: string) => void;
     onManage: (action: NodeAction, node: Node) => void;
   }
->(function Sidebar({ activePath, environment, diff, revealRef, onCreate, onManage }, filterRef) {
-  const { tree } = useCollection();
+>(function Sidebar(
+  { activePath, rootActive, environment, diff, revealRef, onCreate, onManage },
+  filterRef,
+) {
+  const { collection, tree } = useCollection();
   const [query, setQuery] = useState("");
 
   const filter = useMemo(() => (tree ? filterTree(tree.root, query) : undefined), [tree, query]);
@@ -83,6 +89,13 @@ export const Sidebar = forwardRef<
           </span>
         </div>
       </div>
+
+      {/* The collection root, which is not a tree row (DESIGN-NOTES §9.40).
+          Above the tree rather than in it: everything below is inside it, and
+          it is a link and not a node — no chevron, no drag, no menu. */}
+      {collection?.name ? (
+        <CollectionRow name={collection.name} root={tree?.root} active={rootActive} />
+      ) : null}
 
       {tree ? (
         <Tree
