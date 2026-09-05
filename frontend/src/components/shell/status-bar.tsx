@@ -1,5 +1,7 @@
 import { GitBranch } from "lucide-react";
 
+import { ActivityLog } from "@/components/shell/activity-log";
+
 import { cn } from "@/lib/utils";
 import type { State as GitState } from "@bindings/internal/git";
 
@@ -75,6 +77,10 @@ export function StatusBar({
           commit. */}
       <div className="flex min-w-[260px] max-w-[46%] shrink items-center justify-end gap-2 truncate">
         <span className="truncate">{context ?? <Empty />}</span>
+        {/* Last in the bar, after the context: it is the only thing here that
+            is a control rather than a statement, and it stays quiet until
+            something has gone wrong. */}
+        <ActivityLog />
       </div>
     </footer>
   );

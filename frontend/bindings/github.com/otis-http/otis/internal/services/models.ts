@@ -799,6 +799,51 @@ export interface KeychainState {
 }
 
 /**
+ * LogEntry is one line of the activity log.
+ * 
+ * **It carries only what the window is already shown.** A message here is the
+ * text of an error a binding call would have returned, or the text a
+ * background failure would otherwise have written to stderr where nobody
+ * would see it. Nothing is enriched on the way in — no resolved URL, no
+ * header, no body — for the same reason mcp.Entry has nowhere to put a
+ * payload: a resolved URL can carry a credential in a query parameter, and a
+ * log is the one artefact that is read later, copied into a bug report and
+ * pasted into a chat.
+ */
+export interface LogEntry {
+    /**
+     * ID orders the list and keys the rows. It is per-session and starts at 1.
+     */
+    "id": number;
+
+    /**
+     * At is when it happened, RFC3339 with milliseconds.
+     */
+    "at": string;
+
+    /**
+     * Level is "error", "warn" or "info".
+     */
+    "level": string;
+
+    /**
+     * Source is which part of Otis reported it — "collection", "send",
+     * "window". Short, because the row is 11px mono in a 380px popover.
+     */
+    "source": string;
+
+    /**
+     * Message is what happened, in words.
+     */
+    "message": string;
+
+    /**
+     * Detail is the underlying error, when there was one.
+     */
+    "detail"?: string;
+}
+
+/**
  * MCPConfirmation is the events.MCPConfirm payload.
  * 
  * It wraps mcpserver.Confirmation rather than restating it, so the window and

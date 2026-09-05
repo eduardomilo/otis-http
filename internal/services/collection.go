@@ -627,8 +627,5 @@ func (s *CollectionService) emit(name string, data any) {
 }
 
 func (s *CollectionService) logError(msg string, err error) {
-	if s.app == nil {
-		return
-	}
-	s.app.Logger.Error(msg, "error", err)
+	recordError(s.app, "collection", msg, err)
 }

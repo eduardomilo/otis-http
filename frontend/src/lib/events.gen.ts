@@ -45,6 +45,8 @@ export const OtisEvent = {
   RunResult: "run:result",
   /** Emitted when a folder run ends, however it ended. Payload: RunComplete. */
   RunComplete: "run:complete",
+  /** Emitted when a line was added to the activity log, or it was cleared. Payload: LogEntry, zero-valued for a clear. */
+  LogAppended: "log:appended",
 } as const;
 
 export type OtisEventName = (typeof OtisEvent)[keyof typeof OtisEvent];

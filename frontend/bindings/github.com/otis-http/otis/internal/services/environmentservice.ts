@@ -67,6 +67,27 @@ export function Delete(name: string): $CancellablePromise<$models.Environments> 
 }
 
 /**
+ * Duplicate copies env/<name>.json to a new environment and returns it.
+ * 
+ * The copy carries the original's secret *references*, and its stored values
+ * come with them: a reference is keyed <collection>/<env>/<name>, so a copy
+ * whose keys nobody wrote would be an environment full of references to
+ * nothing, which is not what duplicating "staging" means. The values move
+ * inside Go and across the keychain — no value is returned, logged or named,
+ * and the count of them is all the window is told.
+ * 
+ * A value that cannot be read is skipped rather than failing the whole copy:
+ * the reference is still copied, and the environment editor shows it as a
+ * secret with no value set, which is the same state a reference somebody
+ * pulled from a colleague's branch is in.
+ * 
+ * The name is "<name>-copy", then "<name>-copy-2", and so on.
+ */
+export function Duplicate(name: string): $CancellablePromise<$models.EnvironmentDocument> {
+    return $Call.ByID(1785864552, name);
+}
+
+/**
  * ForgetSecret removes a secret's value from the keychain and leaves the
  * reference in the file. It is the design's "Remove from keychain": the
  * committed reference is the team's, the value is this machine's, and this

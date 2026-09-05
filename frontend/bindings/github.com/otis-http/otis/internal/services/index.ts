@@ -9,6 +9,7 @@ import * as EnvironmentService from "./environmentservice.js";
 import * as FolderService from "./folderservice.js";
 import * as GitService from "./gitservice.js";
 import * as ImportService from "./importservice.js";
+import * as LogService from "./logservice.js";
 import * as MCPService from "./mcpservice.js";
 import * as OrderService from "./orderservice.js";
 import * as RequestService from "./requestservice.js";
@@ -23,6 +24,7 @@ export {
     FolderService,
     GitService,
     ImportService,
+    LogService,
     MCPService,
     OrderService,
     RequestService,
@@ -63,6 +65,7 @@ export type {
     ImportPlan,
     ImportResult,
     KeychainState,
+    LogEntry,
     MCPConfirmation,
     MCPResolved,
     MCPStatus,

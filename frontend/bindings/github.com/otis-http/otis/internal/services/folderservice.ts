@@ -52,12 +52,51 @@ export function Create(parentPath: string, name: string): $CancellablePromise<st
 }
 
 /**
+ * Delete removes the folder at nodePath and everything in it.
+ * 
+ * The collection root is refused: deleting it would delete the collection out
+ * from under the window, and a directory somebody chose in a file dialog is
+ * not Otis' to remove.
+ */
+export function Delete(nodePath: string): $CancellablePromise<void> {
+    return $Call.ByID(513135715, nodePath);
+}
+
+/**
+ * Duplicate copies the folder at nodePath, with everything inside it, into
+ * the same parent and returns the copy's node path.
+ * 
+ * Everything inside it includes each subfolder's `.order`: the copy holds the
+ * same entries, so it holds the same arrangement of them. The *parent's*
+ * `.order` is untouched, like every other creation — the new folder is
+ * unlisted and sorts alphabetically after the listed ones (§2.2).
+ */
+export function Duplicate(nodePath: string): $CancellablePromise<string> {
+    return $Call.ByID(2287315849, nodePath);
+}
+
+/**
  * Load reads one folder. nodePath is collection-relative; "" is the root.
  * envName is the active environment, used only to describe which values a
  * {{reference}} would resolve to — never to fetch a secret.
  */
 export function Load(nodePath: string, envName: string): $CancellablePromise<$models.FolderDocument> {
     return $Call.ByID(823348532, nodePath, envName);
+}
+
+/**
+ * Rename renames the folder at nodePath and returns its new node path.
+ * 
+ * A folder has no `# @name`: its name *is* the directory's name
+ * (docs/FORMAT.md §2.1), so this renames the directory and nothing else. The
+ * typed name is slugged the same way Create slugs it, so a folder named from
+ * the dialog and a folder renamed from it land on the same spelling.
+ * 
+ * The parent's `.order` keeps the folder's position when it lists it, and a
+ * parent with no `.order` does not acquire one.
+ */
+export function Rename(nodePath: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(3194652986, nodePath, name);
 }
 
 /**

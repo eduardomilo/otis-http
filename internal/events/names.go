@@ -169,6 +169,17 @@ const (
 	// does is click it.
 	MCPConfirmResolved = "mcp:confirm-resolved"
 
+	// LogAppended is emitted when a line was added to the activity log, or
+	// the log was cleared. Payload: services.LogEntry, zero-valued for a
+	// clear.
+	//
+	// The whole entry rather than a nudge, because the point of the log is
+	// that a failure is noticed *after* it happened: the count in the status
+	// bar has to move the moment one arrives, and re-reading the list to find
+	// that out would mean a binding call per failure at exactly the moment
+	// something is going wrong.
+	LogAppended = "log:appended"
+
 	// MCPChanged is emitted when the agent server's state changed: enabled,
 	// disabled, a capability flipped, a client connected, or a call recorded.
 	// Payload: services.MCPStatus.
@@ -214,4 +225,5 @@ var Registry = []Entry{
 	{"RunStarted", RunStarted, "Emitted when a folder run begins. Payload: RunStarted, carrying every request it will send in order."},
 	{"RunResult", RunResult, "Emitted as each request in a folder run finishes. Payload: RunResult."},
 	{"RunComplete", RunComplete, "Emitted when a folder run ends, however it ended. Payload: RunComplete."},
+	{"LogAppended", LogAppended, "Emitted when a line was added to the activity log, or it was cleared. Payload: LogEntry, zero-valued for a clear."},
 }

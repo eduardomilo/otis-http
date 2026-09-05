@@ -8,6 +8,7 @@ import { isMac } from "@/lib/platform";
 import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
 import { DiffProvider } from "@/state/diff-context";
+import { LogProvider } from "@/state/log-context";
 import { EnvironmentProvider } from "@/state/environment-context";
 import { MCPProvider } from "@/state/mcp-context";
 import { OrderProvider } from "@/state/order-context";
@@ -35,6 +36,12 @@ export const Route = createRootRoute({
 function RootLayout() {
   return (
     <SettingsProvider>
+      {/* The activity log is outermost after settings, and takes nothing from
+          any of them: everything below it can report a failure, including the
+          providers themselves, and a log that could only be written from
+          inside the collection would be silent for exactly the failures that
+          stop one opening. */}
+      <LogProvider>
       <CollectionProvider>
         {/* The agent server sits high and outside everything else: its
             confirmation dialog has to be reachable whatever is open, and it is
@@ -86,6 +93,7 @@ function RootLayout() {
         </EnvironmentProvider>
         </MCPProvider>
       </CollectionProvider>
+      </LogProvider>
     </SettingsProvider>
   );
 }

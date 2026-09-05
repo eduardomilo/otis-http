@@ -45,6 +45,40 @@ export function Create(folderPath: string, name: string): $CancellablePromise<st
 }
 
 /**
+ * Delete removes the request at nodePath.
+ * 
+ * There is no confirmation parameter: unlike discarding a hunk, which is one
+ * of several things the diff view's buttons do and which had to be
+ * unreachable by accident, this method's name is the whole of what it does.
+ * The dialog in front of it is the safety, and it says whether git still has
+ * a copy.
+ * 
+ * It drops the entry from the folder's `.order` when one lists it, for the
+ * same reason a rename rewrites the line: a `.order` naming a file that is not
+ * there produces a warning on every walk (docs/FORMAT.md §2.2), and the user
+ * did not leave it behind — Otis did.
+ */
+export function Delete(nodePath: string): $CancellablePromise<void> {
+    return $Call.ByID(976101836, nodePath);
+}
+
+/**
+ * Duplicate copies the request at nodePath into the same folder and returns
+ * the copy's node path.
+ * 
+ * The copy is "<name> copy", and "<name> copy 2" if that is taken, with the
+ * file named for the slug of whichever it settled on — so the label in the
+ * tree and the name on disk never disagree, however many times it is used.
+ * 
+ * Like Create it does not touch `.order`: the copy is unlisted and sorts
+ * alphabetically after the listed entries, which is the whole mechanism
+ * (docs/FORMAT.md §2.2).
+ */
+export function Duplicate(nodePath: string): $CancellablePromise<string> {
+    return $Call.ByID(4095449744, nodePath);
+}
+
+/**
  * Load reads one request file. nodePath is collection-relative; envName is the
  * active environment, or "" for none.
  * 
@@ -53,6 +87,30 @@ export function Create(folderPath: string, name: string): $CancellablePromise<st
  */
 export function Load(nodePath: string, envName: string): $CancellablePromise<$models.Document> {
     return $Call.ByID(932910215, nodePath, envName);
+}
+
+/**
+ * Rename gives the request at nodePath a new name and returns its new node
+ * path, which the caller navigates to.
+ * 
+ * It changes both halves of a request's identity, and does so together: the
+ * `# @name` directive becomes what was typed, and the file is renamed to that
+ * name's slug. That is deliberate symmetry with Create, which writes both from
+ * one typed name for the same reason — the file name and the tree label are
+ * two views of the same thing, and a rename that moved only one of them would
+ * leave a `place-order.http` called "Create order" that nobody meant. The
+ * dialog shows both lines before it happens (DESIGN-NOTES §8.2).
+ * 
+ * A file that did not parse is refused rather than renamed, because half of
+ * this operation is rewriting its contents and Otis does not rewrite a file it
+ * could not read — the same stance the folder settings editor takes.
+ * 
+ * It keeps `.order` in step, and only in step: if the folder has one and the
+ * entry is listed, that one line is rewritten so the request stays where it
+ * was. A folder with no `.order` does not acquire one.
+ */
+export function Rename(nodePath: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(2984554981, nodePath, name);
 }
 
 /**

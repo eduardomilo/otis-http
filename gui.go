@@ -88,6 +88,7 @@ func init() {
 	application.RegisterEvent[services.MCPConfirmation](events.MCPConfirm)
 	application.RegisterEvent[services.MCPResolved](events.MCPConfirmResolved)
 	application.RegisterEvent[services.MCPStatus](events.MCPChanged)
+	application.RegisterEvent[services.LogEntry](events.LogAppended)
 }
 
 // runGUI opens the window. openPath is a file or directory to show, or "" to
@@ -109,6 +110,14 @@ func runGUI(openPath string) {
 
 	dialogs := services.NewDialogService()
 	collections := services.NewCollectionService(store)
+
+	// The activity log, before anything that might report to it. Every
+	// service's background failures go through services.UseLog rather than
+	// through a constructor argument each: it carries a line of text, and
+	// threading it through eight constructors to do that would be the
+	// dependency costing more than the feature.
+	activity := services.NewLogService()
+	services.UseLog(activity)
 
 	// One secret store for the process, backed by the OS keychain. It is the
 	// only place a real secret value is ever fetched; every read path the
@@ -164,6 +173,11 @@ func runGUI(openPath string) {
 			// than a binding straight onto internal/importer/postman.
 			application.NewService(services.NewImportService(collections, dialogs)),
 			application.NewService(services.NewOrderService(collections)),
+			// Where a failure with nowhere else to go ends up, so that a
+			// clipboard write that refused or a watcher that stopped is
+			// something a person can see rather than something a webview's
+			// absent console swallowed.
+			application.NewService(activity),
 			// The agent server. It starts nothing on its own: the listener
 			// and each capability are separate switches and all of them are
 			// off in the zero settings, so a fresh install exposes nothing.
