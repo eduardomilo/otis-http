@@ -138,11 +138,13 @@ the command palette, the method selector, and the drag ghost.
 | `PATCH` | `#f472b6` | pink-400 |
 | `DELETE` | `#f87171` | red-400 |
 
-`HEAD`, `OPTIONS`, `TRACE`, `CONNECT` and custom methods have **no defined
-color** (§9.2).
+`HEAD`, `OPTIONS`, `TRACE` and `CONNECT` share `#22d3ee` (cyan-400) — §9.2
+left them undefined and §9.37 settles it. A **custom** method still has no
+color.
 
-Method labels are always: mono, 10px, weight 500, `letter-spacing: .02em`,
-right-aligned in a fixed 48px gutter with `padding-right: 8px`.
+Method labels are always: mono, weight 500, `letter-spacing: .02em`,
+right-aligned in a fixed 48px gutter with `padding-right: 8px`. The size is
+**9px**, not the 10px this table originally gave; §9.37 has the two reasons.
 
 ### 2.6 Semantic colors
 
@@ -233,8 +235,10 @@ reads as a column rather than a list:
 
 ```
 width: 48px;  flex-shrink: 0;  text-align: right;  padding-right: 8px;
-font: 500 10px 'IBM Plex Mono';  letter-spacing: .02em;
+font: 500 9px 'IBM Plex Mono';  letter-spacing: .02em;
 ```
+
+(9px, not the 10px first specified — §9.37.)
 
 Identical in the sidebar tree, the folder-view tree, the drag tree, the
 command palette results, and the palette's recent list. In the palette's
@@ -541,10 +545,11 @@ the dirty-tab dot and the accent all the same color. Either the accent options
 need to be disjoint from the method palette, or method colors need to shift
 with the accent. The design does not say which.
 
-**9.2 Four HTTP methods have no color.** The map covers GET, POST, PUT, PATCH
-and DELETE. `HEAD`, `OPTIONS`, `TRACE`, `CONNECT` and custom methods (the
-parser accepts any uppercase token) are undefined. The 48px gutter is also
-sized for at most 6 characters at 10px mono; `OPTIONS` is 7 and would clip.
+**9.2 Four HTTP methods have no color — resolved in §9.37.** The map covered
+GET, POST, PUT, PATCH and DELETE. `HEAD`, `OPTIONS`, `TRACE`, `CONNECT` and
+custom methods (the parser accepts any uppercase token) were undefined, and
+the 48px gutter was sized for at most 6 characters at 10px mono, so `OPTIONS`
+clipped. Both halves are answered there.
 
 **9.3 Amber `#fbbf24` carries four unrelated meanings.** POST, git-modified,
 secret, and dirty-tab. On the `create-order` tab in screen 1a all three of the
@@ -1506,3 +1511,47 @@ The tab strip stays, which screen 1c does not draw. It is the §9.19 deviation
 holding: the strip spans everything right of the sidebar, and on this screen
 it is also the way back to the documents that are open, which §9.23 says a
 replaced sidebar has to carry.
+
+**9.37 The method gutter: a size that never applied, and the four methods
+§9.2 left uncoloured.** Two things, because finding the second is what
+uncovered the first.
+
+**The colours.** `HEAD`, `OPTIONS`, `TRACE` and `CONNECT` now share one
+colour, `#22d3ee` (cyan-400), and a **custom** method still has none. One
+colour and not four: §9.3 already says the palette is carrying more meanings
+than it comfortably can, and four more hues that nobody could tell apart at
+this size would cost the five that work. What the shared colour says is "not
+one of the five you are scanning for", and the word itself says which — at
+48px the difference between `HEAD` and `OPTIONS` is the word, not the hue.
+Cyan sits deliberately close to GET's sky: the group is dominated by `HEAD`,
+which is a `GET` with the body left off. A custom method stays `--fg-muted`
+because Otis cannot know what one means, and grey is the honest answer.
+
+**The size.** §2.5 said 10px and the gutter class said `text-label`, and the
+labels were rendering at **12px** — the row's inherited size. `cn` is
+`clsx` + `tailwind-merge`, and tailwind-merge resolves conflicts from
+Tailwind's *default* scale: `text-xs`, `text-sm`, `text-base`. `text-label` is
+not in it, and its fallback for an unrecognised `text-*` is **text colour**.
+So `cn(methodGutter, methodColor(node.method))` was two colours in conflict,
+the later one won, and the size class was dropped on the way to the DOM:
+
+```
+twMerge("text-label", "text-method-get")  ->  "text-method-get"
+```
+
+Every method label in the tree, the palette and the drag ghost had been drawn
+that way, and the same trap was set for any `cn(<size>, <colour>)` anywhere
+else in the app. `lib/utils.ts` names the nine `--text-*` sizes to
+tailwind-merge now, which fixes all of them at once — and that list has to
+stay in step with index.css, because a size added there and not here is a size
+that silently stops applying the first time it meets a colour.
+
+With that working the label is **9px** (`text-micro`), which is the change
+that was actually asked for: the method is a tag on a row, and at 10px against
+a 12px name it read as a second word rather than a marker. It also closes the
+other half of §9.2 — seven characters of `OPTIONS` at 9px mono are ~38px and
+fit inside the 48px gutter with its 8px padding, so a standard method no
+longer clips. `overflow-hidden` stays for a longer custom one, and callers
+still put the full method in a `title`. The `js` marker shares the gutter and
+moves with it, which is the point of the gutter being one measurement.
+

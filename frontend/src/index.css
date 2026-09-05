@@ -43,7 +43,8 @@
    --accent-hover          bg-primary-hover
    --accent-on             text-primary-foreground
    --accent-wash           bg-primary-wash
-   method colours          text-method-get, -post, -put, -patch, -delete
+   method colours          text-method-get, -post, -put, -patch, -delete,
+                           text-method-other (HEAD/OPTIONS/TRACE/CONNECT)
    modified / secret       text-modified, text-secret
    danger                  text-destructive
 
@@ -112,14 +113,15 @@
     --color-sidebar-border: var(--border-line);
     --color-sidebar-ring: var(--border-strong);
 
-    /* HTTP method colours -- §2.5. HEAD, OPTIONS, TRACE, CONNECT and custom
-       methods have no colour in the design (§9.2); components fall back to
-       text-fg-muted rather than inventing one. */
+    /* HTTP method colours -- §2.5. The five the design defines, plus the one
+       §9.2 left open: HEAD, OPTIONS, TRACE and CONNECT share `other`, and a
+       custom method still falls back to text-fg-muted (§9.37). */
     --color-method-get: #38bdf8;
     --color-method-post: #fbbf24;
     --color-method-put: #a78bfa;
     --color-method-patch: #f472b6;
     --color-method-delete: #f87171;
+    --color-method-other: #22d3ee;
 
     /* Semantic colours -- §2.6 */
     --color-modified: #fbbf24;
