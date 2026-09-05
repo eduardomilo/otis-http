@@ -377,6 +377,18 @@ function Row({
             )}
           </div>
         ) : (
+          /*
+            A plain value has always been editable and never looked it: a bare
+            transparent input in a table cell is indistinguishable from the
+            static text beside it, so the one row you can change reads exactly
+            like the one you cannot (DESIGN-NOTES §9.42).
+
+            The border is what says "field", and it only appears on the row's
+            hover — at rest the table stays as clean as screen 1c draws it.
+            `border-transparent` reserves the space so nothing shifts when it
+            arrives, the same trick a tree row uses for its drop line, and the
+            negative margin keeps the text on the column's own x until then.
+          */
           <input
             {...verbatimText}
             value={value}
@@ -391,8 +403,10 @@ function Row({
                 event.currentTarget.blur();
               }
             }}
+            placeholder="empty"
             aria-label={`${row.name} value`}
-            className="w-full bg-transparent font-mono text-ui text-fg-secondary outline-none"
+            title={`Edit ${row.name}. Enter saves, Escape cancels.`}
+            className="-mx-1.5 w-[calc(100%+0.75rem)] rounded-sm border border-transparent bg-transparent px-1.5 py-0.5 font-mono text-ui text-fg-secondary outline-none placeholder:text-fg-faint group-hover:border-border-control group-hover:bg-inset focus:border-border-strong focus:bg-inset focus:text-fg"
           />
         )}
 

@@ -1748,3 +1748,23 @@ command palette, and **New** on the folder view's Scripts panel — which is
 where you are already looking at a folder's scripts when you want another one,
 and which is a route away from `AppShell`, so it mounts its own copy of the
 dialog rather than reaching for a context to hold one boolean.
+
+**9.42 A plain environment value was editable and never looked it.** The
+Value column of screen 1c has been an `<input>` since the editor existed — a
+transparent, borderless one, in a table cell, next to columns that are static
+text. So the one thing on that screen you can change reads exactly like the
+things you cannot, and the report came in as "allow edit plain environment
+variables" rather than as "editing is broken", which is the tell: the
+behaviour was right and the affordance was absent.
+
+The border is what says *field*, and it appears on the **row's** hover rather
+than always: the table stays as clean at rest as the design draws it, and the
+answer to "can I change this" arrives the moment you go looking.
+`border-transparent` reserves the space so nothing moves when it appears — the
+same trick a tree row uses for its drop line — and a negative margin keeps the
+text on the column's own x until then. Focus takes it to `--border-strong`,
+and an empty value now says `empty` rather than being an invisible cell.
+
+Secrets are untouched: they already have Copy and Replace chips, which look
+like what they are, and their value is not editable in place by design (§9.12).
+
