@@ -13,6 +13,7 @@ import * as LogService from "./logservice.js";
 import * as MCPService from "./mcpservice.js";
 import * as OrderService from "./orderservice.js";
 import * as RequestService from "./requestservice.js";
+import * as ScriptService from "./scriptservice.js";
 import * as SendService from "./sendservice.js";
 import * as SettingsService from "./settingsservice.js";
 export {
@@ -28,6 +29,7 @@ export {
     MCPService,
     OrderService,
     RequestService,
+    ScriptService,
     SendService,
     SettingsService
 };
@@ -79,6 +81,7 @@ export type {
     RunResult,
     RunStarted,
     ScriptConsole,
+    ScriptDocument,
     ScriptFailure,
     ScriptTest,
     SendFailure,

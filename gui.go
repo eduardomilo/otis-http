@@ -172,6 +172,7 @@ func runGUI(openPath string) {
 			// only on a confirmation, which is why it is a service rather
 			// than a binding straight onto internal/importer/postman.
 			application.NewService(services.NewImportService(collections, dialogs)),
+			application.NewService(services.NewScriptService(collections)),
 			application.NewService(services.NewOrderService(collections)),
 			// Where a failure with nowhere else to go ends up, so that a
 			// clipboard write that refused or a watcher that stopped is

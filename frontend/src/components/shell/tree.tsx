@@ -433,16 +433,7 @@ const TreeRow = memo(function TreeRow({
 
   const open = useCallback(
     (activate: boolean) => {
-      // A script has no document of its own yet: the editor arrives with the
-      // script engine (Increment 15). Until then it opens the folder that
-      // owns it, whose Scripts panel shows the file.
-      if (isScript) {
-        const folder = node.path.includes("/") ? node.path.replace(/\/[^/]*$/, "") : "";
-        openTab(folder, "folder", { activate });
-        if (activate) void navigate(nodeLink("folder", folder));
-        return;
-      }
-      const kind = isFolder ? "folder" : "request";
+      const kind = isScript ? "script" : isFolder ? "folder" : "request";
       if (!activate) {
         openTab(node.path, kind, { activate: false });
         return;

@@ -119,6 +119,13 @@ lists the design decisions that are still open — do not resolve them silently.
   hunks (`hunks.go`, whose `Apply`/`Reverse` are the one splice behind both
   staging and discarding), the semantic hunk headers a `.http` file allows
   (`label.go`), and the four operations a review performs (`apply.go`).
+- `internal/services/script.go` — the `.js` files: `ScriptService` loads one
+  and is the only thing that writes one. **The text is written verbatim** —
+  no parser, no serializer, no canonical form — because Otis has no opinion
+  about JavaScript formatting and a save that acquired one would put
+  everybody's prettier config in a diff. It also says what a script *is*
+  (folder hook, request hook, module), which comes entirely from its name
+  (docs/FORMAT.md §2.4).
 - `internal/services/log.go` — the activity log: what Otis tried and could
   not do, so that a failure has somewhere to go. `LogEntry` has a message, a
   source and the error, and nowhere to put a payload — same reasoning as
@@ -159,6 +166,9 @@ lists the design decisions that are still open — do not resolve them silently.
     `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
     it). One component per file, named after it.
+  - `components/script/` — the centre pane for `/s/$path`: `script-editor`, a
+    CodeMirror in `javascript` mode over the file's text, with a header
+    saying in a sentence what runs it. DESIGN-NOTES §9.34.
   - `components/editor/` — the CodeMirror 6 setup: the theme and syntax
     colours (`otis-theme`), the `{{variable}}` decoration
     (`variable-decoration`), and the React wrapper (`code-editor`). One
@@ -193,7 +203,8 @@ lists the design decisions that are still open — do not resolve them silently.
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
     `send-context`, `environment-context`, `diff-context`, `run-context`,
-    `order-context`, `log-context`),
+    `order-context`, `log-context`,
+    `scripts-context`),
     each exporting a `useXxx` hook
     that throws outside its provider. Providers are composed in
     `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
@@ -728,6 +739,15 @@ lists the design decisions that are still open — do not resolve them silently.
   bar, not to each caller. DESIGN-NOTES §9.19 records the whole deviation from
   screen 1a.
 
+- **A script is text, and lives in its own provider.** `documents-context`
+  holds a draft that is a parsed `httpfile.File`; `scripts-context` holds a
+  string, because that is what a `.js` is. What they share is the tab strip,
+  and that is why `useTabs().addCloseGuard` is a **list** rather than the
+  single slot it used to be: with one slot, whichever provider mounted second
+  replaced the other's guard, and a dirty tab of that kind would have closed
+  without asking. Every guard has to say yes, and each is a no-op for a path
+  it never held. ⌘S calls both `saveActive`s for the same reason.
+  DESIGN-NOTES §9.34.
 - **One keyboard handler.** `useKeymap` in `AppShell` owns every shortcut;
   components do not bind their own. A shortcut that needs the platform
   modifier fires wherever focus is; one that does not is suppressed in a text

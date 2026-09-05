@@ -4,7 +4,7 @@ import { ENV_INDEX_ROUTE_ID, FOLDER_ROOT_ROUTE_ID, nodeRoute } from "@/lib/paths
 
 /** What the current route is showing, if it addresses a document at all. */
 export interface RouteDocument {
-  kind: "request" | "folder" | "diff" | "environment";
+  kind: "request" | "folder" | "script" | "diff" | "environment";
   /** The node's collection-relative path, or the environment file's path. */
   path: string;
   /**
@@ -18,6 +18,7 @@ export interface RouteDocument {
 const KIND_BY_ROUTE: Record<string, RouteDocument["kind"]> = {
   [nodeRoute("request")]: "request",
   [nodeRoute("folder")]: "folder",
+  [nodeRoute("script")]: "script",
   [nodeRoute("diff")]: "diff",
   // The collection root, whose route carries no path param at all.
   [FOLDER_ROOT_ROUTE_ID]: "folder",

@@ -1401,3 +1401,45 @@ body. Same reasoning as `mcp.Entry`'s: a resolved URL can carry a credential
 in a query parameter, and a log is the one artefact that gets copied into a
 bug report and pasted into a chat. Everything in it is text the window was
 already shown, or text that would otherwise have gone to a stderr nobody has.
+
+**9.34 A script was the one row in the tree that could not be opened.** The
+walker has listed `.js` files since it learned about them (FORMAT.md §2.4),
+the sidebar draws them with a `js` mark and a HOOK or LIB tag, and the engine
+has been running them — and clicking one opened *the folder that held it*,
+with a comment in `tree.tsx` saying the editor arrived with the script engine.
+It didn't. A shipped feature had no way into the UI at all.
+
+`/s/$path` is that way in. Three decisions:
+
+**The text is the document.** A request is a parsed model that Go serializes
+back, with a canonical form and a round-trip guarantee (FORMAT.md §1.13). A
+script is bytes. Otis has no opinion about JavaScript formatting and must not
+acquire one — a save that reformatted would put every colleague's prettier
+config in somebody's diff — so `ScriptService.Save` writes what the editor
+holds, verbatim, and a test feeds it tabs, a CRLF, trailing whitespace and no
+final newline to keep it that way.
+
+**Which is why scripts have their own provider.** `documents-context` holds a
+draft that is a `httpfile.File`; folding scripts in would make every
+consumer of `get()` ask which kind it had. `scripts-context` is the same
+shape over a string. What the two share is the tab strip — the dirty dot, ⌘S,
+and the question before a dirty tab closes — and that last one is why
+`addCloseGuard` replaced `setCloseGuard`: **with a single slot, whichever
+provider mounted second silently replaced the other's guard**, and the symptom
+would have been a dirty tab of one kind closing without asking. Guards are a
+list and all of them have to say yes.
+
+**The header says what the file is.** A script's whole identity is its name
+and the convention is easy to get wrong, so the header spells it out in a
+sentence: "Runs after every request in `orders/` and below", "Runs after
+`orders/create-order.http`, and only that request", or for a module "Nothing
+runs it unless a hook imports it" with §9.3's sandbox named. That last one
+matters most — a `.pre.js` beside no matching request *looks* like a hook and
+is not one, and the tree's LIB tag is three characters to notice. The folder
+view's Scripts panel links each row here, which is what its "Open one to read
+or edit it" now refers to.
+
+What is still missing: there is no way to **create** a script from the window.
+`_pre.js` beside a folder is still `touch`. That is a smaller gap than this
+one was — a file that does not exist is not a row you can click and get
+nothing from — but it is a gap.

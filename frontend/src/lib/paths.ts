@@ -19,11 +19,15 @@
 import type { LinkOptions } from "@tanstack/react-router";
 
 /** The routes that address a node by path. */
-export type NodeRouteKind = "request" | "folder" | "diff";
+export type NodeRouteKind = "request" | "folder" | "script" | "diff";
 
 const ROUTE_BY_KIND = {
   request: "/r/$path",
   folder: "/f/$path",
+  // A `.js` file is a row in the tree (docs/FORMAT.md §2.4) and therefore a
+  // document with a route of its own. It is not `/r/` — a script is not a
+  // request, nothing parses it, and RequestService would refuse it.
+  script: "/s/$path",
   diff: "/diff/$path",
 } as const;
 

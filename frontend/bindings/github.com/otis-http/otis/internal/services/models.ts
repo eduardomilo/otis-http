@@ -1364,6 +1364,61 @@ export interface ScriptConsole {
 }
 
 /**
+ * ScriptDocument is one `.js` file as the editor needs it.
+ * 
+ * A script is a file in the collection and a row in the tree (docs/FORMAT.md
+ * §2.4), and until this existed it was the only row you could not open:
+ * clicking one showed the folder that held it. The engine ran it and the
+ * window could not show it.
+ */
+export interface ScriptDocument {
+    /**
+     * Path is the node's collection-relative ID.
+     */
+    "path": string;
+
+    /**
+     * Name is the file name, which is a script's whole name — there is no
+     * `@name` directive in JavaScript and inventing a magic comment for one
+     * would be inventing syntax (docs/FORMAT.md §9).
+     */
+    "name": string;
+
+    /**
+     * Folder is the node path of the folder that holds it, "" for the root.
+     */
+    "folder": string;
+
+    /**
+     * Text is the file's contents.
+     */
+    "text": string;
+
+    /**
+     * Hook is true when this script runs on its own, false for a module that
+     * runs only when a hook imports it (§2.4).
+     */
+    "hook": boolean;
+
+    /**
+     * Phase is "pre" or "post" for a hook, "" for a module.
+     */
+    "phase"?: string;
+
+    /**
+     * HookOf is the request a request-level hook runs around, as a node path.
+     * Empty for a folder hook and for a module.
+     */
+    "hookOf"?: string;
+
+    /**
+     * Scope is what a folder hook runs around: the folder's node path. Empty
+     * for a request hook and for a module.
+     */
+    "scope"?: string;
+}
+
+/**
  * ScriptFailure is a script that threw or was killed, with where it happened
  * (docs/FORMAT.md §9.10).
  */

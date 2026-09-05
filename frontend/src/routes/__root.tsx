@@ -9,6 +9,7 @@ import { CollectionProvider, useCollection } from "@/state/collection-context";
 import { DocumentsProvider } from "@/state/documents-context";
 import { DiffProvider } from "@/state/diff-context";
 import { LogProvider } from "@/state/log-context";
+import { ScriptsProvider } from "@/state/scripts-context";
 import { EnvironmentProvider } from "@/state/environment-context";
 import { MCPProvider } from "@/state/mcp-context";
 import { OrderProvider } from "@/state/order-context";
@@ -67,6 +68,11 @@ function RootLayout() {
                 {/* Documents sit inside Tabs: a draft is what makes a tab dirty,
                     and the veto on closing a dirty tab is installed from here. */}
                 <DocumentsProvider>
+                  {/* Scripts sit beside the request documents rather than
+                      inside them: a `.js` is text, a request is a parsed
+                      model, and both are tabs. Both register a close guard,
+                      which is why that is a list. */}
+                  <ScriptsProvider>
                   {/* Folder runs sit *inside* the documents, not beside them.
                       Their results still outlive whichever tab started a run —
                       DocumentsProvider is one provider for the collection, not
@@ -86,6 +92,7 @@ function RootLayout() {
                     </TooltipProvider>
                   </SendProvider>
                   </RunProvider>
+                  </ScriptsProvider>
                 </DocumentsProvider>
               </TabsProvider>
           </DiffProvider>

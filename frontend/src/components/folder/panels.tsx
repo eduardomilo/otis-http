@@ -1,7 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { Clock, FileText, Lock } from "lucide-react";
 
 import { VariableText } from "@/components/request/variable-text";
 import { Button } from "@/components/ui/button";
+import { nodeLink } from "@/lib/paths";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/lib/time";
 import type { VariableIndex } from "@/lib/variables";
@@ -348,9 +350,12 @@ export function ScriptsPanel({ doc }: { doc: FolderDocument }) {
             <span className="w-[92px] shrink-0 text-meta text-fg-dim">
               {script.hook === "pre" ? "pre-request" : "post-response"}
             </span>
-            <span className="min-w-0 flex-1 truncate font-mono text-ui text-fg-emphasis">
+            <Link
+              {...nodeLink("script", script.path)}
+              className="min-w-0 flex-1 truncate font-mono text-ui text-fg-emphasis hover:underline"
+            >
               {script.path}
-            </span>
+            </Link>
             <span className="shrink-0 text-meta text-fg-faint">
               {script.lines} {script.lines === 1 ? "line" : "lines"}
             </span>
@@ -372,9 +377,12 @@ export function ScriptsPanel({ doc }: { doc: FolderDocument }) {
           </p>
           {modules.map((script) => (
             <div key={script.path} className="flex items-baseline gap-2 py-0.5">
-              <span className="min-w-0 flex-1 truncate font-mono text-ui text-fg-secondary">
+              <Link
+                {...nodeLink("script", script.path)}
+                className="min-w-0 flex-1 truncate font-mono text-ui text-fg-secondary hover:underline"
+              >
                 {script.path}
-              </span>
+              </Link>
               <span className="shrink-0 text-meta text-fg-faint">
                 {script.lines} {script.lines === 1 ? "line" : "lines"}
               </span>

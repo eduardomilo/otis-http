@@ -92,7 +92,7 @@ interface DiscardRequest {
 
 export function DocumentsProvider({ children }: { children: ReactNode }) {
   const { collection } = useCollection();
-  const { activePath, setDirty, setCloseGuard } = useTabs();
+  const { activePath, setDirty, addCloseGuard } = useTabs();
   const [documents, setDocuments] = useState<Record<string, DocumentState>>({});
   const [discard, setDiscard] = useState<DiscardRequest | null>(null);
 
@@ -315,8 +315,10 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
   // Closing a dirty tab asks first. The guard lives here because this is what
   // knows a document is dirty; the tab bar only knows the dot is on.
   useEffect(() => {
-    setCloseGuard(async (path) => {
+    return addCloseGuard(async (path) => {
       const existing = latest.current[path];
+      // Not a request tab, or a clean one. `forget` is a no-op for a path
+      // this provider never held, which is what lets several guards coexist.
       if (!existing?.dirty) {
         forget(path);
         return true;
@@ -329,8 +331,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
       forget(path);
       return true;
     });
-    return () => setCloseGuard(null);
-  }, [setCloseGuard, save, forget]);
+  }, [addCloseGuard, save, forget]);
 
   const value = useMemo<DocumentsContextValue>(
     () => ({

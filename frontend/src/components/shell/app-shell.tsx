@@ -39,6 +39,7 @@ import { useOrder } from "@/state/order-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useLog } from "@/state/log-context";
 import { useRuns } from "@/state/run-context";
+import { useScripts } from "@/state/scripts-context";
 import { useSends } from "@/state/send-context";
 import { useSettings } from "@/state/settings-context";
 import { useTabs } from "@/state/tabs-context";
@@ -80,6 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { settings, savePanes } = useSettings();
   const { closeActive, closeTab, reopenLastClosed, openTab, tabs } = useTabs();
   const { saveActive } = useDocuments();
+  const { saveActive: saveActiveScript } = useScripts();
   const { send } = useSends();
   const { tree, openViaDialog, close: closeCollection } = useCollection();
   const { environments } = useEnvironments();
@@ -194,7 +196,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const folderForNew = () => {
     if (!routeDocument) return "";
     if (routeDocument.kind === "folder") return routeDocument.path;
-    if (routeDocument.kind === "request") return nodeParentPath(routeDocument.path);
+    // A script's folder, for the same reason a request's: creating from
+    // wherever you are means creating beside it.
+    if (routeDocument.kind === "request" || routeDocument.kind === "script") {
+      return nodeParentPath(routeDocument.path);
+    }
     return "";
   };
 
@@ -299,7 +305,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     { key: "w", mod: true, run: closeActive },
     // CodeMirror consumes ⌘S before the window sees it, so the request editor
     // binds this same call as an editor keymap too (see useKeymap).
-    { key: "s", mod: true, run: () => void saveActive() },
+    // Both, because only one of the two providers holds the active tab and
+    // the other's saveActive is a no-op for a path it never loaded. Asking
+    // the route which kind it is would be a third thing to keep in step.
+    {
+      key: "s",
+      mod: true,
+      run: () => {
+        void saveActive();
+        void saveActiveScript();
+      },
+    },
     // ⌘↵ sends from anywhere in the request view; the editors bind it too.
     {
       key: "Enter",

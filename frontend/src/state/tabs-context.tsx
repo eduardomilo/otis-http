@@ -29,7 +29,7 @@ import { useSettings } from "@/state/settings-context";
  * (DESIGN-NOTES §7.3).
  */
 
-export type TabKind = "request" | "folder";
+export type TabKind = "request" | "folder" | "script";
 
 export interface Tab {
   /** The node's collection-relative ID (docs/FORMAT.md §2.1). */
@@ -64,7 +64,17 @@ interface TabsContextValue {
   /** Marks a tab as having unsaved changes. */
   setDirty: (path: string, dirty: boolean) => void;
   /** Installs (or, with null, removes) the veto consulted before a close. */
-  setCloseGuard: (guard: CloseGuard | null) => void;
+  /**
+   * Registers a question to ask before a tab closes, and returns the
+   * unregistration.
+   *
+   * A list rather than one slot: a dirty *request* and a dirty *script* are
+   * held by different providers, and with a single slot whichever mounted
+   * second silently replaced the first — the symptom being a tab that closes
+   * without asking, which is exactly the case the guard exists for. Every
+   * guard has to say yes.
+   */
+  addCloseGuard: (guard: CloseGuard) => () => void;
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null);
@@ -73,6 +83,7 @@ const TabsContext = createContext<TabsContextValue | null>(null);
 const KIND_BY_ROUTE: Record<string, TabKind> = {
   [nodeRoute("request")]: "request",
   [nodeRoute("folder")]: "folder",
+  [nodeRoute("script")]: "script",
   // The collection root's own route, so a tab on it is still a folder tab.
   [FOLDER_ROOT_ROUTE_ID]: "folder",
 };
@@ -85,7 +96,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   const [activePath, setActivePath] = useState("");
   const closed = useRef<Tab[]>([]);
   const restoredFor = useRef<string | null>(null);
-  const closeGuard = useRef<CloseGuard | null>(null);
+  const closeGuards = useRef(new Set<CloseGuard>());
 
   // The document the current route addresses, if any.
   const current = useRouterState({
@@ -205,9 +216,13 @@ export function TabsProvider({ children }: { children: ReactNode }) {
 
   const closeTab = useCallback(
     async (path: string) => {
-      // The guard first, and before any state moves: a tab that is not going
-      // to close must not lose its place in the list or its selection.
-      if (closeGuard.current && !(await closeGuard.current(path))) return;
+      // The guards first, and before any state moves: a tab that is not
+      // going to close must not lose its place in the list or its selection.
+      // They run in sequence rather than in parallel because each may put a
+      // dialog in front of the person, and two at once is not a question.
+      for (const guard of [...closeGuards.current]) {
+        if (!(await guard(path))) return;
+      }
       setTabs((existing) => {
         const index = existing.findIndex((t) => t.path === path);
         if (index === -1) return existing;
@@ -268,8 +283,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const setCloseGuard = useCallback((guard: CloseGuard | null) => {
-    closeGuard.current = guard;
+  const addCloseGuard = useCallback((guard: CloseGuard) => {
+    closeGuards.current.add(guard);
+    return () => {
+      closeGuards.current.delete(guard);
+    };
   }, []);
 
   const value = useMemo<TabsContextValue>(
@@ -282,7 +300,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeActive,
       reopenLastClosed,
       setDirty,
-      setCloseGuard,
+      addCloseGuard,
     }),
     [
       tabs,
@@ -293,7 +311,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       closeActive,
       reopenLastClosed,
       setDirty,
-      setCloseGuard,
+      addCloseGuard,
     ],
   );
 
@@ -313,7 +331,9 @@ export function useTabs(): TabsContextValue {
  * ID is `orders`.
  */
 function kindOf(path: string): TabKind {
-  return path.endsWith(".http") ? "request" : "folder";
+  if (path.endsWith(".http")) return "request";
+  if (path.endsWith(".js")) return "script";
+  return "folder";
 }
 
 function sameOrder(a: string[], b: string[]): boolean {

@@ -213,6 +213,11 @@ function TabButton({
     >
       {tab.kind === "folder" ? (
         <Folder className="size-3 shrink-0 text-fg-muted" />
+      ) : tab.kind === "script" ? (
+        // The tree marks a script with a lowercase `js` in the method gutter
+        // rather than an icon (DESIGN-NOTES §4.2's gutter holds a label, not a
+        // glyph), so the tab uses the same mark on the same axis.
+        <span className="shrink-0 font-mono text-label text-fg-faint">js</span>
       ) : (
         <span
           className={cn(
