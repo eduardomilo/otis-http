@@ -217,10 +217,25 @@
     /* §4.1 Window and pane metrics, as CSS so the shell and its children
        agree on one number. */
     --title-strip-height: 38px;
+    /* How far content that touches the window's edge is held off it. Zero
+       extra everywhere except macOS, where the window has rounded corners and
+       the title strip and status bar both run into one. */
+    --edge-inset: 12px;
     --tab-bar-height: 34px;
     --status-bar-height: 26px;
     --row-height: 24px;
     --method-gutter-width: 24px;
+}
+
+/* macOS: the window's own chrome decides two numbers we do not get to choose.
+   The traffic lights are placed by AppKit at the vertical centre of a standard
+   ~52px toolbar band — Wails' MacTitleBarHiddenInset offers no way to move
+   them — so a 38px title strip leaves them low, misaligned with its own text
+   and ~4px above the row beneath. And the window has rounded corners, which
+   the strip and the status bar both run into. DESIGN-NOTES §9.44. */
+:root[data-platform="mac"] {
+    --title-strip-height: 52px;
+    --edge-inset: 20px;
 }
 
 @layer base {

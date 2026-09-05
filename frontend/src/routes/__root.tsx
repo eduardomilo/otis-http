@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet, createRootRoute } from "@tanstack/react-router";
 
 import { AppShell } from "@/components/shell/app-shell";
@@ -108,6 +109,15 @@ function RootLayout() {
 function Window() {
   const { collection, isOpen } = useCollection();
   const home = useHomeDir();
+
+  // macOS decides where the traffic lights go and gives the window rounded
+  // corners; two tokens in index.css follow from that (§9.44). The attribute
+  // is set in an effect rather than read at import time for the reason
+  // lib/platform exports functions: the Wails runtime fills in the
+  // environment after the bundle may already have evaluated.
+  useEffect(() => {
+    document.documentElement.dataset.platform = isMac() ? "mac" : "other";
+  }, []);
 
   return (
     <div

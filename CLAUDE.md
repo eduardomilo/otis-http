@@ -898,6 +898,16 @@ lists the design decisions that are still open — do not resolve them silently.
   collection. Nothing typed into this app is prose: names, values, URLs and
   filter terms all mean exactly what was typed. The lone exception is the
   commit message in the changes list. DESIGN-NOTES §9.31.
+- **Two numbers on macOS belong to the OS, not to the design.** AppKit places
+  the traffic lights at the vertical centre of a standard toolbar band and
+  Wails' `MacTitleBarHiddenInset` offers no inset to change it, so the title
+  strip is **52px on macOS** and 38px everywhere else, and the slot reserved
+  for the lights is **80px**, which is what they occupy. `--edge-inset` is the
+  other half: 12px everywhere, 20px on macOS, and it is what the title strip
+  and the status bar — the two things that run into a rounded corner — hold
+  their outermost items off the window's edge by. Both hang off
+  `data-platform` on the root element, set in an effect for the same reason
+  the rule below exists. DESIGN-NOTES §9.44.
 - **`lib/platform` exports functions, not constants.** `System.IsMac()` reads
   `window._wails.environment`, which the Wails runtime fills in after the
   bundle may already have evaluated, so a value captured at import time is

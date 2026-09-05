@@ -34,7 +34,7 @@ export function StatusBar({
   onShowChanges?: () => void;
 }) {
   return (
-    <footer className="flex h-[var(--status-bar-height)] shrink-0 items-center gap-4 border-t border-border bg-background px-3 font-mono text-meta text-fg-dim">
+    <footer className="flex h-[var(--status-bar-height)] shrink-0 items-center gap-4 border-t border-border bg-background px-[var(--edge-inset)] font-mono text-meta text-fg-dim">
       <div className="flex w-[260px] shrink-0 items-center gap-2 truncate">
         {onShowChanges && git?.repository ? (
           <button

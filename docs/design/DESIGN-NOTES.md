@@ -213,8 +213,8 @@ code and for 12–13px prose, `24px` for tree rows, `14px` for micro badges.
 | Element | Size |
 | --- | --- |
 | Artboard (window) | 1440 × 900 |
-| Title bar | 38px tall |
-| Traffic lights | 3 × 12px circles, 8px gap, 52px container |
+| Title bar | 38px tall — **52px on macOS**, where AppKit decides where the traffic lights go (§9.44) |
+| Traffic lights | 3 × 12px circles, 8px gap; the reserved slot is **80px**, which is what they occupy (§9.44) |
 | Sidebar | **260px**, fixed (`flex-shrink: 0`) |
 | Response pane | **480px**, fixed (`flex-shrink: 0`) |
 | Center pane | `flex: 1`, `min-width: 0` |
@@ -1814,3 +1814,37 @@ is ignored.** curl does not follow redirects by default and Otis does, so a
 strict reading would put `@no-redirect` on almost every imported request —
 recording curl's default as though it were the author's decision. What was
 pasted is a request; how it treats a 302 is now a choice the person can make.
+
+**9.44 macOS decides two numbers, and the design was fighting both.** A
+screenshot of the real window, not the harness: the traffic lights sat low in
+the title strip, misaligned with its own text, with only a few pixels between
+them and the tab bar underneath — and the environment chip was a hair from the
+window's rounded top-right corner.
+
+**The strip is 52px on macOS.** AppKit places the lights at the vertical
+centre of a standard toolbar band, and Wails' `MacTitleBarHiddenInset` is a
+set of booleans with no inset among them, so their position is not ours to
+choose. Measured off that screenshot they centre about 26px down; a 38px strip
+therefore put them ~8px below its own centred text and left ~4px of clearance
+above the next row. At 52px the strip's centre lands on theirs and the
+clearance becomes ~17px. This is not a design change — 38px is still the
+number everywhere the window has its own frame — it is the height the platform
+was already using, written down.
+
+**The slot is 80px, not 52px.** §4.1's 52px was the container the design drew;
+three 12px circles with their real insets end 80px in. Nothing collided,
+because the strip's middle is centred rather than left-aligned and the window
+was always wide enough — which is to say the old number was a guess that had
+not been caught out yet.
+
+**`--edge-inset` is what content that touches the window's edge is held off
+by.** 12px everywhere, 20px on macOS, and the reason is the rounded corners:
+the title strip and the status bar are the two things that run into one, and
+both had their outermost item sitting at 12px from a curve. Off macOS it is
+exactly the `px-3` those bars already had, so nothing moves.
+
+The attribute the two tokens hang off — `data-platform` on the root element —
+is set in an effect rather than read at import time, for the same reason
+`lib/platform` exports functions rather than constants: the Wails runtime
+fills in the environment after the bundle may already have evaluated, and a
+value captured too early is wrong for the life of the window.
