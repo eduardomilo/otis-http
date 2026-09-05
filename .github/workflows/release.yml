@@ -103,9 +103,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libfuse2t64 desktop-file-utils
 
+      # choco installs NSIS into Program Files and edits the *machine* PATH,
+      # which a runner process that has already started never re-reads — so
+      # `makensis` was not on PATH and packaging failed at its last task with
+      # exit 127, after a full build. GITHUB_PATH is the runner's own
+      # mechanism for this and applies from the next step on. The existence
+      # check is so a future change to choco's layout is a clear error here
+      # rather than a bare 127 twenty steps later.
       - name: Install NSIS
         if: runner.os == 'Windows'
-        run: choco install nsis --no-progress -y
+        run: |
+          choco install nsis --no-progress -y
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (-not (Test-Path (Join-Path $nsis 'makensis.exe'))) {
+            throw "NSIS installed but makensis.exe is not in $nsis"
+          }
+          $nsis | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install wails3
         run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
