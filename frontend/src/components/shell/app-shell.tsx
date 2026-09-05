@@ -93,6 +93,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Read inside rememberResponse, which is registered once and must not be
   // re-created every time the route changes.
   const onDiffRef = useRef(false);
+  const hidesResponseRef = useRef(false);
   const document = routeDocument && tree ? findNode(tree.root, routeDocument.path) : undefined;
 
   // On an environment route the sidebar shows the environment list instead of
@@ -100,6 +101,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   const environment = routeDocument?.kind === "environment" ? routeDocument.name : null;
   const onDiff = useRouterState({ select: (state) => state.location.pathname.startsWith("/diff") });
   onDiffRef.current = onDiff;
+
+  /**
+   * Whether this route has a response to show.
+   *
+   * The response pane belongs to a request, and two screens are not looking at
+   * one: the diff (1b) and the environment editor (1c), both of which the
+   * design draws as the centre pane taking the whole width beside the sidebar.
+   * One named condition rather than a check per route, because a third such
+   * screen has to be one line here and not a hunt for every place `onDiff`
+   * was spelled out.
+   */
+  const hidesResponse = onDiff || routeDocument?.kind === "environment";
+  hidesResponseRef.current = hidesResponse;
 
   // Screen 3a's status-bar summary: "Last run: 6/6 passed · 2h ago".
   const folderRun =
@@ -395,10 +409,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const rememberResponse = useCallback(
     (layout: Layout) => {
-      // On the diff route the response pane is not mounted at all, so the
-      // layout has nothing to say about it. Persisting it here would record a
-      // width of zero and the pane would come back collapsed.
-      if (onDiffRef.current) return;
+      // Where the response pane is not mounted at all the layout has nothing
+      // to say about it. Persisting it here would record a width of zero and
+      // the pane would come back collapsed.
+      if (hidesResponseRef.current) return;
       const pixels = panelPixels(innerGroup.current, layout, "response");
       if (pixels === null) return;
       geometry.current.responseCollapsed = pixels === 0;
@@ -457,7 +471,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               names. The minimum has to cover both inner panes, or a wide
               sidebar could squeeze the inner group below their own minimums —
               which the inner group cannot then honour. */}
-          <ResizablePanel id="documents" minSize={onDiff ? CENTER_MIN : CENTER_MIN + RESPONSE_MIN}>
+          <ResizablePanel
+            id="documents"
+            minSize={hidesResponse ? CENTER_MIN : CENTER_MIN + RESPONSE_MIN}
+          >
             <div className="flex h-full min-h-0 flex-col">
               <TabBar onNewRequest={() => openCreate("request", folderForNew())} />
 
@@ -477,11 +494,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                     </div>
                   </ResizablePanel>
 
-                  {/* Screen 1b has no response pane: the diff takes the full
-                      width beside the sidebar. The panel is unmounted rather
-                      than collapsed, so its saved width survives — a collapse
-                      would persist as one. */}
-                  {onDiff ? null : (
+                  {/* Screens 1b and 1c have no response pane: the diff and the
+                      environment editor each take the full width beside the
+                      sidebar. The panel is unmounted rather than collapsed, so
+                      its saved width survives — a collapse would persist as
+                      one. */}
+                  {hidesResponse ? null : (
                     <>
                       <PaneHandle />
                       <ResizablePanel

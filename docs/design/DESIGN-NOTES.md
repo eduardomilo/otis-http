@@ -1487,3 +1487,22 @@ points at a `{{variable}}` backed by the keychain for anything real.
 their own option, and a scheme picker that could also say it would be a
 second way to make one choice on one screen.
 
+**9.36 The environment editor had a response pane, and screen 1c has none.**
+Screen 1b's diff already dropped it — the changes list replaces the tree and
+the diff takes the whole width beside it — but the condition in `AppShell` was
+spelled `onDiff`, so the environment editor kept a 500px pane reading "No
+response." next to a variable table that had been squeezed to fit beside it.
+
+The pane belongs to a *request*, which is the thing that has a response, so
+the condition is now `hidesResponse` and names that: the diff and the
+environment editor are the two screens not looking at one. It is one named
+value rather than a check per route because the panel is referenced three
+times — the unmount, the documents panel's minimum, and the guard that stops
+`rememberResponse` persisting a width of zero for a panel that is not mounted
+— and a third such screen must be one line here rather than a hunt for every
+place `onDiff` was written out.
+
+The tab strip stays, which screen 1c does not draw. It is the §9.19 deviation
+holding: the strip spans everything right of the sidebar, and on this screen
+it is also the way back to the documents that are open, which §9.23 says a
+replaced sidebar has to carry.
