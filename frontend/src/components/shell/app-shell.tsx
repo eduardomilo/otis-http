@@ -388,6 +388,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   // point, which persists every change one step behind.
   const persist = useCallback(() => {
     const g = geometry.current;
+    // A zero is never a width. It is a pane that is not mounted on this route,
+    // or geometry read before the restore below seeded it from settings — and
+    // writing one puts the pane back at nothing on the next launch, which is
+    // how `responseWidth: 0` got into a settings file. Collapsed is recorded
+    // separately and is the only way a pane is meant to have no width.
+    if (!g.sidebar || !g.response) return;
     savePanes({
       sidebarWidth: g.sidebar,
       responseWidth: g.response,
