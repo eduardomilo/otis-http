@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { verbatimText } from "@/lib/text-input";
 import { EnvironmentService } from "@bindings/internal/services";
 import type { EnvironmentDocument, EnvironmentRow } from "@bindings/internal/services";
 
@@ -302,6 +303,7 @@ function Row({
           </div>
         ) : (
           <input
+            {...verbatimText}
             value={value}
             onChange={(event) => setValue(event.target.value)}
             onBlur={() => {
@@ -495,6 +497,7 @@ function AddVariableDialog({
         </AlertDialogHeader>
         <div className="flex flex-col gap-2">
           <input
+            {...verbatimText}
             autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -503,6 +506,7 @@ function AddVariableDialog({
             className="h-[26px] rounded-md border border-border-control bg-inset px-2 font-mono text-ui text-fg outline-none placeholder:text-fg-dim"
           />
           <input
+            {...verbatimText}
             type={secret ? "password" : "text"}
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -568,6 +572,7 @@ function RenameDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <input
+          {...verbatimText}
           autoFocus
           value={to}
           onChange={(event) => setTo(event.target.value)}

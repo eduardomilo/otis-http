@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { slugFor } from "@/lib/slug";
+import { verbatimText } from "@/lib/text-input";
 import { FolderService, RequestService } from "@bindings/internal/services";
 
 /**
@@ -96,6 +97,7 @@ export function CreateDialog({
 
         <div className="flex flex-col gap-2">
           <Input
+            {...verbatimText}
             autoFocus
             value={name}
             placeholder={kind === "folder" ? "Payment methods" : "Create order"}

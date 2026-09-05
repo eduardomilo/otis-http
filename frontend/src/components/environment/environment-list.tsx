@@ -15,6 +15,7 @@ import {
 import { BackToRequests } from "@/components/shell/back-to-requests";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { verbatimText } from "@/lib/text-input";
 import { useEnvironments } from "@/state/environment-context";
 import { EnvironmentService } from "@bindings/internal/services";
 import type { EnvironmentSummary } from "@bindings/internal/services";
@@ -200,6 +201,7 @@ export function NewEnvironmentDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Input
+          {...verbatimText}
           autoFocus
           value={name}
           onChange={(event) => setName(event.target.value)}

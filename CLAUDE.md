@@ -710,6 +710,13 @@ lists the design decisions that are still open — do not resolve them silently.
   (emerald) is shadcn's `primary`, and shadcn's own `accent` is the `--bg-control`
   hover surface. Sizes come from the `text-micro`…`text-display` scale, not from
   Tailwind's default `text-sm`/`text-base`.
+- **Every text field spreads `verbatimText` from `lib/text-input`.** The
+  window is a WKWebView and macOS applies its own text substitutions inside
+  one, so `qa3` typed into New environment arrived as `Qa3` — a different file
+  name from the one the dialog previewed, matching no `{{...}}` in the
+  collection. Nothing typed into this app is prose: names, values, URLs and
+  filter terms all mean exactly what was typed. The lone exception is the
+  commit message in the changes list. DESIGN-NOTES §9.31.
 - **`lib/platform` exports functions, not constants.** `System.IsMac()` reads
   `window._wails.environment`, which the Wails runtime fills in after the
   bundle may already have evaluated, so a value captured at import time is

@@ -7,6 +7,7 @@ import { Tree, type TreeHandle } from "@/components/shell/tree";
 import { Input } from "@/components/ui/input";
 import { hint } from "@/lib/platform";
 import { filterTree } from "@/lib/tree";
+import { verbatimText } from "@/lib/text-input";
 import { useCollection } from "@/state/collection-context";
 
 /**
@@ -48,6 +49,7 @@ export const Sidebar = forwardRef<
       <div className="flex h-12 shrink-0 items-center">
         <div className="relative w-full">
           <Input
+            {...verbatimText}
             ref={filterRef}
             type="text"
             value={query}

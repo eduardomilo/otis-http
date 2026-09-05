@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { VariableText } from "@/components/request/variable-text";
 import type { VariableIndex } from "@/lib/variables";
+import { verbatimText } from "@/lib/text-input";
 
 /**
  * The form that edits one `# @auth` directive.
@@ -86,6 +87,7 @@ export function AuthDirectiveForm({
       <Label>{authArgsLabel(scheme)}</Label>
       <div>
         <Input
+          {...verbatimText}
           value={args}
           onChange={(event) => onChange(`${scheme} ${event.target.value}`)}
           placeholder={authArgsPlaceholder(scheme)}

@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { verbatimText } from "@/lib/text-input";
 import { EnvironmentService } from "@bindings/internal/services";
 import type { EnvironmentDocument } from "@bindings/internal/services";
 
@@ -92,6 +93,7 @@ export function SecretValueDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <input
+          {...verbatimText}
           autoFocus
           type="password"
           value={value}

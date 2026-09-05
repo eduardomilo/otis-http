@@ -20,6 +20,7 @@ import {
 } from "@/lib/http-file";
 import { cn } from "@/lib/utils";
 import type { VariableIndex } from "@/lib/variables";
+import { verbatimText } from "@/lib/text-input";
 import type { Header, Request } from "@bindings/internal/httpfile";
 import type { AuthHeader, Document } from "@bindings/internal/services";
 import type { Inherited } from "@bindings/internal/resolve";
@@ -198,6 +199,7 @@ function LocalRow({
         className="justify-self-end disabled:opacity-100"
       />
       <input
+        {...verbatimText}
         value={header.name}
         onChange={(event) => onChange({ name: event.target.value })}
         aria-label="Header name"
@@ -239,6 +241,7 @@ function ValueField({
   return (
     <div className="relative min-w-0">
       <input
+        {...verbatimText}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Header value"

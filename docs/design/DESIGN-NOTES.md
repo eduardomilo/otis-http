@@ -1310,3 +1310,25 @@ control of §4.4, taking a quarter of its height and making a text field look
 like a pane. It is hidden now and still scrolls, the same treatment the tab
 strip already gets (`.no-scrollbar`), declared against `.cm-scroller` because a
 utility class cannot reach an element CodeMirror owns.
+
+**9.31 macOS rewrote what the user typed, and the app had no opinion about
+it.** Typing `qa3` into New environment produced `Qa3`: the window is a
+WKWebView, and macOS' text substitutions apply inside one exactly as they do
+in a note-taking app. So the file written was not the file the dialog had
+previewed one line above, and no `{{...}}` written against `qa3` matched it.
+
+The fix is an attribute set, not a fix to that dialog:
+`autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck=false`,
+exported from `lib/text-input` as `verbatimText` and spread into every field
+in the app. Every one of them holds a name, a value, a URL or a filter term —
+things that mean what was typed — and the substitution reaches all of them
+equally: a header name, an environment variable, a query parameter, the
+palette's query.
+
+The one field that does **not** take it is the commit message in the changes
+list, which is prose and wants its spellchecker.
+
+It is spread rather than defaulted inside `components/ui/input`, because half
+the fields in the app are plain `<input>` elements inside table rows: a
+default on the shadcn component would have covered the dialogs and quietly
+missed the tables, which is the same shape of bug one layer down.

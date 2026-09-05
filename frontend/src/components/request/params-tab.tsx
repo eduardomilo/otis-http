@@ -10,6 +10,7 @@ import {
 import { splitUrl, withParams, type QueryParam } from "@/lib/query";
 import { cn } from "@/lib/utils";
 import type { VariableIndex } from "@/lib/variables";
+import { verbatimText } from "@/lib/text-input";
 
 /**
  * The Params tab: the URL's query string as a table.
@@ -85,6 +86,7 @@ export function ParamsTab({
           >
             <span />
             <input
+              {...verbatimText}
               value={param.name}
               onChange={(event) => patch(at, { name: event.target.value })}
               aria-label="Parameter name"
@@ -143,6 +145,7 @@ function ValueField({
   return (
     <div className="relative min-w-0">
       <input
+        {...verbatimText}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label="Parameter value"

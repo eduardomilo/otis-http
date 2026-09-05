@@ -24,6 +24,7 @@ import {
 } from "@/lib/http-file";
 import { cn } from "@/lib/utils";
 import type { VariableIndex } from "@/lib/variables";
+import { verbatimText } from "@/lib/text-input";
 import type { File, Request } from "@bindings/internal/httpfile";
 import { FolderService } from "@bindings/internal/services";
 import type { FolderDocument } from "@bindings/internal/services";
@@ -418,6 +419,7 @@ function Field({
 } & React.AriaAttributes) {
   return (
     <Input
+      {...verbatimText}
       {...rest}
       value={value}
       placeholder={placeholder}

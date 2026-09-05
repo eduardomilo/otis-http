@@ -10,6 +10,7 @@ import { hint } from "@/lib/platform";
 import { formatDuration } from "@/lib/format";
 import { relativeTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { verbatimText } from "@/lib/text-input";
 import { useCollection } from "@/state/collection-context";
 import { useDiff } from "@/state/diff-context";
 import { useMCP } from "@/state/mcp-context";
@@ -461,6 +462,7 @@ export function CommandPalette({
         <div className="flex h-11 items-center gap-2 border-b border-border px-4">
           <span className="font-mono text-field text-fg-faint">›</span>
           <input
+            {...verbatimText}
             autoFocus
             value={query}
             onChange={(event) => {
