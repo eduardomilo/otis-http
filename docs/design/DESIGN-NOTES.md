@@ -598,20 +598,24 @@ a request that opted out would be the same untruth in a different place.
 `FolderCounts` carries both and names them `Requests`/`Subfolders` and
 `Below`. Implemented in Increment 14.
 
-**9.7 The folder "has shared settings" icon is a plus sign — and the collision
-is now real.** In screen 3a the marker next to `auth` and `orders` is a `+`
-glyph (`M6 1.5v9M1.5 6h9`), which reads as an add-item affordance sitting
+**9.7 The folder "has shared settings" icon is a plus sign — resolved as a
+different glyph.** In screen 3a the marker next to `auth` and `orders` is a
+`+` glyph (`M6 1.5v9M1.5 6h9`), which reads as an add-item affordance sitting
 exactly where an add button would go. The intended meaning is "this folder has
 a `_folder.http`".
 
-Creating requests and folders now exists (§9.21), so the tab strip has a `+`
-that means **add** and a folder row has a `+` that means **has settings**, a
-few hundred pixels apart. Nothing has been changed about the folder marker,
-because resolving this is a design decision and §9 items are not resolved
-silently — but it is no longer theoretical, and it is the first thing to settle
-next time this document is opened. The obvious candidates: give the folder
-marker a different glyph, or move it out of the row's trailing slot where an
-add button would sit.
+Creating requests and folders exists (§9.21) and creating scripts does now
+too (§9.41), so the tab strip has a `+` meaning **add** and a folder row had a
+`+` meaning **has settings**, a few hundred pixels apart. The two candidates
+were a different glyph or a different slot; the slot is right — the marker
+belongs with the row's other trailing state, the manual-order list glyph and
+the git dot — so the glyph changed.
+
+It is `SlidersHorizontal` at 12px in `--fg-ghost`: three lines with knobs,
+which says *settings* at a size where a gear is a smudge and which cannot be
+mistaken for a button. The **collection row uses the same marker for the same
+fact** (§9.40), so the one glyph means one thing in both places, and neither
+is a `+`.
 
 **9.8 Ordering of scripts versus resolution — resolved.**
 Screen 4a shows an inherited header `Idempotency-Key: {{idemKey}}` annotated
@@ -1466,6 +1470,8 @@ What is still missing: there is no way to **create** a script from the window.
 one was — a file that does not exist is not a row you can click and get
 nothing from — but it is a gap.
 
+*(Closed by §9.41.)*
+
 **9.35 Basic auth had one field, and it was the directive's field rather than
 the credential's.** `FORMAT.md` §3.3 writes basic as
 `# @auth basic <username> [<password>]`, and the Override form edited that
@@ -1691,3 +1697,4 @@ the agent chip does.
 The design's sentence still holds — the root is not a row *in the tree*, and
 the flattening in `lib/tree.ts` is untouched. What changed is that the
 sidebar now has one row that is not part of the tree, sitting above it.
+

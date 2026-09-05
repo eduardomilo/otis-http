@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { ChevronRight, GripVertical, List, Plus, TriangleAlert } from "lucide-react";
+import { ChevronRight, GripVertical, List, SlidersHorizontal, TriangleAlert } from "lucide-react";
 
 import {
   ContextMenu,
@@ -100,7 +100,7 @@ export function Tree({
   /** Filled in with the reveal handle, for the palette's ⇧↵. */
   revealRef?: React.RefObject<TreeHandle | null>;
   /** Opens the create dialog, in the folder the menu was opened on. */
-  onCreate: (kind: "request" | "folder", folder: string) => void;
+  onCreate: (kind: "request" | "folder" | "script", folder: string) => void;
   onManage: (action: NodeAction, node: Node) => void;
 }) {
   const [overrides, setOverrides] = useState<Expansion>(() => new Map());
@@ -537,15 +537,18 @@ const TreeRow = memo(function TreeRow({
       {isScript ? <ScriptBadge kind={node.kind} hookOf={node.hookOf} /> : null}
 
       {/* A folder that carries shared settings. The design draws a plus here
-          (DESIGN-NOTES §9.7, unresolved); it means "this folder has a
-          _folder.http", not "add something". */}
+          and §9.7 records why it stopped working: the tab strip's `+` means
+          *add*, and two plus signs a few hundred pixels apart meaning
+          opposite things is a glyph doing harm. This is the same
+          sliders the collection row carries for the same fact (§9.40), and it
+          says "settings" rather than "add" at a glance. */}
       {node.settings ? (
-        <Plus
-          className="ml-1.5 size-2.5 shrink-0 text-fg-ghost"
+        <SlidersHorizontal
+          className="ml-1.5 size-3 shrink-0 text-fg-ghost"
           aria-label="Has shared settings"
         >
           <title>Shared settings in {node.settings.path}</title>
-        </Plus>
+        </SlidersHorizontal>
       ) : null}
 
       {/* A folder whose order is manual carries a list glyph (screen 2a), so
@@ -674,7 +677,7 @@ function RowMenu({
   onManage,
 }: {
   node: Node | null;
-  onCreate: (kind: "request" | "folder", folder: string) => void;
+  onCreate: (kind: "request" | "folder" | "script", folder: string) => void;
   onManage: (action: NodeAction, node: Node) => void;
 }) {
   const { setMode } = useOrder();
@@ -694,6 +697,11 @@ function RowMenu({
       </ContextMenuItem>
       <ContextMenuItem onSelect={() => onCreate("folder", target)}>
         New folder in {target === "" ? "the root" : `${target}/`}…
+      </ContextMenuItem>
+      {/* A `.js` is a row in this tree and was the one thing that could only
+          be made with `touch` (DESIGN-NOTES §9.41). */}
+      <ContextMenuItem onSelect={() => onCreate("script", target)}>
+        New script in {target === "" ? "the root" : `${target}/`}…
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem

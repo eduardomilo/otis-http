@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { FolderCog, Plus } from "lucide-react";
+import { FolderCog, SlidersHorizontal } from "lucide-react";
 
 import { nodeLink } from "@/lib/paths";
 import { cn } from "@/lib/utils";
@@ -24,8 +24,8 @@ import type { Node } from "@bindings/internal/services";
  * the whole point, plus the word `settings` because the row has one job and
  * nothing else in the sidebar says what a folder view is for.
  *
- * The `+` marker is the same one a folder row carries (§9.7): it means "this
- * folder has a `_folder.http`", so the row also answers whether the
+ * The sliders marker is the same one a folder row carries (§9.7): it means
+ * "this folder has a `_folder.http`", so the row also answers whether the
  * collection has any shared settings yet.
  */
 export function CollectionRow({
@@ -63,7 +63,10 @@ export function CollectionRow({
         {name}
       </span>
       {root?.settings ? (
-        <Plus className="size-2.5 shrink-0 text-fg-ghost" aria-label="Has shared settings" />
+        <SlidersHorizontal
+          className="size-3 shrink-0 text-fg-ghost"
+          aria-label="Has shared settings"
+        />
       ) : null}
       <span className="ml-auto shrink-0 pl-2 text-micro text-fg-faint">settings</span>
     </Link>
