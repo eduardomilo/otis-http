@@ -1555,3 +1555,25 @@ longer clips. `overflow-hidden` stays for a longer custom one, and callers
 still put the full method in a `title`. The `js` marker shares the gutter and
 moves with it, which is the point of the gutter being one measurement.
 
+**9.38 Filtering an environment's variables.** Screen 1c draws no filter, and
+a file with forty variables in it is a file you scroll. The header has one
+now, in the same shape as the sidebar's "Filter requests": a 26px input, the
+same subsequence matcher (moved to `lib/fuzzy` so the two cannot answer
+differently), and Escape to clear then blur.
+
+**It matches names only, and that is a rule and not an omission.** A value
+looks like the obvious second field to match, and it is the one that must not
+be: a secret's value never crosses the binding (CLAUDE.md), so `EnvironmentRow.Value`
+is empty for every secret. A query that matched values would therefore hide
+every secret in the file the moment it was typed, and the filter would be
+lying about a whole category of variable rather than narrowing the list.
+
+Two consequences follow from the count being exact (§8.5). While a filter is
+on the header reads `3 of 6 variables` rather than `6 variables · 2 secrets` —
+the unfiltered count beside two visible rows is the one number a person would
+act on and the one that is wrong. And the secret detail panel is found among
+the *filtered* rows, so a secret whose row the filter hid takes its panel with
+it; a panel about a row that is not on screen is a panel about nothing. The
+filter is cleared when the route moves to another environment, because a term
+typed against one file would otherwise open the next one already hiding most
+of it.

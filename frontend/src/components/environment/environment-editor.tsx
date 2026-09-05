@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Lock } from "lucide-react";
 
 import { SecretDetail } from "@/components/environment/secret-detail";
@@ -22,6 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { fuzzyMatches } from "@/lib/fuzzy";
 import { cn } from "@/lib/utils";
 import { verbatimText } from "@/lib/text-input";
 import { EnvironmentService } from "@bindings/internal/services";
@@ -58,6 +60,7 @@ export function EnvironmentEditor({ name }: { name: string }) {
   const [doc, setDoc] = useState<EnvironmentDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +74,10 @@ export function EnvironmentEditor({ name }: { name: string }) {
 
   useEffect(() => {
     setSelected(null);
+    // A filter belongs to the environment it was typed against: carrying
+    // "api" over to another file would open it already hiding most of it,
+    // with the reason two clicks away in a box nobody looked at.
+    setQuery("");
     void load();
   }, [load]);
 
@@ -88,6 +95,20 @@ export function EnvironmentEditor({ name }: { name: string }) {
     }
   }, []);
 
+  /**
+   * The rows the filter leaves. Names only — a value would seem an obvious
+   * second field to match, and it is the one that must not be: a secret's
+   * value never crosses the binding, so a query matching a value would
+   * silently hide every secret in the file. The filter would then be lying
+   * about a category of variable rather than narrowing one.
+   */
+  const rows = useMemo(() => {
+    const all = doc?.rows ?? [];
+    const trimmed = query.trim();
+    if (trimmed === "") return all;
+    return all.filter((row) => fuzzyMatches(trimmed, row.name));
+  }, [doc, query]);
+
   if (error && !doc) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 px-4">
@@ -98,11 +119,21 @@ export function EnvironmentEditor({ name }: { name: string }) {
   }
   if (!doc) return <div className="h-full" />;
 
-  const secret = doc.rows?.find((row) => row.name === selected && row.secret) ?? null;
+  // Found among the *filtered* rows, so a secret whose row the filter hid
+  // takes its detail panel with it. Leaving the panel open under a table that
+  // no longer contains its row is a panel about nothing on screen.
+  const secret = rows.find((row) => row.name === selected && row.secret) ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Header doc={doc} onAdd={() => setSelected(null)} apply={apply} />
+      <Header
+        doc={doc}
+        shown={rows.length}
+        query={query}
+        onQuery={setQuery}
+        onAdd={() => setSelected(null)}
+        apply={apply}
+      />
 
       {error ? <p className="px-4 pb-2 text-meta text-destructive">{error}</p> : null}
 
@@ -124,8 +155,12 @@ export function EnvironmentEditor({ name }: { name: string }) {
           <p className="px-4 py-4 text-meta text-fg-dim">
             No variables yet. Add one, or add a secret to keep its value in the keychain.
           </p>
+        ) : rows.length === 0 ? (
+          <p className="px-4 py-4 text-meta text-fg-dim">
+            No variable here matches “{query.trim()}”.
+          </p>
         ) : (
-          (doc.rows ?? []).map((row) => (
+          rows.map((row) => (
             <Row
               key={row.name}
               row={row}
@@ -151,17 +186,25 @@ export function EnvironmentEditor({ name }: { name: string }) {
   );
 }
 
-/** `staging · env/staging.json`, the counts, and Add variable. */
+/** `staging · env/staging.json`, the filter, the counts, and Add variable. */
 function Header({
   doc,
+  shown,
+  query,
+  onQuery,
   onAdd,
   apply,
 }: {
   doc: EnvironmentDocument;
+  /** How many rows the filter leaves, for the count beside it. */
+  shown: number;
+  query: string;
+  onQuery: (query: string) => void;
   onAdd: () => void;
   apply: (call: Promise<EnvironmentDocument | null>) => Promise<boolean>;
 }) {
   const [adding, setAdding] = useState<"plain" | "secret" | null>(null);
+  const filtering = query.trim() !== "";
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
       <span className="font-mono text-title text-fg-emphasis">{doc.name}</span>
@@ -170,9 +213,41 @@ function Header({
 
       <div className="flex-1" />
 
-      <span className="font-mono text-meta text-fg-dim">
-        {doc.variables} {doc.variables === 1 ? "variable" : "variables"}
-        {doc.secrets > 0 ? ` · ${doc.secrets} ${doc.secrets === 1 ? "secret" : "secrets"}` : null}
+      <Input
+        {...verbatimText}
+        value={query}
+        onChange={(event) => onQuery(event.target.value)}
+        // Escape clears, then blurs, exactly as the sidebar's filter does —
+        // a text field's own behaviour rather than a shortcut, which is why
+        // it is handled here and not in useKeymap.
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          if (query === "") event.currentTarget.blur();
+          else onQuery("");
+        }}
+        placeholder="Filter variables"
+        aria-label="Filter variables"
+        className="h-[26px] w-[200px] rounded-md border-border-control bg-inset text-ui md:text-ui dark:bg-inset placeholder:text-fg-dim"
+      />
+
+      {/* §8.5: the count is exact. With a filter on, "6 variables" beside two
+          visible rows is the one number a person would act on and the one
+          that is wrong, so it says how many of how many instead. */}
+      <span className="shrink-0 font-mono text-meta text-fg-dim">
+        {filtering ? (
+          <>
+            {shown} of {doc.variables}{" "}
+            {doc.variables === 1 ? "variable" : "variables"}
+          </>
+        ) : (
+          <>
+            {doc.variables} {doc.variables === 1 ? "variable" : "variables"}
+            {doc.secrets > 0
+              ? ` · ${doc.secrets} ${doc.secrets === 1 ? "secret" : "secrets"}`
+              : null}
+          </>
+        )}
       </span>
 
       <DropdownMenu>

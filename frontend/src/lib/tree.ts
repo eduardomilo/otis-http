@@ -7,6 +7,7 @@
  * tested — without a DOM.
  */
 
+import { fuzzyMatches } from "@/lib/fuzzy";
 import type { Node } from "@bindings/internal/services";
 
 /** One rendered row: a node and how deep it sits. */
@@ -102,22 +103,6 @@ export function flatten(
   // The root itself is not a row; the collection's name is in the title strip.
   for (const child of root.children ?? []) walk(child, 0);
   return rows;
-}
-
-/**
- * A subsequence match, the same shape of matching every fuzzy finder uses:
- * "ordcre" matches "orders/create-order". Case-insensitive.
- */
-export function fuzzyMatches(query: string, text: string): boolean {
-  if (query === "") return true;
-  const haystack = text.toLowerCase();
-  let at = 0;
-  for (const char of query.toLowerCase()) {
-    at = haystack.indexOf(char, at);
-    if (at === -1) return false;
-    at++;
-  }
-  return true;
 }
 
 /**

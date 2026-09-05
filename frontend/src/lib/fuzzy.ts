@@ -179,3 +179,25 @@ export function segments(text: string, positions: readonly number[]): Segment[] 
   }
   return out;
 }
+
+/**
+ * A subsequence match, the same shape of matching every fuzzy finder uses:
+ * "ordcre" matches "orders/create-order". Case-insensitive.
+ *
+ * The plain yes/no next to `match`'s scoring above, for the two filters that
+ * only hide rows and never reorder them — the sidebar tree and the environment
+ * editor's variable list. Neither ranks, so neither needs a score, and both
+ * need to answer the same way: a filter that matched differently in two places
+ * would be two filters.
+ */
+export function fuzzyMatches(query: string, text: string): boolean {
+  if (query === "") return true;
+  const haystack = text.toLowerCase();
+  let at = 0;
+  for (const char of query.toLowerCase()) {
+    at = haystack.indexOf(char, at);
+    if (at === -1) return false;
+    at++;
+  }
+  return true;
+}
