@@ -255,7 +255,7 @@ func (s *FolderService) Save(nodePath, envName string, file httpfile.File) (Fold
 
 	// Inside the guard, like every write Otis makes.
 	release := s.collections.Guard().Writing(target)
-	err = writeFileAtomic(target, []byte(file.String()))
+	err = writeFileAtomic(target, []byte(withoutBlankRows(file).String()))
 	release()
 	if err != nil {
 		return FolderDocument{}, fmt.Errorf("saving %s: %w", path.Join(folder.ID, collection.FolderFileName), err)

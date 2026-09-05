@@ -165,7 +165,45 @@ func (s *RequestService) Load(nodePath, envName string) (Document, error) {
 // byte for byte. Sending text from the window instead would put a second
 // formatter in the product.
 func (s *RequestService) Save(nodePath, envName string, file httpfile.File) (Document, error) {
-	return s.write(nodePath, envName, file.String())
+	return s.write(nodePath, envName, withoutBlankRows(file).String())
+}
+
+// withoutBlankRows drops every header and variable whose name is blank.
+//
+// The Headers tab's Add header and the folder editor's Add variable both add
+// an empty row for the user to type into, which is the only way a table can
+// offer a new row at all. Serialized, such a row is a line reading `: ` — not
+// a header, and not something the parser will read back as one. It is a row
+// somebody was in the middle of typing, so it is in the window and not in the
+// file, exactly as an empty query parameter is in the Params table and not in
+// the URL.
+//
+// It is applied where the file is written rather than where the row is added:
+// the window is allowed to hold a half-finished edit, and Go is the thing
+// that decides what a `.http` file may contain.
+func withoutBlankRows(file httpfile.File) *httpfile.File {
+	out := file
+	out.Requests = make([]*httpfile.Request, 0, len(file.Requests))
+	for _, entry := range file.Requests {
+		if entry == nil {
+			continue
+		}
+		copied := *entry
+		copied.Headers = nil
+		for _, h := range entry.Headers {
+			if strings.TrimSpace(h.Name) != "" {
+				copied.Headers = append(copied.Headers, h)
+			}
+		}
+		copied.Variables = nil
+		for _, v := range entry.Variables {
+			if strings.TrimSpace(v.Name) != "" {
+				copied.Variables = append(copied.Variables, v)
+			}
+		}
+		out.Requests = append(out.Requests, &copied)
+	}
+	return &out
 }
 
 // SaveText writes text to the request at nodePath verbatim, after checking

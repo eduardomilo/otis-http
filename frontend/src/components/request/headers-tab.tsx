@@ -1,4 +1,4 @@
-import { ArrowDownToLine } from "lucide-react";
+import { ArrowDownToLine, Plus } from "lucide-react";
 
 import { VariableText } from "@/components/request/variable-text";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  addHeader,
   disableInheritedHeader,
   headersOf,
   INHERIT_MARKER,
@@ -90,7 +91,13 @@ export function HeadersTab({
       ) : (
         local.map((header, at) => (
           <LocalRow
-            key={`${header.name}-${at}`}
+            // Keyed by position, not by name. A key built from the name is a
+            // new key on every keystroke, so React unmounted the input and
+            // remounted an empty one: typing a header name got exactly one
+            // character in before focus was gone. Position is the identity
+            // here — headers are an ordered list and duplicate names are legal
+            // (docs/FORMAT.md §1.7), so the name never was one.
+            key={at}
             header={header}
             index={index}
             onChange={(patch) => onEdit((e) => setHeaderAt(e, at, patch))}
@@ -99,6 +106,20 @@ export function HeadersTab({
         ))
       )}
       {localAuth ? <AuthRow auth={localAuth} index={index} /> : null}
+
+      {/* Under THIS REQUEST, because that is the group it adds to. The Params
+          tab puts its button at the foot of the table for the same reason:
+          there is only one group there. A blank row is legal in the model and
+          is dropped by Go on save — a header with no name is not a header
+          (see RequestService.Save). */}
+      <button
+        type="button"
+        onClick={() => onEdit((e) => addHeader(e, "", ""))}
+        className="mt-2 ml-9 flex h-6 w-fit items-center gap-1.5 rounded-sm border border-border-control bg-control px-2.5 text-ui text-fg-secondary hover:text-fg-emphasis"
+      >
+        <Plus className="size-3" />
+        Add header
+      </button>
 
       {inherited.length > 0 || inheritedAuth ? (
         <>

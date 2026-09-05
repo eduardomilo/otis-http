@@ -547,3 +547,36 @@ func TestCreateRequestRejectsSomethingThatIsNotAFolder(t *testing.T) {
 		t.Error("Create accepted a folder that does not exist")
 	}
 }
+
+// The Headers tab's Add header puts an empty row in the model for the user to
+// type into — the only way a table can offer a new row. Serialized, that row
+// is a line reading ": ", which is not a header and is not something the
+// parser reads back as one. Go drops it on the way out.
+func TestSaveDropsARowNobodyNamed(t *testing.T) {
+	root := inheritanceFixture(t)
+	svc := newRequestService(t, root)
+	path := "orders/create-order.http"
+
+	doc, err := svc.Load(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := doc.Raw
+
+	file := *doc.File
+	entry := *file.Requests[0]
+	entry.Headers = append(append([]httpfile.Header{}, entry.Headers...), httpfile.Header{Name: "  ", Value: "typed by nobody"})
+	entry.Variables = append(append([]httpfile.Variable{}, entry.Variables...), httpfile.Variable{Name: "", Value: "likewise"})
+	file.Requests = append([]*httpfile.Request{&entry}, file.Requests[1:]...)
+
+	saved, err := svc.Save(path, "", file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Raw != before {
+		t.Errorf("a blank row reached the file:\n--- before\n%s\n--- after\n%s", before, saved.Raw)
+	}
+	if strings.Contains(saved.Raw, "typed by nobody") || strings.Contains(saved.Raw, "likewise") {
+		t.Errorf("the value of a nameless row was written:\n%s", saved.Raw)
+	}
+}
