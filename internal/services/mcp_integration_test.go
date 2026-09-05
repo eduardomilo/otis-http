@@ -884,3 +884,92 @@ func intentFrom(t *testing.T, preview string) string {
 	}
 	return body.Intent
 }
+
+// Documentation, through the real FolderService and onto a real disk.
+//
+// The bridge is where "the collection's README" becomes "the folder whose node
+// path is empty", and where a folder with no README yet still has a path a
+// write can go to. Neither is visible from internal/mcpserver's own tests,
+// which see a fake.
+func TestAnAgentReadsAndWritesRealDocumentation(t *testing.T) {
+	f := agentApp(t, map[string]string{
+		"orders/create.http": "GET http://127.0.0.1:1/a\n",
+		"orders/README.md":   "# Orders\n\nThe original.\n",
+	}, secrets.NewMemory())
+	gitInit(t, f.root)
+
+	client := f.connect(mcp.CapRead, mcp.CapWrite)
+
+	// A folder that has one.
+	out, isErr := f.call(client, "get_documentation", map[string]any{"folder": "orders"})
+	if isErr {
+		t.Fatalf("get_documentation failed: %s", out)
+	}
+	var view mcpserver.DocumentationView
+	if err := json.Unmarshal([]byte(out), &view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.Exists || view.Path != "orders/README.md" || !strings.Contains(view.Text, "The original.") {
+		t.Errorf("view = %+v", view)
+	}
+
+	// The collection's own, which has none — and still has somewhere to go.
+	out, isErr = f.call(client, "get_documentation", map[string]any{"folder": ""})
+	if isErr {
+		t.Fatalf("get_documentation failed for the root: %s", out)
+	}
+	if err := json.Unmarshal([]byte(out), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Exists {
+		t.Errorf("the root reported a README it does not have: %+v", view)
+	}
+	if view.Path != "README.md" {
+		t.Errorf("path = %q, want where a write would go", view.Path)
+	}
+
+	// Writing the collection's own, which is what was asked for by name.
+	if out, isErr := f.call(client, "update_documentation", map[string]any{
+		"folder": "", "text": "# The collection\n\nWritten by an agent.\n"}); isErr {
+		t.Fatalf("update_documentation failed: %s", out)
+	}
+	written, err := os.ReadFile(filepath.Join(f.root, "README.md"))
+	if err != nil {
+		t.Fatalf("the README was not written: %v", err)
+	}
+	if string(written) != "# The collection\n\nWritten by an agent.\n" {
+		t.Errorf("written = %q", written)
+	}
+
+	// And replacing one that exists, verbatim: nothing parses a README, so
+	// nothing may reformat it either.
+	odd := "# Orders\r\n\ttabbed\n\n\n"
+	if out, isErr := f.call(client, "update_documentation", map[string]any{
+		"folder": "orders", "text": odd}); isErr {
+		t.Fatalf("update_documentation failed: %s", out)
+	}
+	again, err := os.ReadFile(filepath.Join(f.root, "orders", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != odd {
+		t.Errorf("a README was not written verbatim:\nwant %q\ngot  %q", odd, again)
+	}
+}
+
+// Writing documentation is a WRITE, and READ alone does not reach it.
+func TestDocumentationWritesNeedTheWriteGrant(t *testing.T) {
+	f := agentApp(t, map[string]string{
+		"orders/create.http": "GET http://127.0.0.1:1/a\n",
+	}, secrets.NewMemory())
+	gitInit(t, f.root)
+
+	client := f.connect(mcp.CapRead)
+	if out, isErr := f.call(client, "update_documentation", map[string]any{
+		"folder": "", "text": "# no"}); !isErr {
+		t.Errorf("a README was written with READ alone: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(f.root, "README.md")); !os.IsNotExist(err) {
+		t.Error("the file exists")
+	}
+}

@@ -54,7 +54,8 @@ lists the design decisions that are still open — do not resolve them silently.
   `.order`. `folder.go` is the folder view's:
   it reads a folder's shared settings with their provenance, its documentation
   and scripts, and which descendants opt out of each setting, and is the only
-  thing that writes a `_folder.http`.
+  thing that writes a `_folder.http` **or a `README.md`** — including the one
+  an agent writes (docs/MCP.md §12).
 - `internal/httpfile/` — `.http` parser + serializer.
 - `internal/collection/` — the directory walk, `.order` and the node tree,
   including script nodes and the hook/module distinction (docs/FORMAT.md §2.4).
@@ -342,6 +343,12 @@ lists the design decisions that are still open — do not resolve them silently.
   window it renders in is the one holding the collection. Links are not
   navigable and images are not loaded, for the same reason: neither should be
   a request the collection made without being asked.
+  **This rule is what makes `update_documentation` safe to expose to an
+  agent** (docs/MCP.md §12): it is the one agent write whose content is
+  displayed as *markup*, so without the rule the tool would be a
+  cross-site-scripting primitive pointed at the person's own window. It is
+  the clearest case in this codebase of a UI decision being a security
+  boundary, and changing it changes what an agent can do.
 - **A script gets a JavaScript realm and nothing else.** No filesystem, no
   process, no network, no timers (docs/FORMAT.md §9.3). goja provides none of
   them, and `internal/script`'s `forbidden` map defines the dangerous names as

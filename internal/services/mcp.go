@@ -725,6 +725,40 @@ func (s *agentBridge) GetRequest(path, environment string) (mcpserver.RequestVie
 	return view, redactorFor(res), nil
 }
 
+// GetDocumentation is a folder's README.md (docs/MCP.md §12).
+//
+// Not masked, and `mcp.NoSecrets()` says so deliberately rather than by
+// omission: this server's read paths resolve against `secrets.Placeholder` so
+// that describing a request performs no keychain lookup, which leaves nothing
+// real to mask *with*. A README is prose somebody wrote and committed; a
+// credential in one is a credential in git.
+func (s *agentBridge) GetDocumentation(folder string) (mcpserver.DocumentationView, *mcp.Redactor, error) {
+	doc, err := s.folders.Load(folder, "")
+	if err != nil {
+		return mcpserver.DocumentationView{}, mcp.NoSecrets(), err
+	}
+	view := mcpserver.DocumentationView{
+		Folder: folder,
+		Path:   doc.ReadmePath,
+		Text:   doc.Readme,
+		Exists: doc.ReadmePath != "",
+	}
+	if view.Path == "" {
+		// Load fills ReadmePath only when the file is there, and the agent
+		// needs to know where one *would* go — it is what the write targets.
+		view.Path = readmePathFor(folder)
+	}
+	return view, mcp.NoSecrets(), nil
+}
+
+// readmePathFor is where a folder's README lives, whether or not it does.
+func readmePathFor(folder string) string {
+	if folder == "" {
+		return ReadmeName
+	}
+	return folder + "/" + ReadmeName
+}
+
 // ListEnvironments is names and shapes, never a value.
 func (s *agentBridge) ListEnvironments() ([]mcpserver.EnvironmentView, *mcp.Redactor, error) {
 	list, err := s.environments.List()
@@ -1124,6 +1158,20 @@ func (s *agentBridge) UpdateRequest(path, text string) (mcpserver.Updated, *mcp.
 		return mcpserver.Updated{}, mcp.NoSecrets(), err
 	}
 	return mcpserver.Updated{Path: path, Status: "modified"}, mcp.NoSecrets(), nil
+}
+
+// UpdateDocumentation replaces a folder's README through FolderService, the
+// only thing that writes one.
+//
+// Nothing parses a README, so unlike UpdateRequest there is no refusal to
+// lean on: the file is written as given. What makes that acceptable is not
+// this method — it is that a README is *rendered* and never injected
+// (CLAUDE.md), and that the write is uncommitted and therefore in the diff.
+func (s *agentBridge) UpdateDocumentation(folder, text string) (mcpserver.Updated, *mcp.Redactor, error) {
+	if _, err := s.folders.SaveReadme(folder, s.displayEnv(""), text); err != nil {
+		return mcpserver.Updated{}, mcp.NoSecrets(), err
+	}
+	return mcpserver.Updated{Path: readmePathFor(folder), Status: "modified"}, mcp.NoSecrets(), nil
 }
 
 // agentBridge is everything internal/mcpserver may call.

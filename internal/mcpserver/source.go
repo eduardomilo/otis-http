@@ -45,6 +45,9 @@ type Source interface {
 	// GetRequest is one request as it would be sent and as it is written.
 	GetRequest(path, environment string) (RequestView, *mcp.Redactor, error)
 
+	// GetDocumentation is a folder's README.md (docs/MCP.md §12).
+	GetDocumentation(folder string) (DocumentationView, *mcp.Redactor, error)
+
 	// ListEnvironments is names and shapes, never a value.
 	ListEnvironments() ([]EnvironmentView, *mcp.Redactor, error)
 
@@ -128,6 +131,24 @@ type Grantor interface {
 // protocol told us.
 type Clienter interface {
 	ClientName(ctx context.Context) string
+}
+
+// DocumentationView is `get_documentation`: a folder's README.md.
+//
+// The file's text verbatim, because that is what `update_documentation`
+// replaces — the same read-modify-write `get_request.source` exists for
+// (docs/MCP.md §14.8).
+type DocumentationView struct {
+	// Folder is the node path asked for, "" for the collection root.
+	Folder string `json:"folder"`
+	// Path is the README's collection-relative path, filled in whether or not
+	// the file is there: it is where a write would go.
+	Path string `json:"path"`
+	// Text is the file's contents, "" when there is none.
+	Text string `json:"text"`
+	// Exists distinguishes an empty README from an absent one, which is the
+	// difference between editing and creating.
+	Exists bool `json:"exists"`
 }
 
 // Tree is `list_requests`.

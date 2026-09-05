@@ -71,6 +71,26 @@ func (s *Server) registerRead() {
 		return s.source.GetRequest(path, req.GetString("environment", ""))
 	})
 
+	s.register(tool("get_documentation",
+		"Read a folder's README.md — the documentation it carries for everyone on the "+
+			"branch, and the collection's own when `folder` is the empty string. `text` is "+
+			"the file verbatim; edit those bytes and write them back with "+
+			"`update_documentation`. `exists` is false when the folder has no README yet, "+
+			"which is the difference between editing one and starting one.",
+		readOnly(),
+		mcpgo.WithString("folder",
+			mcpgo.Description("The folder, as a collection-relative path. "+
+				"Empty string for the collection root.")),
+	), mcp.CapRead, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, c *call) (any, *mcp.Redactor, error) {
+		folder := req.GetString("folder", "")
+		view, redactor, err := s.source.GetDocumentation(folder)
+		if err != nil {
+			return nil, redactor, err
+		}
+		c.target = view.Path
+		return view, redactor, nil
+	})
+
 	s.register(tool("list_environments",
 		"List the collection's environments: their names, which variables each defines, and "+
 			"which of those are secrets. Never any values — an environment's non-secret "+

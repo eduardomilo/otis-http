@@ -884,6 +884,19 @@ committed, and this tool must not be the way an agent reads one.
 (§5), and an agent that can see it can tell a person "this will need your
 confirmation" before spending a turn finding out.
 
+**`get_documentation`** — a folder's `README.md`.
+`{ folder: string }` → `{ folder, path, text, exists }`
+The documentation a folder carries for everyone on the branch (`FORMAT.md`
+§2.5), and the collection's own when `folder` is the empty string. It is the
+file's text, verbatim, because that is what `update_documentation` replaces.
+
+It is **not masked**, and that is a statement rather than an omission. A read
+path in Otis resolves against `secrets.Placeholder` so that describing a
+request performs no keychain lookup, which means the read side of this server
+has no real secret values to mask *with*. A README is prose a person wrote and
+committed; a credential in one is a credential in git, and this tool is not
+where that gets discovered.
+
 **`list_environments`** —
 `{ environments: [{ name, description, active, confirmBeforeSend, agents,
    variables: [{ name, secret }] }] }`
@@ -977,6 +990,33 @@ one: it runs in the same sandbox as any other (`FORMAT.md` §9.3 — no
 filesystem, no process, no network, no timers) and sees a secret only as an
 opaque handle, so it is not a way around §7 either.
 
+**`update_documentation`** — replace a folder's `README.md`.
+`{ folder: string, text: string }` → `{ path, status: "modified" }`
+`FolderService.SaveReadme`, the only thing that writes one. Whole-file
+replacement for the same reason `update_request` is (§14.8): read
+`get_documentation.text`, edit those bytes, write them back.
+
+Documenting a collection is the task an agent is most obviously useful for and
+the one a person is least likely to do, which is why it is here. Two things
+make it safe to expose, and both are properties of the app rather than
+promises of this tool:
+
+**A README is rendered, never injected.** `components/folder/markdown` builds
+a React element tree with `react-markdown`; there is no
+`dangerouslySetInnerHTML` anywhere in Otis and there must not be, links are
+not navigable and images are not loaded (`CLAUDE.md`). Without that rule this
+tool would be a cross-site-scripting primitive pointed at the person's own
+window, since it is the one write whose content is *displayed as markup*. It
+is the clearest case in this document of a UI decision being a security
+boundary.
+
+**It is a file in the working tree, so §5 applies unchanged.** A README an
+agent writes is uncommitted, git says so, and it appears in Otis' diff view
+like any other change. Unlike `update_request` there is no parse to refuse it
+— a README is text and nothing validates it — so review is the whole of the
+gate. That is the same gate a person has, and a README cannot change what any
+request sends.
+
 ### SESSION
 
 **`set_session_variable`** — set one session value for a folder (§8.1).
@@ -1020,8 +1060,9 @@ permanently unreviewed. §8.1 has the whole argument.
   a path the agent chooses. A tool that switched one would change which
   keychain entries resolve, since a secret is keyed
   `<collection>/<env>/<name>` (`FORMAT.md` §5). Neither is built for a person
-  yet either: Clone and Start fresh are `soon` in the empty state and
-  `DESIGN-NOTES` §9.9 records that they are not in the A–E plan.
+  yet either — Clone and Start fresh exist for a person now
+  (`DESIGN-NOTES` §9.39), and are deliberately not mirrored here: both take a
+  path outside the collection, and one of them runs `git` against a URL.
 
 **The boundary, stated plainly.** With WRITE off, an agent can send only what
 is in the collection, which means only what somebody reviewed. With WRITE on,
@@ -1067,6 +1108,26 @@ by `git status` rather than by policy.
   change under you, and if you commit without reading the diff you have
   reviewed nothing. This is the cost of the WRITE grant and there is no
   mechanism here that removes it.
+- **Repository content steering the agent.** Everything an agent reads through
+  this server — a request's `source`, a folder's `README.md` — is text
+  somebody wrote on a branch, and prose is the most natural place for an
+  instruction aimed at the model rather than at the reader. Otis does not
+  filter it and could not: there is no way to tell documentation from
+  documentation-shaped prompting.
+
+  What bounds it is that reading buys nothing that is not already gated.
+  Nothing in this document lets an agent send without a person reading the
+  resolved URL (§5, §6.4), and nothing lets it reach a secret at all (§7). An
+  injected instruction can make an agent *ask* for something; it cannot make
+  the asking succeed. The one thing it can do unaided is write another file —
+  which is the WRITE grant working, lands uncommitted, and shows up in the
+  diff.
+
+  `update_documentation` makes Otis a way to *place* such content as well as
+  read it, which is worth stating plainly: an agent with WRITE can write a
+  README that a later agent reads. It is still a file in the working tree, and
+  the person between the two is the review.
+
 - **A session value steering a reviewed request within its own host.** §8.1's
   rule 1 stops a session write from redirecting a request, by refusing any name
   the collection already defines. It does not stop the value from doing work

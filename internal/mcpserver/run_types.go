@@ -58,6 +58,12 @@ type Writer interface {
 	CreateRequest(folder, name, text string) (Created, *mcp.Redactor, error)
 	CreateFolder(parent, name string) (Created, *mcp.Redactor, error)
 	UpdateRequest(path, text string) (Updated, *mcp.Redactor, error)
+
+	// UpdateDocumentation replaces a folder's README.md. Nothing parses it —
+	// a README is text — so review is the whole of the gate, and the reason
+	// that is enough is that a README is *rendered* and never injected
+	// (docs/MCP.md §12).
+	UpdateDocumentation(folder, text string) (Updated, *mcp.Redactor, error)
 }
 
 // An Asker puts a confirmation in front of the person in Otis' own window.

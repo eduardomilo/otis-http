@@ -166,6 +166,18 @@ func (w *fakeWriter) UpdateRequest(path, text string) (Updated, *mcp.Redactor, e
 	return Updated{Path: path, Status: "modified"}, mcp.NoSecrets(), nil
 }
 
+func (w *fakeWriter) UpdateDocumentation(folder, text string) (Updated, *mcp.Redactor, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	path := "README.md"
+	if folder != "" {
+		path = folder + "/README.md"
+	}
+	// Nothing refuses a README: it is text, and there is no parse to fail.
+	w.updated = append(w.updated, path)
+	return Updated{Path: path, Status: "modified"}, mcp.NoSecrets(), nil
+}
+
 // fakeAsker is Otis' window.
 type fakeAsker struct {
 	mu     sync.Mutex
@@ -984,6 +996,7 @@ func TestWriteOffMeansNoWrite(t *testing.T) {
 		{"create_request", map[string]any{"folder": "", "name": "x"}},
 		{"create_folder", map[string]any{"parent": "", "name": "x"}},
 		{"update_request", map[string]any{"path": "a.http", "text": "GET http://x\n"}},
+		{"update_documentation", map[string]any{"folder": "", "text": "# hello"}},
 	} {
 		if out, isErr := callTool(t, c, tc.tool, tc.args); !isErr {
 			t.Errorf("%s ran with WRITE off: %s", tc.tool, out)
@@ -1015,9 +1028,11 @@ func TestTheSurfaceOffersNothingItShouldNot(t *testing.T) {
 
 	allowed := map[string]bool{
 		"list_requests": true, "get_request": true, "list_environments": true,
+		"get_documentation":     true,
 		"get_session_variables": true, "get_last_response": true, "get_test_results": true,
 		"send_request": true, "run_folder": true,
 		"create_request": true, "create_folder": true, "update_request": true,
+		"update_documentation": true,
 	}
 	for _, tool := range tools.Tools {
 		if !allowed[tool.Name] {
@@ -1236,5 +1251,84 @@ func TestTheAuditLogRecordsTheResolvedEnvironment(t *testing.T) {
 		if entry.Environment != "staging" {
 			t.Errorf("an audit line says environment %q, want the resolved \"staging\"", entry.Environment)
 		}
+	}
+}
+
+// A README is the documentation a folder carries for everyone on the branch,
+// and writing one is the task an agent is most obviously useful for
+// (docs/MCP.md §12). Both halves, because one without the other is either a
+// blind overwrite or a read nothing acts on.
+func TestAnAgentCanReadAndWriteAFoldersDocumentation(t *testing.T) {
+	s, _, writer, _ := runFixture(t, allGranted())
+	endpoint, err := s.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := connect(t, endpoint, endpoint.Token)
+
+	out, isErr := callTool(t, c, "get_documentation", map[string]any{"folder": "orders"})
+	if isErr {
+		t.Fatalf("get_documentation: %s", out)
+	}
+	for _, want := range []string{`"path":"orders/README.md"`, `"exists":true`, "What this folder is for."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("get_documentation did not carry %q:\n%s", want, out)
+		}
+	}
+
+	out, isErr = callTool(t, c, "update_documentation",
+		map[string]any{"folder": "orders", "text": "# Orders\n\nRewritten.\n"})
+	if isErr {
+		t.Fatalf("update_documentation: %s", out)
+	}
+	if !strings.Contains(out, `"status":"modified"`) {
+		t.Errorf("update_documentation = %s", out)
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if len(writer.updated) != 1 || writer.updated[0] != "orders/README.md" {
+		t.Errorf("updated = %q", writer.updated)
+	}
+}
+
+// The collection's own README is the folder with an empty path — the same
+// rule every other tool follows, and the one the user asks for by name.
+func TestTheCollectionsOwnReadmeIsTheEmptyFolder(t *testing.T) {
+	s, _, writer, _ := runFixture(t, allGranted())
+	endpoint, err := s.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := connect(t, endpoint, endpoint.Token)
+
+	out, isErr := callTool(t, c, "get_documentation", map[string]any{"folder": ""})
+	if isErr {
+		t.Fatalf("get_documentation: %s", out)
+	}
+	if !strings.Contains(out, `"path":"README.md"`) {
+		t.Errorf("the root README is not at README.md:\n%s", out)
+	}
+	if _, isErr := callTool(t, c, "update_documentation",
+		map[string]any{"folder": "", "text": "# The collection\n"}); isErr {
+		t.Fatal("writing the collection's own README failed")
+	}
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if len(writer.updated) != 1 || writer.updated[0] != "README.md" {
+		t.Errorf("updated = %q", writer.updated)
+	}
+}
+
+// Reading documentation is READ, not WRITE: an agent that can look at a
+// collection can read its prose, and that is the grant working.
+func TestReadingDocumentationNeedsOnlyRead(t *testing.T) {
+	s, _, _, _ := runFixture(t, mcp.Grants{Read: true})
+	endpoint, err := s.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := connect(t, endpoint, endpoint.Token)
+	if out, isErr := callTool(t, c, "get_documentation", map[string]any{"folder": ""}); isErr {
+		t.Fatalf("get_documentation needed more than READ: %s", out)
 	}
 }

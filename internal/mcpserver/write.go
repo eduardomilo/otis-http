@@ -122,4 +122,33 @@ func (s *Server) registerWrite() {
 		c.status = "modified"
 		return updated, redactor, nil
 	})
+
+	s.register(tool("update_documentation",
+		"Replace a folder's README.md — its documentation for everyone on the branch, and "+
+			"the collection's own when `folder` is the empty string. Read "+
+			"`get_documentation` first and edit those bytes: this replaces the whole file. "+
+			"Nothing parses a README, so nothing will refuse a mistake; your change is "+
+			"uncommitted and shows up in Otis' diff view, which is where a person reads it. "+
+			"A README changes no request and is never executed — Otis renders it as markdown "+
+			"and does not follow its links.",
+		writeAnnotations(true),
+		mcpgo.WithString("folder", mcpgo.Required(),
+			mcpgo.Description("The folder, as a collection-relative path. "+
+				"Empty string for the collection root.")),
+		mcpgo.WithString("text", mcpgo.Required(),
+			mcpgo.Description("The whole README.md's new text.")),
+	), mcp.CapWrite, spendOnEntry, func(ctx context.Context, req mcpgo.CallToolRequest, c *call) (any, *mcp.Redactor, error) {
+		folder := req.GetString("folder", "")
+		text, err := req.RequireString("text")
+		if err != nil {
+			return nil, mcp.NoSecrets(), err
+		}
+		updated, redactor, err := s.writer.UpdateDocumentation(folder, text)
+		if err != nil {
+			return nil, redactor, err
+		}
+		c.target = updated.Path
+		c.status = "modified"
+		return updated, redactor, nil
+	})
 }

@@ -93,6 +93,22 @@ func (f *fakeSource) GetRequest(path, environment string) (RequestView, *mcp.Red
 	}, f.redactor(), nil
 }
 
+func (f *fakeSource) GetDocumentation(folder string) (DocumentationView, *mcp.Redactor, error) {
+	f.called("get_documentation")
+	if f.failWith != nil {
+		return DocumentationView{}, mcp.NoSecrets(), f.failWith
+	}
+	path := "README.md"
+	if folder != "" {
+		path = folder + "/README.md"
+	}
+	return DocumentationView{
+		Folder: folder, Path: path,
+		Text:   "# Orders\n\nWhat this folder is for.\n",
+		Exists: true,
+	}, mcp.NoSecrets(), nil
+}
+
 func (f *fakeSource) ListEnvironments() ([]EnvironmentView, *mcp.Redactor, error) {
 	f.called("list_environments")
 	env := EnvironmentView{Name: "production", Active: true, ConfirmBeforeSend: true, Agents: "confirm"}
