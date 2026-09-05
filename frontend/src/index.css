@@ -236,6 +236,22 @@
         @apply h-screen overflow-hidden;
     }
 
+    /* Text selection, everywhere. The CodeMirror editors set their own
+       (components/editor/otis-theme.ts) because CodeMirror draws selection as
+       a layer of its own rather than letting the browser paint it — but most
+       selectable text in Otis is not in an editor: a response body is plain
+       virtualized DOM, and so are the tree, the header tables and every piece
+       of prose. Without this they took the browser's default, which is the
+       one selection colour the design never chose.
+
+       Background only, deliberately: leaving the text colour alone is what
+       lets a JSON body keep its syntax colours through a selection. §9.29 has
+       why the token is neutral and why neither --bg-selected nor
+       --accent-wash could be it. */
+    ::selection {
+        background-color: var(--bg-text-selection);
+    }
+
     /* §5: 8px scrollbars, #27272a thumb, radius 2px, no track. Native
        scrollbars are deliberate -- Radix ScrollArea would replace them
        (§7.6). */

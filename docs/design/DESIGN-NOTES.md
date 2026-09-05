@@ -1255,6 +1255,17 @@ line or a result. Alpha rather than a flat value so the one token works on
 `--bg`, `--bg-raised` and `--bg-inset` alike, and so syntax colours read
 through it.
 
+One token, everywhere. The editors set it themselves — CodeMirror draws
+selection as a layer of its own rather than letting the browser paint it — but
+most selectable text in Otis is *not* in an editor. A response body is plain
+virtualized DOM, and so are the tree, the header tables and every piece of
+prose. Those had no rule at all and took the browser's default, which is the
+one selection colour the design never chose. A bare `::selection` in
+`@layer base` covers them, and it sets the background only: leaving the text
+colour alone is what lets a JSON body keep its syntax colours through a
+selection, and what keeps the response body's line numbers — which are
+`select-none` — out of a copy.
+
 **9.30 The URL field had a scrollbar.** A single-line CodeMirror scrolls
 horizontally when the URL is longer than the field, and the theme declares 8px
 webkit scrollbars for `.cm-scroller` — so a bar appeared inside the 30px
