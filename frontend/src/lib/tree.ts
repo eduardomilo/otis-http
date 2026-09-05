@@ -145,3 +145,25 @@ export function findNode(root: Node, path: string): Node | undefined {
   }
   return undefined;
 }
+
+/**
+ * Every request in the tree, in tree order, whatever is expanded.
+ *
+ * `flatten` answers what the sidebar draws, which depends on what is open;
+ * this answers what exists. The request-hook picker needs the second — a hook
+ * has to sit beside its request (docs/FORMAT.md §2.4), and which folders
+ * happen to be expanded has nothing to do with which requests there are.
+ *
+ * A broken request counts: it is still a `.http` file that a `.pre.js` beside
+ * it would run around, and hiding it would make the picker disagree with the
+ * tree about what is in the collection.
+ */
+export function allRequests(root: Node): Node[] {
+  const found: Node[] = [];
+  const walk = (node: Node) => {
+    if (node.kind === "request" || node.kind === "broken") found.push(node);
+    for (const child of node.children ?? []) walk(child);
+  };
+  walk(root);
+  return found;
+}

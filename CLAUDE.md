@@ -133,7 +133,9 @@ lists the design decisions that are still open — do not resolve them silently.
   about JavaScript formatting and a save that acquired one would put
   everybody's prettier config in a diff. It also says what a script *is*
   (folder hook, request hook, module), which comes entirely from its name
-  (docs/FORMAT.md §2.4).
+  (docs/FORMAT.md §2.4) — and `Plan`/`Create` are the other direction:
+  the window picks a *kind* and Go picks the file name, because §2.4's table
+  is the whole of what creating a script is (DESIGN-NOTES §9.41).
 - `internal/services/start.go` — screen 2b's other two cards: `Create` writes
   `collection.Scaffold` into a new directory and opens it, `Clone` runs
   `internal/gitclone` and opens the collection it finds inside the checkout.
@@ -176,7 +178,9 @@ lists the design decisions that are still open — do not resolve them silently.
     DESIGN-NOTES §9.22), `node-actions` (Rename…/Duplicate/Delete… from the
     tree's context menu, and the two dialogs two of them need, §9.32),
     `activity-log` (the status bar's log popover, §9.33), `collection-row`
-    (the collection root above the tree, §9.40) and
+    (the collection root above the tree, §9.40), `create-script-dialog`
+    (which asks what should run a `.js` rather than what to call it, §9.41)
+    and
     `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
     it), and screen 2b's other two entry points — `new-collection-dialog`,
@@ -681,6 +685,15 @@ lists the design decisions that are still open — do not resolve them silently.
   directives, no variables and no headers; `TestScaffoldRoundTrips` asserts
   every `.http` it writes re-serializes byte for byte, because a scaffold one
   space off canonical form is a diff on somebody's first save.
+- **A script is classified, not named.** `ScriptService.Create` takes a
+  *kind* — folder hook, request hook, module — and derives the file name from
+  docs/FORMAT.md §2.4, because the name is the whole of what decides the kind
+  and getting it wrong fails silently: `utils.pre.js` beside no `utils.http`
+  is a module, not a hook. There is no mirror of that rule in the window;
+  `ScriptService.Plan` answers what will be written and what will run it, on
+  every change to the dialog. A module's name is written as typed rather than
+  slugged — it is also an import specifier — but a name that would lie
+  (leading `_`, or a `.pre`/`.post` ending) is refused. DESIGN-NOTES §9.41.
 - **A new folder always gets a `_folder.http`.** Git does not track an empty
   directory, so a folder created without a file in it vanishes on the next
   clone or checkout and the collection silently differs between two people.

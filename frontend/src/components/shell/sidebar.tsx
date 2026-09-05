@@ -34,7 +34,7 @@ export const Sidebar = forwardRef<
     /** Filled in with the tree's reveal handle, for the palette's ⇧↵. */
     revealRef?: React.RefObject<TreeHandle | null>;
     /** Opens the create dialog for a folder in the tree. */
-    onCreate: (kind: "request" | "folder", folder: string) => void;
+    onCreate: (kind: "request" | "folder" | "script", folder: string) => void;
     onManage: (action: NodeAction, node: Node) => void;
   }
 >(function Sidebar(

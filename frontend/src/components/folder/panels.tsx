@@ -326,13 +326,20 @@ export function VariablesPanel({
  * imports it — and the panel says which each one is rather than expecting the
  * reader to know that `_pre.js` is special and `idempotency.js` is not.
  */
-export function ScriptsPanel({ doc }: { doc: FolderDocument }) {
+export function ScriptsPanel({ doc, onAdd }: { doc: FolderDocument; onAdd?: () => void }) {
   const scripts = doc.scripts ?? [];
   const hooks = scripts.filter((s) => s.hook);
   const modules = scripts.filter((s) => !s.hook);
 
   return (
-    <Panel title="Scripts" subtitle="folder hooks · run around every request here">
+    <Panel
+      title="Scripts"
+      subtitle="folder hooks · run around every request here"
+      // The panel that lists a folder's scripts is where somebody is standing
+      // when they want another one, so it carries New the way Variables
+      // carries Add (DESIGN-NOTES §9.41).
+      action={onAdd ? <PanelAction onClick={onAdd}>New</PanelAction> : undefined}
+    >
       <p className="mb-2 text-meta text-fg-dim">
         <span className="font-mono text-fg-faint">_pre.js</span> and{" "}
         <span className="font-mono text-fg-faint">_post.js</span> in a folder run automatically.

@@ -1698,3 +1698,53 @@ The design's sentence still holds — the root is not a row *in the tree*, and
 the flattening in `lib/tree.ts` is untouched. What changed is that the
 sidebar now has one row that is not part of the tree, sitting above it.
 
+**9.41 Making a script, which took `touch`.** §9.34 gave a `.js` an editor and
+said in its own last paragraph that there was still no way to create one. The
+gap has the shape the rest of scripts have: a script's kind is decided
+entirely by its **file name** (FORMAT.md §2.4), so "create a script" is really
+"name a file correctly", and the naming rule is exactly the thing a person new
+to the format does not know.
+
+So the dialog does not ask for a name. It asks **what should run this** —
+every request in this folder and below, one request, or nothing — plus
+before-or-after, and Go names the file. `_post.js`, `create-order.post.js`,
+`idempotency.js`. Asking for a name instead would be asking somebody to encode
+a convention they came here to be told about, and the failure is silent:
+`utils.pre.js` beside no `utils.http` is a module with an unfortunate name
+rather than the hook they meant, and nothing about it looks wrong.
+
+`Writes` and the sentence under it come from `ScriptService.Plan`, a Go call
+on every change, and **not** from a mirror of §2.4 in the window. §2.4 has one
+implementation. That is also what puts "already exists" on screen before the
+button is pressed, which matters more here than for a request: a folder has at
+most one `_pre.js`, so unlike a request there is no `-2` to fall back to —
+the answer is a refusal and it should arrive while you can still change the
+answer.
+
+Three smaller decisions:
+
+**A hook goes beside its request, wherever the dialog was opened from.** The
+picker lists every request in the collection with the current folder's first,
+because opening the menu on the wrong row is a normal thing to do and a hook
+that landed in the folder you happened to be in would not be a hook at all.
+
+**A module's name is written as typed.** Not `collection.Slug`, which is how a
+*request* is named — a request's file name is a translation of a display name
+that lives inside the file, and a module has no display name. Its file name is
+its whole identity and also the specifier a hook will `import`. Otis has no
+opinion about JavaScript and that includes what its files are called. What is
+refused is a name that would *lie*: a leading `_`, or a `.pre`/`.post` ending,
+both of which are how §2.4 spells a hook.
+
+**One comment line goes in the file, and it is the only time Otis writes into
+a `.js`.** `Save` is verbatim and always will be (§9.34). A line naming what
+runs a file is worth having for the colleague who meets it in a terminal
+rather than in this window, and it is a fact about the file's name rather than
+an opinion about its contents.
+
+Three ways in, because a script is three different things depending on where
+you are standing: the tree's context menu ("New script in orders/…"), the
+command palette, and **New** on the folder view's Scripts panel — which is
+where you are already looking at a folder's scripts when you want another one,
+and which is a route away from `AppShell`, so it mounts its own copy of the
+dialog rather than reaching for a context to hold one boolean.

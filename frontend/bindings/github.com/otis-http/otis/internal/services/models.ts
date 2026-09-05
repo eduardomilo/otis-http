@@ -990,6 +990,39 @@ export interface MCPStatus {
 }
 
 /**
+ * NewScript is what the create dialog asks for.
+ */
+export interface NewScript {
+    /**
+     * Kind is one of the three constants above.
+     */
+    "kind": string;
+
+    /**
+     * Folder is where a folder hook or a module goes, "" for the root.
+     * Ignored for a request hook, which goes beside its request.
+     */
+    "folder": string;
+
+    /**
+     * Phase is "pre" or "post". Required for both hook kinds, ignored for a
+     * module.
+     */
+    "phase": string;
+
+    /**
+     * Request is the node path of the request a request hook belongs to.
+     */
+    "request": string;
+
+    /**
+     * Name is the module's file name. Ignored for a hook, whose name is not
+     * a choice.
+     */
+    "name": string;
+}
+
+/**
  * Node is one entry in the tree the sidebar renders.
  */
 export interface Node {
@@ -1466,6 +1499,29 @@ export interface ScriptFailure {
      * Timeout marks a phase killed by its budget rather than a throw.
      */
     "timeout"?: boolean;
+}
+
+/**
+ * ScriptPlan is what Plan answers with.
+ */
+export interface ScriptPlan {
+    /**
+     * Path is the node path the script would be created at.
+     */
+    "path": string;
+
+    /**
+     * Runs is the sentence saying what runs it, the same one the editor's
+     * header shows once it exists.
+     */
+    "runs": string;
+
+    /**
+     * Problem is why it cannot be created, or "". A plan with a problem
+     * still carries its path, because naming the file in the way is most of
+     * the explanation.
+     */
+    "problem": string;
 }
 
 /**

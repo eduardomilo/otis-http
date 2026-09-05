@@ -11,17 +11,24 @@ import {
   VariablesPanel,
 } from "@/components/folder/panels";
 import { CodeEditor } from "@/components/editor/code-editor";
+import { CreateScriptDialog } from "@/components/shell/create-script-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useNavigate } from "@tanstack/react-router";
+
+import { nodeLink } from "@/lib/paths";
 import { hint } from "@/lib/platform";
+import { allRequests } from "@/lib/tree";
 import { indexVariables } from "@/lib/variables";
 import { cn } from "@/lib/utils";
 import { FolderService } from "@bindings/internal/services";
 import type { FolderDocument } from "@bindings/internal/services";
+import { useCollection } from "@/state/collection-context";
 import { useEnvironments } from "@/state/environment-context";
 import { useRuns, type Run } from "@/state/run-context";
+import { useTabs } from "@/state/tabs-context";
 
 /**
  * The folder view (screen 3a) — the screen that explains the product's model.
@@ -48,6 +55,15 @@ type Tab = "overview" | "auth" | "variables" | "scripts" | "headers";
 export function FolderView({ path }: { path: string }) {
   const { active: env } = useEnvironments();
   const { runFor, start, cancel } = useRuns();
+  const { tree } = useCollection();
+  const { openTab } = useTabs();
+  const navigate = useNavigate();
+  // Its own instance of the dialog rather than the shell's. The shell's is
+  // reached from the tree's menu and the palette; this one is reached from
+  // the Scripts panel, which is a route away from AppShell and has no prop
+  // to hand it. The dialog holds one piece of state — which folder — so a
+  // second instance is cheaper than a context for it (DESIGN-NOTES §9.41).
+  const [creatingScript, setCreatingScript] = useState<string | null>(null);
   const [doc, setDoc] = useState<FolderDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
@@ -142,7 +158,7 @@ export function FolderView({ path }: { path: string }) {
               // _folder.http, so there is nothing here to edit — the panel
               // names them and the editor for one arrives with the script
               // engine's own screen.
-              <ScriptsPanel doc={doc} />
+              <ScriptsPanel doc={doc} onAdd={() => setCreatingScript(path)} />
             ) : (
               // §9.15 gives the left column on these tabs to "that one panel
               // again at full width". It is the editor instead: at full width
@@ -178,12 +194,23 @@ export function FolderView({ path }: { path: string }) {
                 onClearSession={clearSession}
                 onAdd={() => setTab("variables")}
               />
-              <ScriptsPanel doc={doc} />
+              <ScriptsPanel doc={doc} onAdd={() => setCreatingScript(path)} />
               <HeadersPanel doc={doc} index={index} />
             </div>
           </aside>
         </div>
       </Tabs>
+
+      <CreateScriptDialog
+        folder={creatingScript}
+        requests={tree ? allRequests(tree.root) : []}
+        onClose={() => setCreatingScript(null)}
+        onCreated={(nodePath) => {
+          if (!nodePath) return;
+          openTab(nodePath, "script", { activate: true });
+          void navigate(nodeLink("script", nodePath));
+        }}
+      />
     </div>
   );
 }

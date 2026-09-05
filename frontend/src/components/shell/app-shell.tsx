@@ -15,6 +15,7 @@ import {
   type CollectionAction,
 } from "@/components/shell/collection-switch-dialog";
 import { CreateDialog, type CreateKind } from "@/components/shell/create-dialog";
+import { CreateScriptDialog } from "@/components/shell/create-script-dialog";
 import { NodeActionDialogs, type NodeAction, type NodeTarget } from "@/components/shell/node-actions";
 import { ImportDialog } from "@/components/shell/import-dialog";
 import { ResponsePane } from "@/components/response/response-pane";
@@ -31,7 +32,7 @@ import { CollectionService, FolderService, RequestService } from "@bindings/inte
 import type { Node } from "@bindings/internal/services";
 import { nodeLink, nodeParentPath } from "@/lib/paths";
 import { relativeTime } from "@/lib/time";
-import { findNode } from "@/lib/tree";
+import { allRequests, findNode } from "@/lib/tree";
 import { useCollection } from "@/state/collection-context";
 import { useDocuments } from "@/state/documents-context";
 import { useDiff } from "@/state/diff-context";
@@ -167,6 +168,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // What the create dialog is making, and where. Null when it is closed.
   const [creating, setCreating] = useState<{ kind: CreateKind; folder: string } | null>(null);
+  // The folder a new script goes in, or null when that dialog is closed. Its
+  // own state rather than a third CreateKind: a script is not named, it is
+  // *classified*, and the two dialogs ask different questions
+  // (DESIGN-NOTES §9.41).
+  const [creatingScript, setCreatingScript] = useState<string | null>(null);
   // The row the context menu is renaming or deleting. Duplicate needs no
   // dialog, so it never lands here.
   const [managing, setManaging] = useState<NodeTarget | null>(null);
@@ -218,7 +224,11 @@ export function AppShell({ children }: { children: ReactNode }) {
     return "";
   };
 
-  const openCreate = useCallback((kind: CreateKind, folder: string) => {
+  const openCreate = useCallback((kind: CreateKind | "script", folder: string) => {
+    if (kind === "script") {
+      setCreatingScript(folder);
+      return;
+    }
     setCreating({ kind, folder });
   }, []);
 
@@ -586,6 +596,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           if (routeDocument?.path === path) void navigate({ to: "/" });
         }}
         onError={(message, detail) => log(message, detail)}
+      />
+
+      <CreateScriptDialog
+        folder={creatingScript}
+        requests={tree ? allRequests(tree.root) : []}
+        onClose={() => setCreatingScript(null)}
+        onCreated={(nodePath) => {
+          if (!nodePath) return;
+          openTab(nodePath, "script", { activate: true });
+          void navigate(nodeLink("script", nodePath));
+        }}
       />
 
       <CreateDialog

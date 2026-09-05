@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -158,4 +159,222 @@ func describeScript(node *collection.Node, text string) ScriptDocument {
 		doc.Phase = "post"
 	}
 	return doc
+}
+
+// ScriptKind is what a new script will be, which docs/FORMAT.md §2.4 decides
+// entirely from its file name.
+//
+// The window picks the kind and Go picks the name, rather than the window
+// typing `_post.js` and hoping: the convention is easy to get subtly wrong —
+// `utils.pre.js` beside no `utils.http` is a module with an unfortunate name,
+// not a hook — and the whole point of §2.4 having a table is that a person
+// should not have to hold it in their head.
+const (
+	// ScriptFolderHook is `_pre.js` or `_post.js`: it runs around every
+	// request in its folder and below.
+	ScriptFolderHook = "folder"
+	// ScriptRequestHook is `<slug>.pre.js` or `<slug>.post.js` beside
+	// `<slug>.http`: it runs around that one request.
+	ScriptRequestHook = "request"
+	// ScriptModule is any other `.js`: nothing runs it unless a hook imports
+	// it.
+	ScriptModule = "module"
+)
+
+// NewScript is what the create dialog asks for.
+type NewScript struct {
+	// Kind is one of the three constants above.
+	Kind string `json:"kind"`
+	// Folder is where a folder hook or a module goes, "" for the root.
+	// Ignored for a request hook, which goes beside its request.
+	Folder string `json:"folder"`
+	// Phase is "pre" or "post". Required for both hook kinds, ignored for a
+	// module.
+	Phase string `json:"phase"`
+	// Request is the node path of the request a request hook belongs to.
+	Request string `json:"request"`
+	// Name is the module's file name. Ignored for a hook, whose name is not
+	// a choice.
+	Name string `json:"name"`
+}
+
+// Plan reports the file a NewScript would create and the sentence that says
+// what runs it, without creating anything.
+//
+// It exists so the dialog can show both while you are still choosing — the
+// same promise the create dialog makes for a request (DESIGN-NOTES §8.2) —
+// and it is Go's answer rather than a mirror in the window, because the
+// naming rule is §2.4's and there must be one implementation of it.
+func (s *ScriptService) Plan(req NewScript) (ScriptPlan, error) {
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return ScriptPlan{}, err
+	}
+	nodePath, err := plannedScriptPath(loaded, req)
+	if err != nil {
+		return ScriptPlan{Problem: err.Error()}, nil
+	}
+	plan := ScriptPlan{Path: nodePath, Runs: scriptRuns(req, nodePath)}
+	if loaded.Find(nodePath) != nil {
+		plan.Problem = displayPath(nodePath) + " already exists"
+		return plan, nil
+	}
+	// The walk is a cache, so the disk is the authority on whether the name
+	// is free — a file can arrive between two walks, and creating over a
+	// script somebody else just wrote is not recoverable from inside Otis.
+	if _, statErr := os.Stat(absolutePath(loaded.Dir, nodePath)); statErr == nil {
+		plan.Problem = displayPath(nodePath) + " already exists"
+	}
+	return plan, nil
+}
+
+// ScriptPlan is what Plan answers with.
+type ScriptPlan struct {
+	// Path is the node path the script would be created at.
+	Path string `json:"path"`
+	// Runs is the sentence saying what runs it, the same one the editor's
+	// header shows once it exists.
+	Runs string `json:"runs"`
+	// Problem is why it cannot be created, or "". A plan with a problem
+	// still carries its path, because naming the file in the way is most of
+	// the explanation.
+	Problem string `json:"problem"`
+}
+
+// Create writes a new script and returns its node path.
+//
+// The starter text is one comment line saying what runs it, and this is the
+// only time Otis writes into a `.js` at all — Save is verbatim and always
+// will be. A line naming what runs a file is worth having for the colleague
+// who meets it in a terminal rather than in this window, and it is a fact
+// about the file name rather than an opinion about JavaScript.
+func (s *ScriptService) Create(req NewScript) (string, error) {
+	plan, err := s.Plan(req)
+	if err != nil {
+		return "", err
+	}
+	if plan.Problem != "" {
+		return "", fmt.Errorf("%s", plan.Problem)
+	}
+	loaded, err := s.collections.Loaded()
+	if err != nil {
+		return "", err
+	}
+	target := absolutePath(loaded.Dir, plan.Path)
+
+	// Inside the guard, like every write Otis makes, and `.order` is not
+	// touched: the new file is unlisted, so it sorts alphabetically after the
+	// listed ones, and that is the whole mechanism (docs/FORMAT.md §2.2).
+	release := s.collections.Guard().Writing(target)
+	err = writeFileAtomic(target, []byte("// "+plan.Runs+"\n\n"))
+	release()
+	if err != nil {
+		return "", fmt.Errorf("creating %s: %w", displayPath(plan.Path), err)
+	}
+	if err := s.collections.Refresh(); err != nil {
+		return "", err
+	}
+	return plan.Path, nil
+}
+
+// plannedScriptPath is §2.4's table, as a function.
+func plannedScriptPath(loaded *collection.Collection, req NewScript) (string, error) {
+	phase := strings.ToLower(strings.TrimSpace(req.Phase))
+	if req.Kind != ScriptModule && phase != "pre" && phase != "post" {
+		return "", fmt.Errorf("a hook runs either before the request or after the response")
+	}
+	switch req.Kind {
+	case ScriptFolderHook:
+		folder := loaded.Find(req.Folder)
+		if folder == nil || folder.Kind != collection.KindFolder {
+			return "", fmt.Errorf("%s is not a folder in this collection", displayPath(req.Folder))
+		}
+		name := collection.PreHookName
+		if phase == "post" {
+			name = collection.PostHookName
+		}
+		return path.Join(req.Folder, name), nil
+
+	case ScriptRequestHook:
+		request := loaded.Find(req.Request)
+		if request == nil || request.Kind != collection.KindRequest {
+			return "", fmt.Errorf("%s is not a request in this collection", displayPath(req.Request))
+		}
+		// Beside the request and named for it, which is the only way §2.4
+		// makes it a hook rather than a module with an unfortunate name.
+		base := strings.TrimSuffix(req.Request, collection.RequestExt)
+		suffix := collection.PreHookSuffix
+		if phase == "post" {
+			suffix = collection.PostHookSuffix
+		}
+		return base + suffix, nil
+
+	case ScriptModule:
+		folder := loaded.Find(req.Folder)
+		if folder == nil || folder.Kind != collection.KindFolder {
+			return "", fmt.Errorf("%s is not a folder in this collection", displayPath(req.Folder))
+		}
+		name, err := moduleFileName(req.Name)
+		if err != nil {
+			return "", err
+		}
+		return path.Join(req.Folder, name), nil
+	}
+	return "", fmt.Errorf("%q is not a kind of script", req.Kind)
+}
+
+// moduleFileName turns a typed name into a `.js` file name.
+//
+// Not `collection.Slug`, which is how a *request* is named: a request's file
+// name is derived from a display name that lives in the file, so the slug is
+// a translation between two representations of one thing. A module has no
+// display name — its file name is its whole identity and it is also the
+// import specifier a hook will type — so what is typed is what is written,
+// minus a `.js` the person may have added themselves. Otis has no opinion
+// about JavaScript, and that includes what its files are called.
+func moduleFileName(name string) (string, error) {
+	trimmed := strings.TrimSpace(name)
+	trimmed = strings.TrimSuffix(trimmed, collection.ScriptExt)
+	if trimmed == "" {
+		return "", fmt.Errorf("give the module a name")
+	}
+	if trimmed == "." || trimmed == ".." || strings.ContainsAny(trimmed, `/\`) {
+		return "", fmt.Errorf("%q is not a file name", name)
+	}
+	// A leading underscore is how §2.4 spells a folder hook, so a module
+	// called `_helpers` would be a file whose name says it runs on its own
+	// and does not.
+	if strings.HasPrefix(trimmed, "_") {
+		return "", fmt.Errorf("a name starting with _ is reserved for folder hooks")
+	}
+	// `<name>.pre` and `<name>.post` are how §2.4 spells a request hook. One
+	// beside a matching `.http` would silently become a hook; one beside no
+	// matching request is the "module with an unfortunate name" §2.4 warns
+	// about. Neither is what someone naming a module meant.
+	if strings.HasSuffix(trimmed, ".pre") || strings.HasSuffix(trimmed, ".post") {
+		return "", fmt.Errorf("names ending .pre or .post are how a request hook is spelled")
+	}
+	return trimmed + collection.ScriptExt, nil
+}
+
+// scriptRuns is the sentence that says what runs a script, in the same words
+// the editor's header uses once the file exists.
+func scriptRuns(req NewScript, nodePath string) string {
+	where := "the collection root"
+	if req.Folder != "" {
+		where = req.Folder + "/"
+	}
+	switch req.Kind {
+	case ScriptFolderHook:
+		if strings.EqualFold(req.Phase, "post") {
+			return "Runs after every response in " + where + " and below."
+		}
+		return "Runs before every request in " + where + " and below."
+	case ScriptRequestHook:
+		if strings.EqualFold(req.Phase, "post") {
+			return "Runs after " + displayPath(req.Request) + ", and only that request."
+		}
+		return "Runs before " + displayPath(req.Request) + ", and only that request."
+	}
+	return "A module: nothing runs this unless a hook imports it."
 }

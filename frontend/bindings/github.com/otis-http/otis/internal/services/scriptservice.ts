@@ -24,10 +24,36 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * Create writes a new script and returns its node path.
+ * 
+ * The starter text is one comment line saying what runs it, and this is the
+ * only time Otis writes into a `.js` at all — Save is verbatim and always
+ * will be. A line naming what runs a file is worth having for the colleague
+ * who meets it in a terminal rather than in this window, and it is a fact
+ * about the file name rather than an opinion about JavaScript.
+ */
+export function Create(req: $models.NewScript): $CancellablePromise<string> {
+    return $Call.ByID(1706581023, req);
+}
+
+/**
  * Load reads the script at nodePath.
  */
 export function Load(nodePath: string): $CancellablePromise<$models.ScriptDocument> {
     return $Call.ByID(2097008367, nodePath);
+}
+
+/**
+ * Plan reports the file a NewScript would create and the sentence that says
+ * what runs it, without creating anything.
+ * 
+ * It exists so the dialog can show both while you are still choosing — the
+ * same promise the create dialog makes for a request (DESIGN-NOTES §8.2) —
+ * and it is Go's answer rather than a mirror in the window, because the
+ * naming rule is §2.4's and there must be one implementation of it.
+ */
+export function Plan(req: $models.NewScript): $CancellablePromise<$models.ScriptPlan> {
+    return $Call.ByID(658723216, req);
 }
 
 /**

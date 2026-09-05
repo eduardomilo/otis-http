@@ -142,3 +142,178 @@ func TestSavingAScriptRefreshesTheTree(t *testing.T) {
 		t.Error("a .pre.js with no request beside it was called a hook")
 	}
 }
+
+// Creating a script is entirely a question of what to call the file
+// (docs/FORMAT.md §2.4), which is why the window picks a *kind* and Go picks
+// the name. This is that table.
+func TestCreateScriptNamesTheFileFromItsKind(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "orders", "create-order.http"), "# @name Create order\nGET {{baseUrl}}/\n")
+	svc := newScriptService(t, root)
+
+	for _, tt := range []struct {
+		name string
+		req  NewScript
+		want string
+		runs string
+	}{
+		{
+			name: "folder pre-hook",
+			req:  NewScript{Kind: ScriptFolderHook, Folder: "orders", Phase: "pre"},
+			want: "orders/_pre.js",
+			runs: "Runs before every request in orders/ and below.",
+		},
+		{
+			name: "folder post-hook at the root",
+			req:  NewScript{Kind: ScriptFolderHook, Folder: "", Phase: "post"},
+			want: "_post.js",
+			runs: "Runs after every response in the collection root and below.",
+		},
+		{
+			name: "request hook goes beside its request, not in the folder given",
+			req:  NewScript{Kind: ScriptRequestHook, Folder: "somewhere-else", Request: "orders/create-order.http", Phase: "post"},
+			want: "orders/create-order.post.js",
+		},
+		{
+			name: "module keeps the name as typed",
+			req:  NewScript{Kind: ScriptModule, Folder: "orders", Name: "idempotency"},
+			want: "orders/idempotency.js",
+			runs: "A module: nothing runs this unless a hook imports it.",
+		},
+		{
+			name: "module with a .js the person typed themselves",
+			req:  NewScript{Kind: ScriptModule, Folder: "orders", Name: " signing.js "},
+			want: "orders/signing.js",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, err := svc.Plan(tt.req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if plan.Problem != "" {
+				t.Fatalf("plan refused: %s", plan.Problem)
+			}
+			if plan.Path != tt.want {
+				t.Errorf("path = %q, want %q", plan.Path, tt.want)
+			}
+			if tt.runs != "" && plan.Runs != tt.runs {
+				t.Errorf("runs = %q, want %q", plan.Runs, tt.runs)
+			}
+			got, err := svc.Create(tt.req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("Create = %q, want %q", got, tt.want)
+			}
+			// The one comment line, and nothing else: Save is verbatim and
+			// this is the only moment Otis writes into a .js at all.
+			body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(tt.want)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "// " + plan.Runs + "\n\n"; string(body) != want {
+				t.Errorf("body = %q, want %q", body, want)
+			}
+		})
+	}
+}
+
+// A created script is the kind the dialog said it was. The name is the whole
+// of how §2.4 decides, so this walks back through the classifier rather than
+// trusting the name it just wrote.
+func TestACreatedScriptIsTheKindItWasAskedFor(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "orders", "create-order.http"), "# @name Create order\nGET {{baseUrl}}/\n")
+	svc := newScriptService(t, root)
+
+	folderHook, err := svc.Create(NewScript{Kind: ScriptFolderHook, Folder: "orders", Phase: "pre"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestHook, err := svc.Create(NewScript{Kind: ScriptRequestHook, Request: "orders/create-order.http", Phase: "post"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := svc.Create(NewScript{Kind: ScriptModule, Folder: "orders", Name: "helpers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		path   string
+		hook   bool
+		phase  string
+		hookOf string
+		scope  string
+	}{
+		{folderHook, true, "pre", "", "orders"},
+		{requestHook, true, "post", "orders/create-order.http", ""},
+		{module, false, "", "", ""},
+	} {
+		doc, err := svc.Load(tt.path)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.path, err)
+		}
+		if doc.Hook != tt.hook || doc.Phase != tt.phase || doc.HookOf != tt.hookOf || doc.Scope != tt.scope {
+			t.Errorf("%s: hook=%v phase=%q hookOf=%q scope=%q, want %v/%q/%q/%q",
+				tt.path, doc.Hook, doc.Phase, doc.HookOf, doc.Scope, tt.hook, tt.phase, tt.hookOf, tt.scope)
+		}
+	}
+}
+
+// Every one of these produces a file whose *name* says something false about
+// what runs it, which is the one thing §2.4 exists to prevent.
+func TestCreateScriptRefusesNamesThatWouldLie(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "orders", "create-order.http"), "# @name Create order\nGET {{baseUrl}}/\n")
+	svc := newScriptService(t, root)
+
+	for _, tt := range []struct {
+		name string
+		req  NewScript
+	}{
+		{"a module named like a folder hook", NewScript{Kind: ScriptModule, Folder: "orders", Name: "_helpers"}},
+		{"a module named like a request hook", NewScript{Kind: ScriptModule, Folder: "orders", Name: "utils.pre"}},
+		{"a module with a path in it", NewScript{Kind: ScriptModule, Folder: "orders", Name: "../escape"}},
+		{"a module with no name", NewScript{Kind: ScriptModule, Folder: "orders", Name: "  "}},
+		{"a hook with no phase", NewScript{Kind: ScriptFolderHook, Folder: "orders"}},
+		{"a request hook on a folder", NewScript{Kind: ScriptRequestHook, Request: "orders", Phase: "pre"}},
+		{"a folder hook in no folder", NewScript{Kind: ScriptFolderHook, Folder: "nope", Phase: "pre"}},
+		{"a kind that is not one", NewScript{Kind: "whatever", Folder: "orders"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			plan, err := svc.Plan(tt.req)
+			if err == nil && plan.Problem == "" {
+				t.Fatalf("allowed it: %+v", plan)
+			}
+			if _, err := svc.Create(tt.req); err == nil {
+				t.Error("Create allowed it")
+			}
+		})
+	}
+}
+
+// A folder has at most one `_pre.js`, so the second one is a refusal and not
+// a `-2`: unlike a request, the name is not free to vary.
+func TestCreateScriptRefusesAHookThatAlreadyExists(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "orders", "create-order.http"), "# @name Create order\nGET {{baseUrl}}/\n")
+	svc := newScriptService(t, root)
+
+	req := NewScript{Kind: ScriptFolderHook, Folder: "orders", Phase: "pre"}
+	if _, err := svc.Create(req); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := svc.Plan(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.Problem, "already exists") {
+		t.Errorf("plan.Problem = %q", plan.Problem)
+	}
+	if _, err := svc.Create(req); err == nil {
+		t.Error("created a second _pre.js")
+	}
+}

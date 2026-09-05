@@ -112,7 +112,7 @@ func TestAddingARequestDoesNotTouchTheOrderFile(t *testing.T) {
 // Byte-identical, not equivalent: a rewrite that produced the same order would
 // still put the file in somebody's diff and would still have eaten their
 // comments on the way.
-func TestCreatingARequestOrFolderDoesNotTouchTheOrderFile(t *testing.T) {
+func TestCreatingARequestFolderOrScriptDoesNotTouchTheOrderFile(t *testing.T) {
 	_, collections, root := newOrderService(t)
 	orderPath := filepath.Join(root, "orders", collection.OrderFileName)
 	before := readBytes(t, orderPath)
@@ -133,6 +133,18 @@ func TestCreatingARequestOrFolderDoesNotTouchTheOrderFile(t *testing.T) {
 	}
 	if after := readBytes(t, orderPath); !bytes.Equal(before, after) {
 		t.Errorf(".order changed when a folder was created\n--- before ---\n%s\n--- after ---\n%s",
+			before, after)
+	}
+
+	// And a script, which is a tree row and is listed in .order like any
+	// other entry (docs/FORMAT.md §2.4), so it is the third writer that must
+	// not touch it.
+	scripts := NewScriptService(collections)
+	if _, err := scripts.Create(NewScript{Kind: ScriptFolderHook, Folder: "orders", Phase: "pre"}); err != nil {
+		t.Fatalf("creating a script: %v", err)
+	}
+	if after := readBytes(t, orderPath); !bytes.Equal(before, after) {
+		t.Errorf(".order changed when a script was created\n--- before ---\n%s\n--- after ---\n%s",
 			before, after)
 	}
 }
