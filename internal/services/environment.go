@@ -320,6 +320,81 @@ func (s *EnvironmentService) Create(name string) (EnvironmentDocument, error) {
 	return s.Load(name)
 }
 
+// Duplicate copies env/<name>.json to a new environment and returns it.
+//
+// The copy carries the original's secret *references*, and its stored values
+// come with them: a reference is keyed <collection>/<env>/<name>, so a copy
+// whose keys nobody wrote would be an environment full of references to
+// nothing, which is not what duplicating "staging" means. The values move
+// inside Go and across the keychain — no value is returned, logged or named,
+// and the count of them is all the window is told.
+//
+// A value that cannot be read is skipped rather than failing the whole copy:
+// the reference is still copied, and the environment editor shows it as a
+// secret with no value set, which is the same state a reference somebody
+// pulled from a colleague's branch is in.
+//
+// The name is "<name>-copy", then "<name>-copy-2", and so on.
+func (s *EnvironmentService) Duplicate(name string) (EnvironmentDocument, error) {
+	root, env, err := s.read(name)
+	if err != nil {
+		return EnvironmentDocument{}, err
+	}
+	list, err := s.List()
+	if err != nil {
+		return EnvironmentDocument{}, err
+	}
+	used := make(map[string]bool, len(list.Items))
+	for _, summary := range list.Items {
+		used[summary.Name] = true
+	}
+
+	// Hyphenated rather than "staging copy": an environment's name *is* its
+	// file name (docs/FORMAT.md §4.3), and it is also what `otis run --env`
+	// takes, so a space would put a quoted argument in everybody's CI script.
+	copyOf := name + "-copy"
+	for i := 2; used[copyOf]; i++ {
+		copyOf = fmt.Sprintf("%s-copy-%d", name, i)
+	}
+	target, err := s.file(root, copyOf)
+	if err != nil {
+		return EnvironmentDocument{}, err
+	}
+
+	duplicate := &resolve.Environment{
+		Name:   copyOf,
+		Path:   resolve.EnvPath(copyOf),
+		Values: make(map[string]resolve.EnvValue, len(env.Values)),
+		Order:  append([]string(nil), env.Order...),
+		Meta:   env.Meta,
+	}
+	for key, value := range env.Values {
+		duplicate.Values[key] = value
+	}
+
+	// The keychain first: a file whose references resolve is better than a
+	// file that appeared before its values did, and a failed write leaves
+	// nothing behind to explain. The collection half of the key is the
+	// collection's display name, which is what every other caller uses.
+	where := collection.DisplayName(root)
+	for _, key := range env.Order {
+		if !env.Values[key].Secret {
+			continue
+		}
+		value, err := s.store.Get(secrets.Key(where, name, key))
+		if err != nil || value == "" {
+			continue
+		}
+		if err := s.store.Set(secrets.Key(where, copyOf, key), value); err != nil {
+			return EnvironmentDocument{}, fmt.Errorf("copying the value of %s: %w", key, err)
+		}
+	}
+	if err := s.writeFile(target, duplicate); err != nil {
+		return EnvironmentDocument{}, err
+	}
+	return s.Load(copyOf)
+}
+
 // Delete removes env/<name>.json.
 //
 // The values its secret references pointed at are left in the keychain: they
@@ -666,10 +741,7 @@ func (s *EnvironmentService) emit(name string, data any) {
 }
 
 func (s *EnvironmentService) logError(msg string, err error) {
-	if s.app == nil {
-		return
-	}
-	s.app.Logger.Error(msg, "error", err)
+	recordError(s.app, "environment", msg, err)
 }
 
 // validEnvName rejects a name that is not a bare file name. FORMAT.md §4.3:

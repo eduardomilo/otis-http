@@ -551,3 +551,66 @@ func TestEnvironmentReferencedByCount(t *testing.T) {
 		t.Errorf("ReferencedBy = %d, want 0", doc.ReferencedBy)
 	}
 }
+
+// Duplicating an environment copies its references *and* the values behind
+// them. A copy whose keychain keys nobody wrote would be an environment full
+// of references to nothing, which is not what duplicating one means.
+func TestDuplicateEnvironmentCopiesTheStoredValuesToo(t *testing.T) {
+	env, _, vault, _ := newEnvService(t)
+
+	if _, err := env.MakeSecret("staging", "apiKey", "sk-live-value"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.SetVariable("staging", "baseUrl", "https://staging.example.test"); err != nil {
+		t.Fatal(err)
+	}
+
+	doc, err := env.Duplicate("staging")
+	if err != nil {
+		t.Fatalf("Duplicate: %v", err)
+	}
+	if doc.Name != "staging-copy" {
+		t.Fatalf("name = %q, want %q", doc.Name, "staging-copy")
+	}
+
+	var secret, plain *EnvironmentRow
+	for i, row := range doc.Rows {
+		switch row.Name {
+		case "apiKey":
+			secret = &doc.Rows[i]
+		case "baseUrl":
+			plain = &doc.Rows[i]
+		}
+	}
+	if secret == nil || !secret.Secret {
+		t.Fatalf("the copy has no apiKey secret: %+v", doc.Rows)
+	}
+	// The window is never handed the value, here as everywhere.
+	if secret.Value != "" {
+		t.Errorf("a secret's value crossed the binding: %q", secret.Value)
+	}
+	if plain == nil || plain.Value != "https://staging.example.test" {
+		t.Errorf("the plain variable did not come across: %+v", plain)
+	}
+
+	// The value did move, in the keychain, under the copy's own key.
+	stored, err := vault.Get(secrets.Key(collection.DisplayName(env.collections.Current().Path), "staging-copy", "apiKey"))
+	if err != nil || stored != "sk-live-value" {
+		t.Errorf("the copy's stored value = %q (%v), want the original's", stored, err)
+	}
+}
+
+// A second copy does not collide with the first.
+func TestDuplicateEnvironmentTwice(t *testing.T) {
+	env, _, _, _ := newEnvService(t)
+	if _, err := env.Duplicate("staging"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := env.Duplicate("staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Name != "staging-copy-2" {
+		t.Errorf("name = %q, want %q", second.Name, "staging-copy-2")
+	}
+}

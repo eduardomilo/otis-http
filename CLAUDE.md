@@ -117,6 +117,12 @@ lists the design decisions that are still open — do not resolve them silently.
   hunks (`hunks.go`, whose `Apply`/`Reverse` are the one splice behind both
   staging and discarding), the semantic hunk headers a `.http` file allows
   (`label.go`), and the four operations a review performs (`apply.go`).
+- `internal/services/log.go` — the activity log: what Otis tried and could
+  not do, so that a failure has somewhere to go. `LogEntry` has a message, a
+  source and the error, and nowhere to put a payload — same reasoning as
+  `mcp.Entry`'s. In memory, per session. `services.UseLog` makes it the
+  destination for every service's background failures, which is why
+  `recordError` and not each service's own logger.
 - `internal/settings/` — the JSON settings file in the OS config dir. The only
   place frontend state persists.
 - `internal/buildinfo/` — the build identity: `Version`, `Commit` and `Date`,
@@ -145,7 +151,10 @@ lists the design decisions that are still open — do not resolve them silently.
     bar, palette, empty state, `create-dialog` (naming a new request or folder,
     showing the path it will write), `order-strip` (screen 2a's confirmation
     under the tree), `agent-chip` (the MCP indicator and its popover,
-    DESIGN-NOTES §9.22) and `agent-confirm-dialog` (the confirmation an
+    DESIGN-NOTES §9.22), `node-actions` (Rename…/Duplicate/Delete… from the
+    tree's context menu, and the two dialogs two of them need, §9.32),
+    `activity-log` (the status bar's log popover, §9.33) and
+    `agent-confirm-dialog` (the confirmation an
     agent's send blocks on, including §5.1's danger variant with the diff in
     it). One component per file, named after it.
   - `components/editor/` — the CodeMirror 6 setup: the theme and syntax
@@ -182,7 +191,7 @@ lists the design decisions that are still open — do not resolve them silently.
   - `state/` — React context providers, one concern each (`settings-context`,
     `collection-context`, `tabs-context`, `documents-context`,
     `send-context`, `environment-context`, `diff-context`, `run-context`,
-    `order-context`),
+    `order-context`, `log-context`),
     each exporting a `useXxx` hook
     that throws outside its provider. Providers are composed in
     `routes/__root.tsx`; `environment-context` sits above `tabs-context`,
@@ -423,6 +432,27 @@ lists the design decisions that are still open — do not resolve them silently.
   is `0600`, in the config directory, **never in the collection** — a log in
   the repository gets committed, and then everyone on the branch holds a
   record of which endpoints one person called.
+- **A rename changes both halves of a request's identity.** `# @name` and the
+  file name are two views of one thing, so `RequestService.Rename` writes the
+  directive *and* moves the file to the new name's slug, which is exactly
+  what `Create` does with a typed name. The dialog shows both lines before it
+  happens. A file that did not parse is refused rather than renamed: half the
+  operation is rewriting its contents, and Otis does not rewrite a file it
+  could not read. DESIGN-NOTES §9.32.
+- **A duplicate's label and its file name are computed together.**
+  `copyName` walks "<name> copy", "<name> copy 2" … until the *slug* is free
+  and returns both. Naming the file with `UniqueName`'s `-2` while the label
+  stayed "copy" would put two identical-looking rows in the tree, which is
+  what a duplicate most needs not to do.
+- **The activity log has nowhere to put a payload.** `LogEntry` is a message,
+  a source and an error string — no URL, no header, no body — because a
+  resolved URL can carry a credential in a query parameter and a log is the
+  artefact that gets pasted into a bug report. Everything in it is text the
+  window was already shown, or text that would otherwise have gone to a
+  stderr the packaged app does not have. A failure the window cannot act on
+  goes there (`useLog().log`, or `LogService.Record` from a component with no
+  hook), never to `console.error`: the webview has no console anybody opens.
+  DESIGN-NOTES §9.33.
 - **`internal/git` is read-only, and "not a repository" is a normal state**,
   never an error: a collection is a directory of files and works perfectly
   well outside version control. It answers "what does git think" for the tree
@@ -440,6 +470,16 @@ lists the design decisions that are still open — do not resolve them silently.
   (`release := guard.Writing(path); defer release()`), or the watcher reports
   Otis' own save as an external change and the window re-walks on every
   keystroke it just persisted.
+- **Renaming or deleting an entry edits one line of `.order`, and only when
+  there is one.** `collection.EditOrderLine` replaces or removes the single
+  line that named the entry; `renameInOrder` and `dropFromOrder` in
+  `order.go` are its only callers, so that file stays the only writer of a
+  `.order` and that stays checkable by reading one file. It is not an
+  exception to the rule below: neither writes an order, neither reformats the
+  file, and neither brings a `.order` into being. Without it a rename would
+  drop the request to the bottom of its folder (the new name being unlisted)
+  and a delete would leave a line naming nothing, warning on every walk —
+  neither of which the user did. docs/FORMAT.md §2.2.
 - **`.order` is never rewritten except by an explicit reorder**
   (docs/FORMAT.md §2.2). Adding a request must not touch it: the new file is
   unlisted, so it sorts alphabetically after the listed ones, and that is the

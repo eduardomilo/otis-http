@@ -1332,3 +1332,72 @@ It is spread rather than defaulted inside `components/ui/input`, because half
 the fields in the app are plain `<input>` elements inside table rows: a
 default on the shadcn component would have covered the dialogs and quietly
 missed the tables, which is the same shape of bug one layer down.
+
+**9.32 Rename, Duplicate and Delete, which the design draws and Phase B could
+not build.** The tree's context menu has carried the three of them, disabled,
+since the menu existed: Otis did not write to a collection then. They work
+now, and three decisions had to be made that the design does not cover.
+
+**A rename changes both halves of a request's identity.** A request's name
+lives in two places — the `# @name` directive and the file name — and this
+changes both, because they are two views of one thing: a rename that moved
+only one would leave a `place-order.http` reading "Create order" in the tree,
+which nobody meant. It is also exactly what Create does with a typed name, so
+the two are symmetric rather than each having their own rule. The dialog shows
+both lines (`Renames orders/create-order.http → orders/place-order.http` /
+`Sets # @name Place order`) rather than explaining the rule, which is §8.2's
+form. A folder has no `@name`: its name is the directory's (FORMAT.md §2.1),
+so there is one line to show.
+
+**A duplicate names itself once.** "<name> copy", then "<name> copy 2", with
+the file named for the slug of whichever it settled on — the label and the
+file name are computed together, so they cannot drift. Naming the file with a
+`-2` suffix while the label stayed "copy" would put two rows reading the same
+thing in the tree, which is the one thing a duplicate most needs not to do.
+
+**The delete dialog says whether git can bring it back.** That is the whole
+difference between an inconvenience and a loss, and the tree already carries
+each node's git status for its dot, so it costs nothing to say and would be
+conspicuous to leave out. An untracked file gets "This file is not in git yet,
+so this cannot be undone"; a tracked one gets the `git checkout --` line that
+restores it. A folder gets "Anything in it that git has not seen is gone for
+good", because the statuses inside it differ and a summary that averaged them
+would be worse than the honest general case.
+
+Note what this delete is *not*: `internal/diff`'s discard takes its
+confirmation as a **parameter** (`confirm bool`), because it is one of four
+things a row of buttons does and had to be unreachable by picking the wrong
+method. `Delete` is not that — the method's name is the whole of what it does
+— so here the dialog is the safety rather than a courtesy on top of one.
+
+Both operations keep `.order` in step by editing the single line that named
+the entry, which FORMAT.md §2.2 now specifies.
+
+**9.33 The activity log, because a failure had nowhere to go.** The design
+draws no toast and no console (§6 lists every overlay it uses and neither is
+among them), so anything Otis tried and could not do failed in silence: a
+clipboard write that refused, a file it could not reveal, a watcher that
+stopped. `tree.tsx` said so in a comment above the helper that swallowed
+them — "There is nowhere to show it yet".
+
+It is a popover off the status bar's right edge, not a toast. A toast
+interrupts and then vanishes, which is the wrong shape for this: these
+failures are noticed *after* the fact, when something turns out not to have
+worked, and what you want then is a list to go and look at. So the trigger is
+the word `log` in `--fg-ghost` — quieter than anything else in the bar — and
+it takes a count in `--destructive` when something has failed, which is the
+only thing in the status bar that changes colour on its own. Opening it is
+what marks the entries read.
+
+The list lives in Go (`LogService`) so that the window's failures and Go's own
+land in one place in one order, and so that a failure early enough to stop the
+window rendering is still recorded. It is in memory and per-session: a log on
+disk would be a second audit trail with none of the care `internal/mcp`'s has,
+and nothing here is worth that.
+
+**What it may hold is a property of the type.** `LogEntry` has a message, a
+source and the underlying error, and nothing else — no URL, no header, no
+body. Same reasoning as `mcp.Entry`'s: a resolved URL can carry a credential
+in a query parameter, and a log is the one artefact that gets copied into a
+bug report and pasted into a chat. Everything in it is text the window was
+already shown, or text that would otherwise have gone to a stderr nobody has.

@@ -3,6 +3,14 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -17,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { verbatimText } from "@/lib/text-input";
 import { useEnvironments } from "@/state/environment-context";
-import { EnvironmentService } from "@bindings/internal/services";
+import { EnvironmentService, LogService } from "@bindings/internal/services";
 import type { EnvironmentSummary } from "@bindings/internal/services";
 
 /**
@@ -36,6 +44,9 @@ import type { EnvironmentSummary } from "@bindings/internal/services";
 export function EnvironmentList({ activeName }: { activeName: string }) {
   const { environments, active, keychain } = useEnvironments();
   const [creating, setCreating] = useState(false);
+  // The environment the row menu is deleting. Duplicating needs no dialog:
+  // it writes a file whose name is derived, beside the one it copied.
+  const [managing, setManaging] = useState<EnvironmentSummary | null>(null);
 
   return (
     <div className="flex h-full flex-col bg-background px-2.5">
@@ -64,7 +75,13 @@ export function EnvironmentList({ activeName }: { activeName: string }) {
           </p>
         ) : (
           environments.map((env) => (
-            <Row key={env.name} env={env} active={env.name === active} open={env.name === activeName} />
+            <Row
+              key={env.name}
+              env={env}
+              active={env.name === active}
+              open={env.name === activeName}
+              onManage={setManaging}
+            />
           ))
         )}
       </div>
@@ -87,20 +104,36 @@ export function EnvironmentList({ activeName }: { activeName: string }) {
       <div className="flex-1" />
 
       <NewEnvironmentDialog open={creating} onOpenChange={setCreating} />
+      <DeleteEnvironmentDialog env={managing} onClose={() => setManaging(null)} />
     </div>
   );
 }
 
+/**
+ * One environment, with the same three operations a request row offers.
+ *
+ * Duplicate is worth more here than anywhere else in the app: an environment
+ * is mostly a shape — the same dozen names with different values — and
+ * "staging, but pointed at my machine" is how the second one usually starts.
+ * It copies the stored secret values across too, inside Go and inside the
+ * keychain (EnvironmentService.Duplicate); a copy full of references to
+ * nothing would not be a copy of anything useful.
+ */
 function Row({
   env,
   active,
   open,
+  onManage,
 }: {
   env: EnvironmentSummary;
   active: boolean;
   open: boolean;
+  onManage: (env: EnvironmentSummary) => void;
 }) {
+  const navigate = useNavigate();
   return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
     <Link
       to="/env/$name"
       params={{ name: env.name }}
@@ -136,6 +169,88 @@ function Row({
         {env.error ? "broken" : `${env.name}.json`}
       </span>
     </Link>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-52 text-ui *:data-[slot=context-menu-item]:text-ui">
+        <ContextMenuItem
+          onSelect={() => {
+            void EnvironmentService.Duplicate(env.name)
+              .then((doc) => doc && navigate({ to: "/env/$name", params: { name: doc.name } }))
+              .catch((cause: unknown) =>
+                LogService.Record("error", "environment", `Could not duplicate ${env.name}`, String(cause)),
+              );
+          }}
+        >
+          Duplicate
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onSelect={() => onManage(env)}
+          className="text-destructive data-[disabled]:text-destructive"
+        >
+          Delete…
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+/**
+ * Deleting an environment.
+ *
+ * It says what stays behind, because that is the part nobody expects: the
+ * values its secret references pointed at are left in the keychain. They
+ * belong to the machine rather than to the file (EnvironmentService.Delete),
+ * and a colleague's branch may still reference them — so deleting the file is
+ * not a way to forget a secret, and the dialog says which operation is.
+ */
+function DeleteEnvironmentDialog({
+  env,
+  onClose,
+}: {
+  env: EnvironmentSummary | null;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  if (!env) return null;
+  return (
+    <AlertDialog open onOpenChange={(next) => !next && onClose()}>
+      <AlertDialogContent className="max-w-[440px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete environment {env.name}?</AlertDialogTitle>
+          <AlertDialogDescription className="text-meta text-fg-muted">
+            <span className="font-mono text-fg-dim">{env.path}</span> is removed from disk. It is
+            committed, so git still has it.
+            <br />
+            Any secret values it referenced stay in this machine's keychain — they belong to the
+            machine, not to the file, and a colleague's branch may still reference them. Removing
+            the row from the table is what forgets a value.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="gap-2">
+          <AlertDialogCancel className="h-6 rounded-sm border-border-control bg-control px-2.5 text-ui text-fg-secondary">
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="outline"
+            onClick={(event) => {
+              event.preventDefault();
+              void EnvironmentService.Delete(env.name)
+                .then(() => {
+                  onClose();
+                  void navigate({ to: "/env" });
+                })
+                .catch((cause: unknown) => {
+                  onClose();
+                  void LogService.Record("error", "environment", `Could not delete ${env.name}`, String(cause));
+                });
+            }}
+            className="h-6 rounded-sm border-border-danger bg-transparent px-2.5 text-ui text-destructive hover:bg-destructive/10"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
