@@ -237,6 +237,13 @@ lists the design decisions that are still open — do not resolve them silently.
   selection colour was set for two years' worth of reading and never applied to
   a focused editor. Mirror the base theme's selector shape; a theme outranks a
   base theme at equal specificity. DESIGN-NOTES §9.29.
+- **The current-line highlight must stand down while text is selected.**
+  CodeMirror's selection layer is at `z-index: -2`, *behind* the content, so an
+  opaque `.cm-activeLine` background paints over it — and `highlightActiveLine`
+  marks the head line of every range, empty or not. `highlightCurrentLine` in
+  `otis-theme` is the replacement; use it, not CodeMirror's. A single-line
+  editor is the case that makes this unmissable: its one line is always the
+  active line, so the URL field showed no selection at all.
 - **`--bg-selected` is a selected *row*, never selected text.** The tree, the
   changes list, the environment list and the palette. Editor text selection is
   `--bg-text-selection`, which is deliberately neutral: colour means something

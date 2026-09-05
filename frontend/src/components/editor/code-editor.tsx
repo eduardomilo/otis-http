@@ -3,7 +3,6 @@ import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import {
   EditorView,
   drawSelection,
-  highlightActiveLine,
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
@@ -13,7 +12,7 @@ import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, indentOnInput } from "@codemirror/language";
 
-import { languageFor, otisEditorTheme, type EditorMode } from "@/components/editor/otis-theme";
+import { highlightCurrentLine, languageFor, otisEditorTheme, type EditorMode } from "@/components/editor/otis-theme";
 import { updateVariableIndex, variableExtensions } from "@/components/editor/variable-decoration";
 import { cn } from "@/lib/utils";
 import type { VariableRef } from "@bindings/internal/services";
@@ -98,7 +97,10 @@ export function CodeEditor({
       // field (it is an editor only for the {{variable}} decoration), and
       // `{{` there would close itself into `{{}}`.
       ...(singleLine || readOnly ? [] : [closeBrackets()]),
-      highlightActiveLine(),
+      // Ours, not CodeMirror's: it stands down while text is selected, so
+      // the opaque current-line background cannot paint over the selection
+      // layer beneath it (see otis-theme).
+      highlightCurrentLine,
       ...(gutters ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : []),
       // The extra keys come first so ⌘↵ and ⌘S reach the shell before
       // CodeMirror's own bindings claim them.

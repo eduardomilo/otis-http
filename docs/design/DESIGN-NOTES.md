@@ -1266,6 +1266,30 @@ colour alone is what lets a JSON body keep its syntax colours through a
 selection, and what keeps the response body's line numbers — which are
 `select-none` — out of a copy.
 
+**A third fault, found because the URL field still showed nothing.** The
+current-line highlight was painting over the selection. CodeMirror's
+`highlightActiveLine` marks the line under **every** range's head whether or
+not that range is empty, §4.3's treatment for that line is an opaque
+`--bg-inset`, and the selection layer sits at `z-index: -2` — *behind* the
+content. So an opaque line background covers the selection completely.
+
+In the body editor that hid the selection on the cursor's own line and left it
+on the others, which is why a three-line selection looked fine and a
+within-one-line selection did not. In the URL field it hid it **always**: a
+single-line editor's one line is permanently the active line, so selecting a
+word there looked exactly like selecting nothing.
+
+`highlightCurrentLine` replaces it and stands down whenever any range is
+non-empty. That is also right on its own terms rather than only as a fix: the
+current-line highlight exists to say where the cursor is, and when there is a
+selection the selection says it better — two overlapping washes say it worse
+than either alone. It stands down for a multiple selection's other cursors too,
+which would otherwise paint over one end of it.
+
+Worth keeping as a shape: three separate faults produced one symptom, and each
+was invisible while the others stood. The colour was wrong, the rule that set
+it never applied, and a fourth rule painted over the result.
+
 **9.30 The URL field had a scrollbar.** A single-line CodeMirror scrolls
 horizontally when the URL is longer than the field, and the theme declares 8px
 webkit scrollbars for `.cm-scroller` — so a bar appeared inside the 30px

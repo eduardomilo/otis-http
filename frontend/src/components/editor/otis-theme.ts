@@ -14,12 +14,13 @@
  */
 
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
-import { EditorView } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin } from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 import { json } from "@codemirror/lang-json";
 import { xml } from "@codemirror/lang-xml";
 import { javascript } from "@codemirror/lang-javascript";
-import type { Extension } from "@codemirror/state";
+import type { Extension, Range } from "@codemirror/state";
 
 /** The editor chrome: surfaces, gutters, the current line, the cursor. */
 export const otisTheme = EditorView.theme(
@@ -261,3 +262,62 @@ export const MODE_LABEL: Record<EditorMode, string> = {
   javascript: "JavaScript",
   text: "Text",
 };
+
+
+/**
+ * The current-line highlight, which stands down while text is selected.
+ *
+ * CodeMirror's own `highlightActiveLine` marks the line under **every**
+ * range's head whether or not that range is empty, and §4.3's current-line
+ * treatment is an opaque `--bg-inset`. The selection layer sits at
+ * `z-index: -2`, *behind* the content — so an opaque line background paints
+ * straight over the selection.
+ *
+ * In the body editor that hid the selection on the cursor's own line and left
+ * it visible on the others. In the URL field it hid it always, because a
+ * single-line editor's one line is permanently the active line: selecting a
+ * word there looked exactly like selecting nothing, which is what was
+ * reported.
+ *
+ * Standing down is also the right answer on its own terms. The current-line
+ * highlight exists to say where the cursor is; when there is a selection, the
+ * selection says it better, and two overlapping washes say it worse than
+ * either alone.
+ */
+const activeLineDecoration = Decoration.line({ class: "cm-activeLine" });
+
+function activeLines(view: EditorView): DecorationSet {
+  // Any non-empty range and the highlight is off entirely — including the
+  // other cursors of a multiple selection, which would otherwise paint over
+  // one end of it.
+  if (view.state.selection.ranges.some((range) => !range.empty)) {
+    return Decoration.none;
+  }
+  const lines: Range<Decoration>[] = [];
+  let lastFrom = -1;
+  for (const range of view.state.selection.ranges) {
+    const line = view.lineBlockAt(range.head);
+    if (line.from > lastFrom) {
+      lines.push(activeLineDecoration.range(line.from));
+      lastFrom = line.from;
+    }
+  }
+  return Decoration.set(lines);
+}
+
+export const highlightCurrentLine = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = activeLines(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+        this.decorations = activeLines(update.view);
+      }
+    }
+  },
+  { decorations: (plugin) => plugin.decorations },
+);
