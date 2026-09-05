@@ -716,7 +716,7 @@ prefers explicit, boring files over clever ones.
 | folder | a directory; folder auth, variables and description go to its `_folder.http`. An otherwise empty folder gets a `_folder.http` with a comment so the directory exists. |
 | request | `<slug>.http`, one per file, with `# @name <original name>` first, then the description as `#` comments |
 | item order | `.order` in every directory, listing every child by exact name |
-| pre-request / test script | `_pre.js` / `_post.js` beside `_folder.http`, or `<slug>.pre.js` / `<slug>.post.js` beside a request. Raw, untranslated, not executed. |
+| pre-request / test script | `_postman-pre.js` / `_postman-post.js` beside `_folder.http`, or `<slug>.postman-pre.js` / `<slug>.postman-post.js` beside a request. Raw and untranslated, and **named so that nothing runs it**: those are module names, not the hook names of §2.4, because a `pm.*` script that ran would throw on its first line. The header names the hook file a ported version belongs in. |
 | environment export | `env/<slug>.json`; variables of type `secret` become `{"$secret": "keychain"}` and their values are **not** imported |
 
 **Slugs.** Names are lower-cased; runs of anything other than ASCII letters

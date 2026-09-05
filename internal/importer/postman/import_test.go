@@ -312,3 +312,76 @@ func TestSortedKeysDeterministic(t *testing.T) {
 		t.Errorf("sortedKeys = %v", got)
 	}
 }
+
+// An imported Postman script must not land with a name that makes Otis run it.
+//
+// It used to. `<slug>.post.js` beside `<slug>.http` is a hook (docs/FORMAT.md
+// §2.4), so every imported script executed on the first send and threw at the
+// first `pm.` it reached — while the header at the top of the file said "NOT
+// executed". This walks the imported collection with the real classifier
+// rather than matching names, because the classifier is the thing that decides.
+func TestImportedScriptsAreNotHooks(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{OutDir: dir}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	loaded, err := collection.Load(dir)
+	if err != nil {
+		t.Fatalf("walking the imported collection: %v", err)
+	}
+
+	scripts := 0
+	var walk func(*collection.Node)
+	walk = func(node *collection.Node) {
+		if node.Kind == collection.KindScript {
+			scripts++
+			if node.Hook {
+				t.Errorf("%s was imported as a hook; nothing untranslated may run", node.ID)
+			}
+		}
+		for _, child := range node.Children {
+			walk(child)
+		}
+	}
+	walk(loaded.Root)
+
+	if scripts == 0 {
+		t.Fatal("the fixture imported no scripts, so this test proves nothing")
+	}
+}
+
+// And the header points at the file the ported version belongs in, since that
+// is the step somebody has to take.
+func TestImportedScriptSaysWhereToPortIt(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := Import(filepath.Join("testdata", "postman", "petstore.postman_collection.json"), Options{OutDir: dir}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	var found string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.Contains(d.Name(), "postman-") {
+			return err
+		}
+		found = path
+		return nil
+	})
+	if err != nil || found == "" {
+		t.Fatalf("no imported script found (%v)", err)
+	}
+	text := string(mustRead(t, found))
+	for _, want := range []string{"Nothing runs this file", "vars.session.set", "a file\n// named"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the header does not mention %q:\n%s", want, text)
+		}
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}

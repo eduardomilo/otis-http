@@ -476,9 +476,21 @@ func formEscape(s string) string {
 	return b.String()
 }
 
-// scripts writes untranslated Postman scripts next to their owner: _pre.js
-// and _post.js for folders (slug == ""), <slug>.pre.js and <slug>.post.js
-// for requests.
+// scripts writes untranslated Postman scripts next to their owner:
+// _postman-pre.js and _postman-post.js for folders (slug == ""),
+// <slug>.postman-pre.js and <slug>.postman-post.js for requests.
+//
+// **The name is chosen so the file does not run.** docs/FORMAT.md §2.4 makes
+// `_pre.js`, `_post.js` and `<slug>.pre.js` beside `<slug>.http` into *hooks*,
+// which Otis executes around every send. This function used to write exactly
+// those names while stamping "NOT executed" at the top of each file, so every
+// imported script ran on the first send and threw a ReferenceError at the
+// first `pm.` or `postman.` it reached — six of them in one real collection,
+// on every request, with the header insisting they were inert.
+//
+// `postman-pre` and `postman-post` are plain modules: nothing runs them unless
+// a hook imports one, which is what the header always claimed and what makes
+// the file safe to leave lying around until somebody ports it.
 func (p *planner) scripts(dir, slug, ownerName string, events []event) {
 	for _, ev := range events {
 		if ev.Script == nil {
@@ -497,19 +509,56 @@ func (p *planner) scripts(dir, slug, ownerName string, events []event) {
 		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		name := "_" + file + ".js"
+		name := "_postman-" + file + ".js"
 		if slug != "" {
-			name = slug + "." + file + ".js"
+			name = slug + ".postman-" + file + ".js"
 		}
 		rel := path.Join(dir, name)
 		if ev.Disabled {
 			p.rep().skip(rel, "disabled %s script for %q", kind, ownerName)
 			continue
 		}
-		content := fmt.Sprintf("// Untranslated Postman %s script for %q.\n// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.\n// Port what you need into a {%% %%} block in the request file.\n\n%s\n", kind, ownerName, code)
+		content := fmt.Sprintf(untranslatedHeader, kind, ownerName, hookName(slug, file), code)
 		p.write(rel, content)
-		p.rep().warn(rel, "%s script for %q imported as raw text; it will not run until ported", kind, ownerName)
+		p.rep().warn(rel, "%s script for %q imported as a module; nothing runs it until you port it to %s",
+			kind, ownerName, hookName(slug, file))
 	}
+}
+
+// untranslatedHeader is what sits above an imported Postman script.
+//
+// It names the file the ported version belongs in, because that is the step
+// somebody has to take and the old header did not say where to take it — and
+// it maps the three Postman calls that account for almost every script anyone
+// has written. `setEnvironmentVariable` is the one that matters: it is how a
+// Postman collection chains a flow, and `vars.session.set` is Otis' answer
+// (docs/FORMAT.md §4.5), so a collection that chained in Postman chains here
+// once these lines are translated.
+const untranslatedHeader = `// Untranslated Postman %s script for %q.
+//
+// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
+// so the logic is not lost. To make it run, port what you need into a file
+// named %s, or into a {%% %%} block in the request itself.
+//
+// The calls that usually matter:
+//
+//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
+//   pm.response.json()                       ->  response.json()
+//   pm.test("name", fn)                      ->  test("name", fn)
+//
+// A script gets a JavaScript realm and nothing else: no fetch, no require, no
+// filesystem, no timers (docs/FORMAT.md §9.3).
+
+%s
+`
+
+// hookName is the file an imported script would have to become in order to
+// run: the hook names of docs/FORMAT.md §2.4.
+func hookName(slug, phase string) string {
+	if slug == "" {
+		return "_" + phase + ".js"
+	}
+	return slug + "." + phase + ".js"
 }
 
 // environment writes env/<slug>.json from a Postman environment export.
@@ -618,5 +667,3 @@ func wrap(s string, width int) []string {
 	}
 	return lines
 }
-
-

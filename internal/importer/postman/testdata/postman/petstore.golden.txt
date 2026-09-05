@@ -13,10 +13,21 @@ pets-2.http
 # @auth basic {{user}} hunter2
 @baseUrl = https://petstore.example.com
 @user = alice
-=== _post.js ===
+=== _postman-post.js ===
 // Untranslated Postman test script for "Petstore API".
-// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
-// Port what you need into a {% %} block in the request file.
+//
+// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
+// so the logic is not lost. To make it run, port what you need into a file
+// named _post.js, or into a {% %} block in the request itself.
+//
+// The calls that usually matter:
+//
+//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
+//   pm.response.json()                       ->  response.json()
+//   pm.test("name", fn)                      ->  test("name", fn)
+//
+// A script gets a JavaScript realm and nothing else: no fetch, no require, no
+// filesystem, no timers (docs/FORMAT.md §9.3).
 
 pm.test("fast", () => pm.expect(pm.response.responseTime).to.be.below(500));
 === env/petstore-dev.json ===
@@ -57,10 +68,21 @@ delete-pet.http
 # CRUD on pets.
 # @auth bearer {{token}}
 @petsPath = /v2/pets
-=== pets/_pre.js ===
+=== pets/_postman-pre.js ===
 // Untranslated Postman pre-request script for "Pets".
-// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
-// Port what you need into a {% %} block in the request file.
+//
+// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
+// so the logic is not lost. To make it run, port what you need into a file
+// named _pre.js, or into a {% %} block in the request itself.
+//
+// The calls that usually matter:
+//
+//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
+//   pm.response.json()                       ->  response.json()
+//   pm.test("name", fn)                      ->  test("name", fn)
+//
+// A script gets a JavaScript realm and nothing else: no fetch, no require, no
+// filesystem, no timers (docs/FORMAT.md §9.3).
 
 pm.environment.set("requestId", pm.variables.replaceIn("{{$guid}}"));
 === pets/create-pet.http ===
@@ -82,10 +104,21 @@ DELETE {{baseUrl}}/v2/pets/42
 # @name Get pet
 @petId = 42
 GET {{baseUrl}}/v2/pets/{{petId}}
-=== pets/get-pet.post.js ===
+=== pets/get-pet.postman-post.js ===
 // Untranslated Postman test script for "Get pet".
-// Imported by Otis and NOT executed: the pm.* API is not available in Otis scripts.
-// Port what you need into a {% %} block in the request file.
+//
+// Nothing runs this file. It is a plain ES module (docs/FORMAT.md §2.4), kept
+// so the logic is not lost. To make it run, port what you need into a file
+// named get-pet.post.js, or into a {% %} block in the request itself.
+//
+// The calls that usually matter:
+//
+//   postman.setEnvironmentVariable("id", v)  ->  vars.session.set("id", v)
+//   pm.response.json()                       ->  response.json()
+//   pm.test("name", fn)                      ->  test("name", fn)
+//
+// A script gets a JavaScript realm and nothing else: no fetch, no require, no
+// filesystem, no timers (docs/FORMAT.md §9.3).
 
 pm.test("status is 200", function () {
     pm.response.to.have.status(200);
@@ -150,14 +183,14 @@ Skipped (7)
 
 Needs attention (9)
   - _folder.http: basic password is a literal value in the collection; move it to an environment variable
-  - _post.js: test script for "Petstore API" imported as raw text; it will not run until ported
-  - pets/_pre.js: pre-request script for "Pets" imported as raw text; it will not run until ported
-  - pets/get-pet.post.js: test script for "Get pet" imported as raw text; it will not run until ported
+  - _postman-post.js: test script for "Petstore API" imported as a module; nothing runs it until you port it to _post.js
+  - pets/_postman-pre.js: pre-request script for "Pets" imported as a module; nothing runs it until you port it to _pre.js
+  - pets/get-pet.postman-post.js: test script for "Get pet" imported as a module; nothing runs it until you port it to get-pet.post.js
   - pets/upload-photo.http: form file "photo" points at /Users/alice/Pictures/rex.jpg, a path on the exporting machine; copy the file into the collection and fix the path
   - infra-aws/s3-object-literal-keys.http: AWS secret key was a literal in the export; replaced with {{awsSecretKey}}. Set it as a keychain secret, or switch to '@auth aws profile=<name>' to use your local AWS credentials
   - infra-aws/s3-object-literal-keys.http: AWS session token was a literal in the export; replaced with {{awsSessionToken}}
   - env/petstore-dev.json: secret variables written as keychain references; their values were NOT imported and must be stored in the keychain: token, apiKey
-  - pets/_pre.js: Postman dynamic variable {{$guid}} has no Otis equivalent and will be reported as unresolved
+  - pets/_postman-pre.js: Postman dynamic variable {{$guid}} has no Otis equivalent and will be reported as unresolved
 
 Notes (7)
   - pets/create-pet.http: added Content-Type: application/json (Postman sets it implicitly)
