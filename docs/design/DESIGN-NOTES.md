@@ -1456,3 +1456,34 @@ What is still missing: there is no way to **create** a script from the window.
 `_pre.js` beside a folder is still `touch`. That is a smaller gap than this
 one was — a file that does not exist is not a row you can click and get
 nothing from — but it is a gap.
+
+**9.35 Basic auth had one field, and it was the directive's field rather than
+the credential's.** `FORMAT.md` §3.3 writes basic as
+`# @auth basic <username> [<password>]`, and the Override form edited that
+argument text: one box labelled Credentials, placeholder `username password`,
+and a hint explaining that the password is "the rest of the line". Two
+consequences. Picking **Basic** from the type select wrote `# @auth basic` and
+the file was malformed from that keystroke until a username was typed —
+`parseAuth` refuses it, so the editor showed an error for a choice the user
+had just made correctly. And a password containing a space, which the format
+allows deliberately, could only be got right by someone who had read the hint.
+
+The read half of the same screen already disagreed with it: `InheritedDetail`
+draws a basic auth as **User** and **Password**, two rows. So the form is two
+inputs now, and they map onto the one line without loss because §3.3's split
+is total — a username is one whitespace-delimited field, the password is
+everything after it. The username box drops spaces, which is the format's own
+rule applied where it can still be seen rather than discovered later in a
+parse error.
+
+Two things this does *not* change. The `Writes` row stays, on every scheme:
+the argument text was doing the work of showing what the file will say, and
+that job belongs to the row that says it explicitly. And the password is
+plain text, not dots — it is going into a committed file, and masking it in
+the editor would imply a protection that the file does not give it. The hint
+points at a `{{variable}}` backed by the keychain for anything real.
+
+`none` stays out of the type select. Both callers already offer "No auth" as
+their own option, and a scheme picker that could also say it would be a
+second way to make one choice on one screen.
+
