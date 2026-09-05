@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { VariableText } from "@/components/request/variable-text";
@@ -32,6 +33,19 @@ import { verbatimText } from "@/lib/text-input";
  * The grid is the request-header geometry of §4.5 — `24px 190px 1fr 56px`,
  * 28px rows — with the leading cell empty, so the key and value columns sit on
  * the same axis as the Headers tab and switching tabs shifts nothing.
+ *
+ * **The rows are held here, not derived on every render.** A parameter with no
+ * name and no value cannot be written into a URL — `?&foo=1` is not a
+ * parameter, it is a stray ampersand — so a table that was a pure function of
+ * the URL had nowhere to put a row you had just added and not yet typed into.
+ * Add parameter appeared to do nothing at all: the row was written to the URL,
+ * dropped on the way, and gone before the next frame.
+ *
+ * So the table keeps its own rows and writes the URL from them, and re-reads
+ * the URL only when it stopped agreeing with what they say — which is what
+ * typing in the URL bar does, and what nothing else does. An empty row
+ * therefore lives in the table until it has something in it, and is in
+ * nobody's file until then.
  */
 
 const GRID = "grid grid-cols-[24px_190px_1fr_56px] items-center gap-3";
@@ -45,12 +59,24 @@ export function ParamsTab({
   index: VariableIndex;
   onUrlChange: (url: string) => void;
 }) {
-  const { params } = splitUrl(url);
+  const [rows, setRows] = useState<QueryParam[]>(() => splitUrl(url).params);
 
-  const write = (next: QueryParam[]) => onUrlChange(withParams(url, next));
+  // The URL is still the truth. When it says something the rows do not — the
+  // URL bar was typed in, another request was opened, a script rewrote it —
+  // the rows are replaced by what it says. When it says exactly what they
+  // already say, they are left alone, which is what keeps a half-typed row
+  // (and an entirely empty one) alive between renders.
+  useEffect(() => {
+    setRows((current) => (withParams(url, current) === url ? current : splitUrl(url).params));
+  }, [url]);
+
+  const write = (next: QueryParam[]) => {
+    setRows(next);
+    onUrlChange(withParams(url, next));
+  };
   const patch = (at: number, change: Partial<QueryParam>) =>
     write(
-      params.map((param, i) =>
+      rows.map((param, i) =>
         // An edited row loses its source text, so it is re-encoded rather than
         // written back verbatim.
         i === at ? { ...param, ...change, raw: undefined } : param,
@@ -71,12 +97,12 @@ export function ParamsTab({
         <span />
       </div>
 
-      {params.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="px-1 pt-2 text-meta text-fg-faint">
           No query parameters. Anything added here is written into the URL.
         </p>
       ) : (
-        params.map((param, at) => (
+        rows.map((param, at) => (
           <div
             key={at}
             className={cn(
@@ -109,7 +135,7 @@ export function ParamsTab({
                 className="min-w-[160px] rounded-md border-border-control bg-raised"
               >
                 <DropdownMenuItem
-                  onSelect={() => write(params.filter((_, i) => i !== at))}
+                  onSelect={() => write(rows.filter((_, i) => i !== at))}
                   className="text-ui text-destructive"
                 >
                   Remove parameter
@@ -122,7 +148,7 @@ export function ParamsTab({
 
       <button
         type="button"
-        onClick={() => write([...params, { name: "", value: "", enabled: true }])}
+        onClick={() => write([...rows, { name: "", value: "", enabled: true }])}
         className="mt-2 ml-9 flex h-6 w-fit items-center gap-1.5 rounded-sm border border-border-control bg-control px-2.5 text-ui text-fg-secondary hover:text-fg-emphasis"
       >
         <Plus className="size-3" />
