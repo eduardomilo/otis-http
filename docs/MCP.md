@@ -13,6 +13,11 @@ gained the rule that an in-app answer is the only thing that satisfies a
 confirmation the window raised. §15's verification plan is the checklist the
 tests were written against.
 
+**One section is still a proposal: §8.1**, the SESSION capability and
+`set_session_variable`. It is written the way the rest of this document was
+written — to be argued with before it exists — and §15's items 33–36 are the
+tests it does not have yet. Everything else here is built.
+
 Read `VISION.md` §3 first. The line it draws under secrets is the constraint
 everything here bends around.
 
@@ -94,9 +99,9 @@ confirmation needs a window to appear in (§6.4); a headless MCP server would be
 this design with its one safety removed. Asked for the endpoint with nothing
 running, `otis mcp config` says the server is off and where to turn it on.
 
-## 3. Capabilities: READ, RUN and WRITE
+## 3. Capabilities: READ, RUN, WRITE and SESSION
 
-Three switches. **All off by default, and the app ships with the server itself
+Four switches. **All off by default, and the app ships with the server itself
 off.**
 
 | Capability | Grants | Default |
@@ -105,6 +110,13 @@ off.**
 | READ | `list_requests`, `get_request`, `list_environments`, `get_session_variables`, `get_last_response`, `get_test_results` | **off** |
 | RUN | `send_request`, `run_folder` | **off** |
 | WRITE | `create_request`, `create_folder`, `update_request` | **off** |
+| SESSION | `set_session_variable` (§8.1) | **off** |
+
+SESSION is its own switch rather than part of RUN, although chaining a flow is
+what it is for. The reason is §8.1: a session value outranks the committed
+layer it sits beside, so granting it is a different decision from granting
+sends — and one you should be able to refuse while still letting an agent run
+what the collection already contains.
 
 RUN without READ is allowed and is not silly: an agent told exactly which
 request to send does not need to enumerate the collection.
@@ -126,6 +138,7 @@ committed switch would be one person deciding it for the whole team.
   "read": false,
   "run": false,
   "write": false,
+  "session": false,
   // §4 rule 4: tightens the committed per-environment policy, never loosens it.
   "alwaysConfirmSends": true,
   // §9.1. On by default; false keeps the session's calls in memory only.
@@ -585,6 +598,113 @@ value is **literal**, so a `{{` arriving in a response cannot reach into the
 variable scope; and it is **written nowhere**, so an agent cannot use the
 session store as a way to leave state behind.
 
+### 8.1 Writing one: `set_session_variable`
+
+§8 chains a flow without the agent ever writing a variable — a reviewed
+post-response script sets it and the next send resolves it. That covers the
+common case and should stay the default way to build a flow. `set_session_variable`
+is for the case it does not cover: a value the *agent* chooses, in a flow it is
+assembling, where no committed script sets one yet.
+
+It is the most carefully gated tool in this document, and the reason is the
+resolution order rather than anything about the value itself.
+
+**Why a session write is not a small thing.** `FORMAT.md` §4.2 interleaves the
+session layer with the committed one: nearest definition wins, and at one level
+**a session value beats the file**. Step 3 puts the session value for the
+active environment ahead of the environment. So an unconstrained
+`set_session_variable` is an *environment override with no file* — and §12
+already refuses environment writes. Concretely, a request the team committed
+months ago:
+
+```
+GET {{apiHost}}/v1/orders
+Authorization: Bearer {{apiKey}}      # inherited from _folder.http
+```
+
+is clean, reviewed, and sends under the environment's policy with nobody
+watching. An agent that could set a session `apiHost` would redirect it to a
+host of its choosing, **and §5 would never fire**, because §5 asks "is this
+file unreviewed?" and answers with `git status`. Nothing in the tree changed.
+That is §5's own opening scenario reached without writing a file.
+
+So the tool exists under three rules, in this order.
+
+**Rule 1 — it may not shadow anything.** A set is **refused** when the name
+already resolves at the target folder through any committed scope: a `@var` in
+a request file, a `@var` in any `_folder.http` at or above it, or the active
+environment. The refusal names what it would have shadowed
+(`"apiHost" is defined by env/staging.json; a session value would override it`).
+
+This is a rule and not a dialog, deliberately. §13 says a dialog is only as
+good as its reading, and this is the case where a misread has no floor under
+it. It also costs the legitimate use almost nothing: a flow sets `orderId`,
+`sessionToken`, `createdAt` — names the collection does not otherwise define.
+A flow that needs to change `apiHost` is not a flow, it is a configuration
+change, and `VISION.md` §5 says configuration belongs somewhere reviewable.
+
+The check runs at **redeem**, against the scope as it stands then, not at
+preview. A name that became defined in between is refused.
+
+**Rule 2 — a person authorizes it, always.** In Otis' own window, never
+answerable through the client (§6.4). Not subject to the environment's policy
+and not skipped by `"allow"`, for a reason that falls out of §5:
+
+> A session value is in no file. git cannot vouch for it. It is therefore
+> **permanently unreviewed** — and §5's rule is that sending anything
+> unreviewed asks a person. Setting one is the same fact one step earlier.
+
+`"deny"` on the active environment refuses without a dialog, as everywhere.
+
+The dialog names the folder, the variable, the value it would take (capped at
+256 characters, and it is the agent's own data rather than anything from the
+keychain — no secret can reach here, see rule 3), and **which requests below
+would resolve it**, because that is the blast radius and Otis already computes
+it for the folder view's "inherited by N requests".
+
+**Rule 3 — no secrets, in either direction.** A session variable set through
+this tool is never marked secret and never reads one: the value is a literal
+the agent supplied. The masker still runs over the result, as it does over
+every result (§7). And `get_session_variables` continues to withhold the value
+of anything marked secret, which only a script can produce.
+
+**Two-phase, like every other mutating tool** (§6.2). Phase 1 previews: the
+folder, the name, the value, what it would shadow (which is what turns a
+refusal into something the agent can act on before spending a turn), and the
+requests it would reach. Phase 2 redeems the intent and asks the person. The
+fingerprint covers folder, name and value, length-prefixed, so an agent cannot
+preview `orderId` and redeem `apiHost`. An intent is single-use and is spent on
+every outcome, including a refusal under rule 1.
+
+**Audited** (§9) as `set_session_variable`, with the variable's name and scope
+as the `target` and the decision. **Never the value** — `mcp.Entry` has nowhere
+to put one, and that is a property of the type rather than a habit.
+
+```jsonc
+// Phase 1: nothing is set.
+→ set_session_variable { "folder": "orders", "name": "orderId", "value": "ord_TEST_1" }
+← { "intent": "i_9c31", "folder": "orders", "name": "orderId",
+    "shadows": null, "reaches": 6,
+    "note": "Not set. Call again with the intent to ask for authorization." }
+
+// Phase 2: a person is asked, in Otis' window.
+→ set_session_variable { "intent": "i_9c31", ... }
+← { "set": true, "folder": "orders", "name": "orderId", "scope": "folder" }
+
+// Rule 1, at any phase:
+← error: "apiHost" is defined by env/staging.json; a session value would
+         override it. Set it there, or use a name the collection does not define.
+```
+
+**What this still does not close.** The value is substituted into a reviewed
+request, and substitution is not free of consequence: `orderId` set to
+`../../admin` turns `{{baseUrl}}/orders/{{orderId}}` into `{{baseUrl}}/admin`.
+Rule 1 bounds that to the host and the credential the reviewed request already
+uses — it is the API's own authorization deciding, not Otis' — and the person
+who authorized the set saw the value. It is a smaller risk than the redirect
+rule 1 removes, and it is not zero. §13 is where the residual risks live and
+this belongs on that list.
+
 ## 9. The audit log
 
 Every tool call is recorded, whatever the outcome:
@@ -676,6 +796,7 @@ afterthought.
 | READ | 10/s | 30 |
 | RUN | 1/s | 5 |
 | WRITE | 2/s | 10 |
+| SESSION | 1/s | 5 |
 
 WRITE is limited more loosely than RUN because a write is recoverable and a
 send is not — but it is limited at all, because an agent in a loop creating
@@ -849,6 +970,21 @@ one: it runs in the same sandbox as any other (`FORMAT.md` §9.3 — no
 filesystem, no process, no network, no timers) and sees a secret only as an
 opaque handle, so it is not a way around §7 either.
 
+### SESSION
+
+**`set_session_variable`** — set one session value for a folder (§8.1).
+Two-phase, like the mutating tools of RUN.
+`{ folder: string, name: string, value: string, intent?: string }` →
+phase 1 `{ intent, folder, name, shadows: string | null, reaches: number }`,
+phase 2 `{ set: true, folder, name, scope: "folder" }`
+
+**Refused if the name already resolves** at that folder through a request
+`@var`, any `_folder.http` above it, or the active environment — a session
+value outranks all three (`FORMAT.md` §4.2), so allowing it would be an
+environment write by another name. **Always confirmed in Otis' window**,
+whatever the environment policy says, because a value in no file is
+permanently unreviewed. §8.1 has the whole argument.
+
 ### Not exposed, on purpose
 
 - **No rename and no delete.** Creating and editing are recoverable — the file
@@ -866,7 +1002,11 @@ opaque handle, so it is not a way around §7 either.
   more now that WRITE exists: an agent that could commit could make its own
   writes "reviewed" and walk straight through §5.
 - **No `clear_session`.** Reaching into the human's session state to destroy it
-  is not something an agent needs.
+  is not something an agent needs. Note the asymmetry with §8.1's
+  `set_session_variable`, which is deliberate: setting a name nothing else
+  defines adds a value a person authorized, and clearing destroys values a
+  person's own runs produced. One is additive and gated; the other is
+  somebody else's state.
 - **No collection creation, and no switching collections.** Every other tool is
   scoped to the open collection, and that scope is what bounds them all. A tool
   that created one would have no scope — it is arbitrary directory creation at
@@ -920,6 +1060,15 @@ by `git status` rather than by policy.
   change under you, and if you commit without reading the diff you have
   reviewed nothing. This is the cost of the WRITE grant and there is no
   mechanism here that removes it.
+- **A session value steering a reviewed request within its own host.** §8.1's
+  rule 1 stops a session write from redirecting a request, by refusing any name
+  the collection already defines. It does not stop the value from doing work
+  where it lands: `orderId` set to `../../admin` turns
+  `{{baseUrl}}/orders/{{orderId}}` into `{{baseUrl}}/admin`. The bound is that
+  it stays on the host and the credential the reviewed request already used —
+  so it is the API's own authorization deciding — and that a person read the
+  value when they authorized the set. Smaller than the redirect rule 1 removes;
+  not zero.
 - **A confused person clicking through confirmations.** A prompt is only as
   good as its reading, which is why the confirmation names the method, the
   resolved URL and the environment rather than asking "allow?".
@@ -1198,11 +1347,32 @@ The brief's list, plus what §7 demands:
     and scripts survive byte for byte. This is the risk §14.8 accepted, so it
     is the one to measure.
 
+33. **§8.1's rule 1 is a rule, not a dialog.** `set_session_variable` for a
+    name defined by the active environment, by a `_folder.http` above the
+    target, and by the request file itself → refused in all three, each naming
+    what it would have shadowed, and **no dialog raised** in any of them. The
+    same name with that definition removed → allowed. And the check runs at
+    *redeem*: preview a free name, define it in the environment, redeem →
+    refused.
+34. **Its confirmation is not answerable through the client** (§6.4), is raised
+    even with the environment marked `"allow"`, and the timeout refuses. A
+    `"deny"` environment refuses with no dialog.
+35. **A session write cannot redirect a send.** The case §8.1 opens with: a
+    committed, clean request at `{{apiHost}}/v1/orders`, `apiHost` from the
+    environment, SESSION and RUN both on and the environment `"allow"` —
+    assert against an `httptest` server that nothing reaches a host the agent
+    named, and that the refusal happened at the *set* rather than at the send.
+36. **The audit line for a set carries the name and the scope and no value**,
+    asserted against the recorded entry.
+
 Tests may not touch the network (`CLAUDE.md`), so 5 and 6 run against an
 `httptest` server.
 
 ---
 
-**Nothing above is built.** Approve, change or reject it and I will implement
-what survives, in the order §15 tests it — starting with the masking test,
-because it is the one whose absence would be unrecoverable.
+**1–32 are built and tested.** **33–36 are not**: §8.1 is the one part of this
+document still at the proposal stage, written the same way the rest was —
+to be approved, changed or rejected before any of it exists. Implement it in
+the order §15 tests it, starting with 33, because rule 1 is the part whose
+absence would be unrecoverable.
+
